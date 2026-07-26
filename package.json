@@ -1,0 +1,19 @@
+{
+  "name": "fausth",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Faust Harness — portable Counterbalance Contract runtime",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -C engines/ts build",
+    "test": "pnpm -C engines/ts test",
+    "validate": "pnpm -C engines/ts exec node --import tsx src/cli.ts validate",
+    "replay": "pnpm -C engines/ts exec node --import tsx src/cli.ts replay",
+    "live": "pnpm -C engines/ts exec node --import tsx src/cli.ts live",
+    "ci:conformance": "pnpm -C engines/ts test && pnpm -C engines/ts exec node --import tsx src/cli.ts replay && node scripts/parity.mjs"
+  }
+}

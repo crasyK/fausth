@@ -1,0 +1,1 @@
+{"type":"tool","name":"agent.spawn","args":{"tools":["fs.read","shell.unrestricted"]}}

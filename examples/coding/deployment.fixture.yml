@@ -1,0 +1,14 @@
+platform: fixture-coding
+model:
+  transport: recorded
+bindings:
+  fs.read:
+    native: stub.fs_read
+  fs.write_scoped:
+    native: stub.fs_write
+  shell.run_allowlisted:
+    native: stub.shell
+  user.approve:
+    native: stub.approve
+  agent.spawn:
+    native: stub.spawn

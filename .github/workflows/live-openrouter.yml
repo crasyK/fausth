@@ -1,0 +1,49 @@
+name: live-openrouter
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install
+      - name: Run live suite
+        id: live
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "No OPENROUTER_API_KEY — skipping live suite"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --scenarios ../../live/scenarios \
+            --report ../../live/reports/nightly.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited / catalog empty — skipping fail"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-report
+          path: live/reports/
+          if-no-files-found: ignore

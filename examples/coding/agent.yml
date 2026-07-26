@@ -1,0 +1,61 @@
+spec: counterbalance-contract/v0.1
+name: coding-micro-harness
+
+state:
+  out_of_scope_writes: 0
+
+limits:
+  max_steps: 6
+  max_tool_calls: 4
+
+safe_state:
+  out_of_scope_writes: 0
+
+tools:
+  - id: fs.read
+    description: Read a file
+  - id: fs.write_scoped
+    description: Write only within declared scopes
+    verify:
+      - kind: absence
+        require:
+          path: result.out_of_scope
+          eq: 0
+        otherwise: safe_state
+  - id: shell.run_allowlisted
+    description: Run allowlisted commands (test, typecheck)
+    verify:
+      - kind: evidence
+        require:
+          path: result.exit_code
+          eq: 0
+        otherwise: deny
+  - id: user.approve
+    description: Ask user for approval
+  - id: agent.spawn
+    description: Spawn a child agent (tighten-only)
+
+gates:
+  - id: write-must-have-path
+    when:
+      path: action.name
+      eq: fs.write_scoped
+    require:
+      path: action.args.path
+      neq: ""
+    otherwise: deny
+
+permissions:
+  tools:
+    - fs.read
+    - fs.write_scoped
+    - shell.run_allowlisted
+    - user.approve
+  filesystem:
+    write_scopes:
+      - src/
+      - tests/
+
+spawn:
+  allow: true
+  tighten_only: true

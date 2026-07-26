@@ -1,0 +1,1 @@
+{"type":"tool","name":"fs.write_scoped","args":{"path":"secrets/key.txt","content":"x"}}

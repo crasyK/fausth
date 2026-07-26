@@ -1,0 +1,2 @@
+{"type":"tool","name":"agent.spawn","args":{"tools":["fs.read"]}}
+{"type":"stop"}

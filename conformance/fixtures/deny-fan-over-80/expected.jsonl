@@ -1,0 +1,3 @@
+{"args":{"percent":90},"seq":1,"stage":"propose","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":1}
+{"args":{"percent":90},"seq":2,"stage":"validate","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":2,"verdict":"allow"}
+{"args":{"percent":90},"reason":"gate_denied","seq":3,"stage":"authorize","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":3,"verdict":"deny"}

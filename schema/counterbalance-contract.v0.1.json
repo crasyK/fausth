@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/counterbalance-contract.v0.1.json",
+  "title": "Counterbalance Contract v0.1",
+  "type": "object",
+  "required": ["spec", "name", "state", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string", "const": "counterbalance-contract/v0.1" },
+    "name": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": {
+        "type": ["integer", "string", "boolean", "object", "array", "null"]
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "input": { "type": "object" },
+          "output": { "type": "object" },
+          "verify": {
+            "type": "array",
+            "items": { "type": "object", "required": ["kind", "require"] }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "gates": { "type": "array", "items": { "type": "object" } },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_steps": { "type": "integer" },
+        "max_tool_calls": { "type": "integer" },
+        "timeout_ms": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "safe_state": { "type": "object" },
+    "permissions": { "type": "object" },
+    "spawn": {
+      "type": "object",
+      "properties": {
+        "allow": { "type": "boolean" },
+        "tighten_only": { "type": "boolean" }
+      }
+    }
+  }
+}

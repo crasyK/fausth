@@ -1,0 +1,14 @@
+platform: ollama-coding
+model:
+  transport: ollama
+  model: llama3.2
+  temperature: 0
+bindings:
+  fs.read:
+    native: stub.fs_read
+  fs.write_scoped:
+    native: stub.fs_write
+  shell.run_allowlisted:
+    native: stub.shell
+  user.approve:
+    native: stub.approve

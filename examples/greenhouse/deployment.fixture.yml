@@ -1,0 +1,14 @@
+platform: fixture-greenhouse
+model:
+  transport: recorded
+  temperature: 0
+  max_tokens: 1024
+bindings:
+  sensor.temperature.read:
+    native: stub.temperature
+  sensor.fan.read_percent:
+    native: stub.fan_read
+  actuator.fan.set:
+    native: stub.fan_set
+  system.wait:
+    native: stub.wait

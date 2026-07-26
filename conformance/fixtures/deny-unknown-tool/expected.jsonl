@@ -1,0 +1,2 @@
+{"args":{},"seq":1,"stage":"propose","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"evil.tool","ts_logical":1}
+{"args":{},"reason":"capability_missing","seq":2,"stage":"validate","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"evil.tool","ts_logical":2,"verdict":"deny"}

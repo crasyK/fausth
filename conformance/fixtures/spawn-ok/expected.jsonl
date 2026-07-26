@@ -1,0 +1,6 @@
+{"args":{"tools":["fs.read"]},"seq":1,"stage":"propose","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":1}
+{"args":{"tools":["fs.read"]},"seq":2,"stage":"validate","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":2,"verdict":"allow"}
+{"args":{"tools":["fs.read"]},"seq":3,"stage":"authorize","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":3,"verdict":"allow"}
+{"args":{"tools":["fs.read"]},"result":{"spawned":1,"tools":["fs.read"]},"seq":4,"stage":"execute","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","ts_logical":5,"verdict":"allow"}
+{"seq":6,"stage":"propose","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","ts_logical":6,"verdict":"allow"}

@@ -1,0 +1,8 @@
+Faust Harness
+Copyright 2026 Faust Harness Authors
+
+This product includes software developed for the Counterbalance Contract
+specification (counterbalance-contract/v0.1).
+
+Faust Harness is a portable, harness-first agent runtime. The normative
+specification lives in docs/spec-v0.1.md.

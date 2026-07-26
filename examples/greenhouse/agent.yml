@@ -1,0 +1,57 @@
+spec: counterbalance-contract/v0.1
+name: greenhouse-caretaker
+
+state:
+  temperature_decidegrees: 250
+  fan_percent: 0
+  sensor_healthy: 1
+
+limits:
+  max_steps: 6
+  max_tool_calls: 4
+  timeout_ms: 10000
+
+safe_state:
+  fan_percent: 0
+
+tools:
+  - id: sensor.temperature.read
+    description: Read ambient temperature in decidegrees Celsius
+  - id: sensor.fan.read_percent
+    description: Read current fan power percent
+  - id: actuator.fan.set
+    description: Set fan power 0-100
+    verify:
+      - kind: effect
+        observe: sensor.fan.read_percent
+        require:
+          path: observation.percent
+          eq_path: action.args.percent
+        otherwise: safe_state
+  - id: system.wait
+    description: Wait milliseconds
+
+gates:
+  - id: fan-cap
+    when:
+      path: action.name
+      eq: actuator.fan.set
+    require:
+      path: action.args.percent
+      lte: 80
+    otherwise: deny
+  - id: sensor-health
+    when:
+      path: action.name
+      eq: actuator.fan.set
+    require:
+      path: state.sensor_healthy
+      eq: 1
+    otherwise: safe_state
+
+permissions:
+  tools:
+    - sensor.temperature.read
+    - sensor.fan.read_percent
+    - actuator.fan.set
+    - system.wait

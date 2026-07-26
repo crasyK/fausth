@@ -1,0 +1,5 @@
+{"args":{"cmd":"test"},"seq":1,"stage":"propose","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"shell.run_allowlisted","ts_logical":1}
+{"args":{"cmd":"test"},"seq":2,"stage":"validate","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"shell.run_allowlisted","ts_logical":2,"verdict":"allow"}
+{"args":{"cmd":"test"},"seq":3,"stage":"authorize","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"shell.run_allowlisted","ts_logical":3,"verdict":"allow"}
+{"args":{"cmd":"test"},"result":{"cmd":"test","exit_code":1},"seq":4,"stage":"execute","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"shell.run_allowlisted","ts_logical":4,"verdict":"allow"}
+{"args":{"cmd":"test"},"reason":"verify_evidence_failed","result":{"cmd":"test","exit_code":1},"seq":5,"stage":"verify","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"shell.run_allowlisted","ts_logical":5,"verdict":"deny"}
