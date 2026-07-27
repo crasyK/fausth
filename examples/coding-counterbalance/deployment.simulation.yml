@@ -1,0 +1,18 @@
+platform: simulation-coding-counterbalance
+model:
+  transport: recorded
+bindings:
+  fs.read:
+    native: sim.fs_read
+  fs.write_scoped:
+    native: sim.fs_write
+  shell.run_allowlisted:
+    native: sim.shell
+  user.approve:
+    native: sim.approve
+  user.correct:
+    native: sim.user_correct
+  mode.enter:
+    native: sim.mode_enter
+  task.complete:
+    native: sim.task_complete

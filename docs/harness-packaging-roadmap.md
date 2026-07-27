@@ -10,12 +10,19 @@ These capabilities wait until the single-agent Counterbalance loop is proven (co
 
 ## M5 — Multi-host
 
-Same harness contract; only `deployment.yml` + bindings change:
+**Exit (this milestone):** the same [`examples/coding-counterbalance/`](../examples/coding-counterbalance/) harness runs on:
 
-1. Local TypeScript  
-2. GitHub Actions (SLOPATHON reference)  
-3. Python server  
-4. Browser (security-permitting)
+1. Local TypeScript (`fausth run … --deployment …`)
+2. Python process host (`python -m fausth run …`)
+3. GitHub Actions ([`.github/workflows/multi-host.yml`](../.github/workflows/multi-host.yml) via `scripts/multi-host-smoke.mjs`)
+
+Only `deployment.yml` + bindings change; `agent.yml` is shared. Bindings are enforced: missing/unknown natives are **adapter failures**, distinct from harness deny.
+
+**Deferred (M5.1):** browser / WASM host (security-permitting).
+
+**Not yet:** HTTP Python server; real FS/process adapter (simulation stubs prove portability).
+
+Same harness contract; only `deployment.yml` + bindings change across hosts once browser lands.
 
 ## M6 — Multi-agent
 

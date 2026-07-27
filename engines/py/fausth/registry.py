@@ -1,0 +1,136 @@
+"""Resolve deployment.bindings → tool handlers (mirrors TS adapters/registry)."""
+from __future__ import annotations
+
+from typing import Any
+
+import yaml
+
+from .runtime import ToolHandler, default_tools
+
+AdapterErrorCode = str  # binding_missing | adapter_unresolved
+
+
+class AdapterError(Exception):
+    def __init__(self, code: AdapterErrorCode, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+NATIVE_TO_TOOL: dict[str, str] = {
+    "stub.fs_read": "fs.read",
+    "sim.fs_read": "fs.read",
+    "fs.read": "fs.read",
+    "stub.fs_write": "fs.write_scoped",
+    "sim.fs_write": "fs.write_scoped",
+    "fs.write_scoped": "fs.write_scoped",
+    "stub.shell": "shell.run_allowlisted",
+    "sim.shell": "shell.run_allowlisted",
+    "shell.run_allowlisted": "shell.run_allowlisted",
+    "stub.approve": "user.approve",
+    "sim.approve": "user.approve",
+    "user.approve": "user.approve",
+    "stub.ask": "user.ask",
+    "user.ask": "user.ask",
+    "stub.user_correct": "user.correct",
+    "sim.user_correct": "user.correct",
+    "user.correct": "user.correct",
+    "stub.mode_enter": "mode.enter",
+    "sim.mode_enter": "mode.enter",
+    "mode.enter": "mode.enter",
+    "stub.task_complete": "task.complete",
+    "sim.task_complete": "task.complete",
+    "task.complete": "task.complete",
+    "stub.kb_lookup": "kb.lookup",
+    "sim.kb_lookup": "kb.lookup",
+    "kb.lookup": "kb.lookup",
+    "stub.answer_send": "answer.send",
+    "sim.answer_send": "answer.send",
+    "answer.send": "answer.send",
+    "stub.human_handoff": "human.handoff",
+    "sim.human_handoff": "human.handoff",
+    "human.handoff": "human.handoff",
+    "stub.refund_request": "refund.request",
+    "refund.request": "refund.request",
+    "stub.spawn": "agent.spawn",
+    "agent.spawn": "agent.spawn",
+    "stub.temperature": "sensor.temperature.read",
+    "sensor.temperature.read": "sensor.temperature.read",
+    "stub.fan_read": "sensor.fan.read_percent",
+    "sensor.fan.read_percent": "sensor.fan.read_percent",
+    "stub.fan_set": "actuator.fan.set",
+    "actuator.fan.set": "actuator.fan.set",
+    "stub.wait": "system.wait",
+    "system.wait": "system.wait",
+}
+
+
+def load_yaml(path: str) -> Any:
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def load_agent_dir(dir_path: str) -> dict[str, Any]:
+    from pathlib import Path
+
+    d = Path(dir_path)
+    yml = d / "agent.yml"
+    js = d / "agent.json"
+    if yml.exists():
+        agent = load_yaml(str(yml))
+    elif js.exists():
+        import json
+
+        agent = json.loads(js.read_text(encoding="utf-8"))
+    else:
+        raise FileNotFoundError(f"No agent.yml or agent.json in {dir_path}")
+    if agent.get("safe_state") and not agent.get("fallback_state"):
+        agent["fallback_state"] = agent["safe_state"]
+    return agent
+
+
+def resolve_tools_from_deployment(
+    agent: dict[str, Any],
+    deployment: dict[str, Any],
+    *,
+    test_exit: int | None = None,
+) -> dict[str, ToolHandler]:
+    pool = default_tools(agent)
+    if test_exit is not None:
+        def shell(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+            cmd = str(args["cmd"])
+            if cmd in ("test", "typecheck"):
+                return {"output": {"exit_code": test_exit, "cmd": cmd}}
+            return {"output": {"exit_code": 1, "cmd": cmd, "error": "not allowlisted"}}
+
+        pool["shell.run_allowlisted"] = shell
+        # also align world last_exit for any other use
+    bindings = deployment.get("bindings") or {}
+    out: dict[str, ToolHandler] = {}
+    for tool in agent.get("tools") or []:
+        tid = tool["id"]
+        binding = bindings.get(tid)
+        if not binding or not isinstance(binding.get("native"), str) or not binding["native"]:
+            raise AdapterError(
+                "binding_missing",
+                f"adapter failure: no deployment binding for tool '{tid}' (binding_missing)",
+            )
+        native = binding["native"]
+        mapped = NATIVE_TO_TOOL.get(native)
+        if not mapped:
+            raise AdapterError(
+                "adapter_unresolved",
+                f"adapter failure: unknown native '{native}' for tool '{tid}' (adapter_unresolved)",
+            )
+        if mapped != tid:
+            raise AdapterError(
+                "adapter_unresolved",
+                f"adapter failure: native '{native}' maps to '{mapped}', not '{tid}' (adapter_unresolved)",
+            )
+        handler = pool.get(tid)
+        if handler is None:
+            raise AdapterError(
+                "adapter_unresolved",
+                f"adapter failure: no host handler for tool '{tid}' (adapter_unresolved)",
+            )
+        out[tid] = handler
+    return out
