@@ -302,7 +302,12 @@ async function cmdLive(args: {
           e.reason === "limit_exceeded" ||
           e.reason === "input_schema_invalid" ||
           e.reason === "output_schema_invalid" ||
-          e.reason === "tool_execution_failed",
+          e.reason === "tool_execution_failed" ||
+          e.reason === "mode_denied" ||
+          e.reason === "sequence_requirement_failed" ||
+          e.reason === "completion_gate_failed" ||
+          e.reason === "memory_stale" ||
+          e.reason === "user_checkpoint_required",
       ).length;
       const verifyFails = runtime.events.filter((e) => e.reason?.startsWith("verify_")).length;
       verifyTriggers += verifyFails;

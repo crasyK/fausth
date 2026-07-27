@@ -18,25 +18,22 @@ These capabilities wait until the single-agent Counterbalance loop is proven (co
 
 Only `deployment.yml` + bindings change; `agent.yml` is shared. Bindings are enforced: missing/unknown natives are **adapter failures**, distinct from harness deny.
 
-**Deferred (M5.2):** browser / WASM host (security-permitting).
-
 ### M5.1 — Live models (Track B)
 
-Same coding-counterbalance harness against OpenRouter free models (TS host):
+Same coding-counterbalance harness against real model transports (TS host). Swap only the deployment:
 
-- Deployment: [`examples/coding-counterbalance/deployment.openrouter-free.yml`](../examples/coding-counterbalance/deployment.openrouter-free.yml)
+| Deployment | Env |
+|---|---|
+| [`deployment.openrouter-free.yml`](../examples/coding-counterbalance/deployment.openrouter-free.yml) | `OPENROUTER_API_KEY` |
+| [`deployment.kit.yml`](../examples/coding-counterbalance/deployment.kit.yml) | `KIT_AI_API_KEY` |
+| [`deployment.openai.yml`](../examples/coding-counterbalance/deployment.openai.yml) | `OPENAI_API_KEY` |
+
 - Scenarios: [`live/scenarios-coding-counterbalance/`](../live/scenarios-coding-counterbalance/)
-- CI: [`.github/workflows/live-openrouter.yml`](../.github/workflows/live-openrouter.yml) (secrets-gated)
-
-```bash
-pnpm -C engines/ts exec node --import tsx src/cli.ts live \
-  --deployment ../../examples/coding-counterbalance/deployment.openrouter-free.yml \
-  --scenarios ../../live/scenarios-coding-counterbalance \
-  --report ../../live/reports/coding-counterbalance-live.json \
-  --catch-rate-min 0.5
-```
+- CI: [`.github/workflows/live-openrouter.yml`](../.github/workflows/live-openrouter.yml) (each provider skipped when its secret is absent)
 
 Python live transport remains out of scope (recorded `fausth-py run` only).
+
+**Deferred (M5.2):** browser / WASM host (security-permitting).
 
 **Not yet:** HTTP Python server; real FS/process adapter (simulation stubs prove portability for Track A).
 
