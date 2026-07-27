@@ -28,6 +28,7 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 | Multi-host (TS / Python / GHA) same harness + bindings | Proven (`pnpm ci:multi-host`) |
 | Live coding-counterbalance (OpenRouter Track B) | Secrets-gated (`live-openrouter` + CB scenarios) |
 | Nested spawn child log (M6) | Proven (Track A `spawn-nested-*`) |
+| Packaging CLI (`validate`/`test`/`inspect`/`pack`/`run`) | Proven (`pnpm ci:packaging`) |
 | Model-adaptive scaffolding | **Not yet** |
 | Production-ready isolation / security | **Not yet** |
 
@@ -60,6 +61,7 @@ pnpm install
 pnpm test
 pnpm replay
 pnpm ci:multi-host   # same coding-counterbalance harness: TS ≡ Python ≡ golden
+pnpm ci:packaging    # validate + test + pack coding-counterbalance
 ```
 
 Validate an example:

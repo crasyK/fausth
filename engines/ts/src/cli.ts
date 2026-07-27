@@ -12,6 +12,7 @@ import {
 } from "./load.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
+import { inspectHarness, packHarness, testHarness } from "./packaging.js";
 import {
   createAdapterFromDeployment,
   toolsFromAgent,
@@ -656,10 +657,44 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd || cmd === "help") {
-    console.log("fausth validate|replay|live|capture|run|provider|review");
+    console.log(
+      "fausth validate|test|inspect|pack|run|replay|live|capture|provider|review",
+    );
     process.exit(0);
   }
   if (cmd === "validate") process.exit(await cmdValidate(rest[0] ?? join(repoRoot(), "examples/greenhouse")));
+  if (cmd === "inspect") {
+    const target = rest.find((x) => !x.startsWith("--")) ?? join(repoRoot(), "examples/coding-counterbalance");
+    const report = inspectHarness(resolve(target));
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(report.binding_coverage && !report.binding_coverage.ok ? 1 : 0);
+  }
+  if (cmd === "test") {
+    const a = parseArgs(rest);
+    const target =
+      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      join(repoRoot(), "examples/coding-counterbalance");
+    const result = await testHarness(resolve(target), {
+      deployment: a.deployment,
+      skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+    });
+    for (const d of result.details) console.log(d);
+    if (!result.ok) {
+      for (const e of result.errors) console.error(e);
+      process.exit(1);
+    }
+    console.log("test OK");
+    process.exit(0);
+  }
+  if (cmd === "pack") {
+    const a = parseArgs(rest);
+    const target =
+      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      join(repoRoot(), "examples/coding-counterbalance");
+    const { out, files } = packHarness(resolve(target), a.out);
+    console.log(`packed ${files.length} files → ${out}`);
+    process.exit(0);
+  }
   if (cmd === "replay") {
     const a = parseArgs(rest);
     const fixturesRoot = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));

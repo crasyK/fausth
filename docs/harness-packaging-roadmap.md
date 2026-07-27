@@ -49,14 +49,25 @@ Stub-only spawn (no `proposals`) keeps existing `spawn-ok` goldens unchanged.
 
 ## M7 — Packaging
 
-Proposed commands (not implemented yet):
+Shipped commands (TS `fausth` and Python `fausth-py` / `python -m fausth`):
 
 ```text
 fausth validate <harness>
-fausth test <harness>
+fausth test <harness> [--deployment <file>] [--skip-fixtures]
 fausth inspect <harness>
-fausth pack <harness>
+fausth pack <harness> [--out <path|dir>]
 fausth run <harness> --deployment <deployment>
+```
+
+- **test** — schema/structure validate, binding resolve, recorded smoke vs `smoke.expected.jsonl`, related Track A fixtures
+- **inspect** — JSON summary of tools / modes / deployments / binding coverage
+- **pack** — portable `.fausth.json` bundle (share via git/archives; no registry yet)
+
+```bash
+pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/coding-counterbalance
+pnpm -C engines/ts exec node --import tsx src/cli.ts inspect ../../examples/coding-counterbalance
+pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/coding-counterbalance
+pnpm ci:packaging
 ```
 
 Share via git tags / release archives before any registry.

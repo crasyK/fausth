@@ -16,6 +16,7 @@
     "live": "pnpm -C engines/ts exec node --import tsx src/cli.ts live --deployment ../../examples/greenhouse/deployment.openrouter-free.yml --scenarios ../../live/scenarios --report ../../live/reports/out.json --catch-rate-min 0.5",
     "provider:probe": "pnpm -C engines/ts exec node --import tsx src/cli.ts provider probe",
     "ci:conformance": "pnpm -C engines/ts test && pnpm -C engines/ts exec node --import tsx src/cli.ts replay && node scripts/parity.mjs",
-    "ci:multi-host": "node scripts/multi-host-smoke.mjs"
+    "ci:multi-host": "node scripts/multi-host-smoke.mjs",
+    "ci:packaging": "pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/coding-counterbalance && pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/coding-counterbalance --out ../../live/reports/coding-counterbalance.fausth.json"
   }
 }

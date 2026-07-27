@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
+from .packaging import inspect_harness, pack_harness, test_harness
 
 
 def repo_root() -> Path:
@@ -112,14 +113,47 @@ def main(argv: list[str] | None = None) -> None:
     p_run.add_argument("--model", default=None)
     p_run.add_argument("--dump", default=None)
     p_run.add_argument("--max-steps", type=int, default=None)
+    p_inspect = sub.add_parser("inspect")
+    p_inspect.add_argument("agent", nargs="?", default=None)
+    p_test = sub.add_parser("test")
+    p_test.add_argument("agent", nargs="?", default=None)
+    p_test.add_argument("--deployment", default=None)
+    p_test.add_argument("--skip-fixtures", action="store_true")
+    p_pack = sub.add_parser("pack")
+    p_pack.add_argument("agent", nargs="?", default=None)
+    p_pack.add_argument("--out", default=None)
     args = parser.parse_args(argv)
+    default_agent = str(repo_root() / "examples" / "coding-counterbalance")
     if args.cmd == "replay":
         raise SystemExit(cmd_replay(args.dump_dir))
     if args.cmd == "run":
-        agent = args.agent or str(repo_root() / "examples" / "coding-counterbalance")
+        agent = args.agent or default_agent
         raise SystemExit(
             cmd_run(agent, args.deployment, args.model, args.dump, args.max_steps)
         )
+    if args.cmd == "inspect":
+        report = inspect_harness(args.agent or default_agent)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        cov = report.get("binding_coverage") or {}
+        raise SystemExit(0 if cov.get("ok", True) else 1)
+    if args.cmd == "test":
+        result = test_harness(
+            args.agent or default_agent,
+            deployment=args.deployment,
+            skip_fixtures=args.skip_fixtures,
+        )
+        for d in result.get("details") or []:
+            print(d)
+        if not result.get("ok"):
+            for e in result.get("errors") or []:
+                print(e, file=sys.stderr)
+            raise SystemExit(1)
+        print("test OK")
+        raise SystemExit(0)
+    if args.cmd == "pack":
+        r = pack_harness(args.agent or default_agent, args.out)
+        print(f"packed {len(r['files'])} files → {r['out']}")
+        raise SystemExit(0)
     parser.print_help()
     raise SystemExit(0)
 
