@@ -112,6 +112,65 @@ function lineOf(content: string, needle: string): number | undefined {
   return content.slice(0, idx).split(/\r?\n/).length;
 }
 
+/** Basename looks like a project README (case-insensitive; .md / .txt / .markdown / bare). */
+export function isReadmeBasename(name: string): boolean {
+  return /^readme(\.(md|txt|markdown))?$/i.test(name);
+}
+
+/**
+ * Resolve a project README from changed paths + file contents.
+ * Prefers README.md (any case), then other .md/.markdown, then .txt, then bare README.
+ */
+export function resolveProjectReadme(
+  folder: string,
+  changed_paths: string[],
+  file_contents: Record<string, string>,
+): { path: string; content: string } | null {
+  const prefix = `projects/${folder}/`;
+  const contentByNorm = new Map<string, { path: string; content: string }>();
+  for (const [raw, content] of Object.entries(file_contents)) {
+    contentByNorm.set(normalizePath(raw).toLowerCase(), { path: normalizePath(raw), content });
+  }
+
+  const candidates = new Set<string>();
+  for (const raw of [...changed_paths, ...Object.keys(file_contents)]) {
+    const p = normalizePath(raw);
+    if (!p.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+    const base = p.slice(prefix.length);
+    if (!base.includes("/") && isReadmeBasename(base)) candidates.add(p);
+  }
+
+  if (candidates.size === 0) return null;
+
+  const ranked = [...candidates].sort((a, b) => {
+    const score = (p: string): number => {
+      const base = p.slice(prefix.length);
+      if (/^readme\.md$/i.test(base)) return 0;
+      if (/\.md$/i.test(base) || /\.markdown$/i.test(base)) return 1;
+      if (/\.txt$/i.test(base)) return 2;
+      return 3;
+    };
+    const d = score(a) - score(b);
+    return d !== 0 ? d : a.localeCompare(b);
+  });
+
+  for (const path of ranked) {
+    const hit =
+      contentByNorm.get(path.toLowerCase()) ??
+      contentByNorm.get(normalizePath(path).toLowerCase());
+    if (hit && hit.content.trim().length > 0) {
+      return { path: hit.path, content: hit.content };
+    }
+    // Path listed but content missing / empty — keep looking
+    if (hit && hit.content.trim().length === 0) continue;
+  }
+
+  // Prefer reporting the best-ranked path even if empty/missing content
+  const best = ranked[0]!;
+  const empty = contentByNorm.get(best.toLowerCase());
+  return { path: empty?.path ?? best, content: empty?.content ?? "" };
+}
+
 /**
  * Build a normalized review packet and deterministic findings.
  */
@@ -172,17 +231,18 @@ export function runSubmissionCheck(input: SubmissionCheckInput): ReviewPacket {
       });
     }
 
-    const readmePath = `projects/${folder}/README.md`;
-    const readme = input.file_contents[readmePath] ?? input.file_contents[normalizePath(readmePath)];
-    if (readme === undefined || readme.trim().length === 0) {
+    const resolved = resolveProjectReadme(folder, changed, input.file_contents);
+    if (!resolved || resolved.content.trim().length === 0) {
       findings.push({
         category: "incomplete_submission",
         severity: "blocking",
-        path: readmePath,
-        evidence: readme === undefined ? "(missing)" : "(empty)",
-        recommendation: "Add a non-empty projects/<name>/README.md.",
+        path: resolved?.path ?? `projects/${folder}/README.md`,
+        evidence: !resolved ? "(missing)" : "(empty)",
+        recommendation:
+          "Add a non-empty project README (README.md preferred; Readme.txt / readme.md also accepted).",
       });
     } else {
+      const { path: readmePath, content: readme } = resolved;
       if (!SETUP_RE.test(readme)) {
         findings.push({
           category: "missing_instructions",

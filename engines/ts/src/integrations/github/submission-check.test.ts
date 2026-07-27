@@ -129,6 +129,41 @@ describe("runSubmissionCheck", () => {
     assert.ok(packet.deterministic_findings.some((f) => f.category === "missing_instructions"));
   });
 
+  it("accepts Readme.txt with Setup/Demo headings", () => {
+    const packet = runSubmissionCheck({
+      pr_body: goodBody,
+      changed_paths: ["projects/demo/Readme.txt", "projects/demo/app.js"],
+      file_contents: {
+        "projects/demo/Readme.txt": "# Demo\n\n## Setup\n\nx\n\n## Demo\n\ny\n",
+        "projects/demo/app.js": "console.log(1)",
+      },
+    });
+    assert.equal(packet.conclusion, "pass");
+  });
+
+  it("accepts readme.md (lowercase) as the project README", () => {
+    const packet = runSubmissionCheck({
+      pr_body: goodBody,
+      changed_paths: ["projects/demo/readme.md"],
+      file_contents: {
+        "projects/demo/readme.md": goodReadme,
+      },
+    });
+    assert.equal(packet.conclusion, "pass");
+  });
+
+  it("prefers README.md over Readme.txt when both exist", () => {
+    const packet = runSubmissionCheck({
+      pr_body: goodBody,
+      changed_paths: ["projects/demo/README.md", "projects/demo/Readme.txt"],
+      file_contents: {
+        "projects/demo/README.md": goodReadme,
+        "projects/demo/Readme.txt": "# Bad\n\nno sections\n",
+      },
+    });
+    assert.equal(packet.conclusion, "pass");
+  });
+
   it("excludes binary by extension", () => {
     const packet = runSubmissionCheck({
       pr_body: goodBody,
