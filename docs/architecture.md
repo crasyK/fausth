@@ -38,6 +38,10 @@ harness + deployment
   Native tool registry / world adapter
 ```
 
+`deployment.bindings` are **enforced** at resolve time ([`engines/ts/src/adapters/registry.ts`](../engines/ts/src/adapters/registry.ts)). Missing or unknown `native` ids fail as **adapter errors** (`binding_missing` / `adapter_unresolved`) before the exchange loop — they are not harness `authorize` denies.
+
+Multi-host smoke (same coding-counterbalance harness on TS + Python + GHA): [`harness-packaging-roadmap.md`](harness-packaging-roadmap.md) §M5 · `pnpm ci:multi-host`.
+
 ## Lifecycle (v0.1 shipped)
 
 `propose → validate → authorize → execute → verify`

@@ -24,7 +24,8 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 | Verified recovery / compensation path | Proven (fixtures) |
 | Tighten-only spawn lattice (tools, fs, limits) | Proven (fixtures) |
 | Model transports swappable independently | Proven (adapters) |
-| Memory freshness / sequence enforcement (Counterbalance slice) | In progress (v0.2 fixtures) |
+| Memory freshness / sequence enforcement (Counterbalance slice) | Proven (Track A `cb-*` fixtures) |
+| Multi-host (TS / Python / GHA) same harness + bindings | Proven (`pnpm ci:multi-host`) |
 | Model-adaptive scaffolding | **Not yet** |
 | Production-ready isolation / security | **Not yet** |
 
@@ -56,6 +57,7 @@ corepack enable
 pnpm install
 pnpm test
 pnpm replay
+pnpm ci:multi-host   # same coding-counterbalance harness: TS ≡ Python ≡ golden
 ```
 
 Validate an example:

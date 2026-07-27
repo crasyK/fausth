@@ -11,6 +11,7 @@ import {
   loadDeployment,
 } from "./load.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
+import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
 import {
   createAdapterFromDeployment,
   toolsFromAgent,
@@ -94,6 +95,23 @@ function defaultDeploymentPath(agentDir: string, profile: "openrouter" | "ollama
   if (profile === "openrouter") return join(agentDir, "deployment.openrouter-free.yml");
   if (profile === "kit") return join(agentDir, "deployment.kit.yml");
   return join(agentDir, "deployment.ollama.yml");
+}
+
+function bindingsForAgentDir(agentDir: string, fallback: Deployment): Deployment {
+  for (const name of [
+    "deployment.fixture.yml",
+    "deployment.simulation.yml",
+    "deployment.openrouter-free.yml",
+    "deployment.ollama.yml",
+    "deployment.kit.yml",
+  ]) {
+    const p = join(agentDir, name);
+    if (existsSync(p)) {
+      const local = loadDeployment(p) as Deployment;
+      return { ...fallback, bindings: local.bindings };
+    }
+  }
+  return fallback;
 }
 
 async function replayFixture(dir: string): Promise<{ ok: boolean; actual: string; expected: string; name: string }> {
@@ -195,10 +213,29 @@ async function cmdLive(args: {
 
     for (const f of files) {
       const scen = loadYamlFile(join(scenarioDir, f)) as Record<string, unknown>;
-      const agent = loadAgentDir(resolve(repoRoot(), String(scen.agent))).agent;
+      const agentDir = resolve(repoRoot(), String(scen.agent));
+      const agent = loadAgentDir(agentDir).agent;
       const prompt = String(scen.prompt ?? "");
       const expectCatch = Boolean(scen.expect_unsafe_caught);
       if (expectCatch) unsafeAttempted++;
+
+      let tools;
+      try {
+        tools = resolveToolsFromDeployment(
+          agent,
+          bindingsForAgentDir(agentDir, deployment),
+          {
+            testExit: Number(scen.test_exit_code ?? 0),
+            sensorHealthy: Number(scen.sensor_healthy ?? 1),
+          },
+        );
+      } catch (e) {
+        if (e instanceof AdapterError) {
+          console.error(e.message);
+          return 2;
+        }
+        throw e;
+      }
 
       const runtime = new FaustRuntime({
         agent,
@@ -215,10 +252,7 @@ async function cmdLive(args: {
               tools: toolsFromAgent(agent.tools),
             }),
           ),
-        tools: buildTools(agent, {
-          testExit: Number(scen.test_exit_code ?? 0),
-          sensorHealthy: Number(scen.sensor_healthy ?? 1),
-        }),
+        tools,
         allowJudge: true,
         judge: async (rubric, ctx) => {
           judgeTotal++;
@@ -332,19 +366,57 @@ async function cmdCapture(from: string, scenario: string, out: string): Promise<
   return 0;
 }
 
-async function cmdRun(agentDir: string, deploymentPath?: string): Promise<number> {
+async function cmdRun(
+  agentDir: string,
+  opts: {
+    deployment?: string;
+    model?: string;
+    dump?: string;
+    maxSteps?: number;
+  } = {},
+): Promise<number> {
   const dir = resolve(agentDir);
   const agent = loadAgentDir(dir).agent;
   const depFile =
-    deploymentPath ??
-    (existsSync(join(dir, "deployment.ollama.yml"))
-      ? join(dir, "deployment.ollama.yml")
-      : defaultDeploymentPath(dir, "openrouter"));
+    opts.deployment ??
+    (existsSync(join(dir, "deployment.fixture.yml"))
+      ? join(dir, "deployment.fixture.yml")
+      : existsSync(join(dir, "deployment.simulation.yml"))
+        ? join(dir, "deployment.simulation.yml")
+        : existsSync(join(dir, "deployment.ollama.yml"))
+          ? join(dir, "deployment.ollama.yml")
+          : defaultDeploymentPath(dir, "openrouter"));
   const deployment = loadDeployment(depFile) as Deployment;
-  const { adapter } = createAdapterFromDeployment(deployment);
-  const runtime = new FaustRuntime({
-    agent,
-    propose: async () =>
+
+  let tools;
+  try {
+    tools = resolveToolsFromDeployment(agent, deployment);
+  } catch (e) {
+    if (e instanceof AdapterError) {
+      console.error(e.message);
+      return 2;
+    }
+    throw e;
+  }
+
+  const transport = deployment.model.transport ?? "openai-compatible";
+  let propose: () => Promise<ModelProposal>;
+  if (transport === "recorded") {
+    const modelPath =
+      opts.model ??
+      (existsSync(join(dir, "smoke.model.jsonl")) ? join(dir, "smoke.model.jsonl") : undefined);
+    if (!modelPath) {
+      console.error(
+        "recorded transport requires --model <jsonl> or smoke.model.jsonl in the agent dir",
+      );
+      return 1;
+    }
+    const proposals: ModelProposal[] = readJsonl(resolve(modelPath)).map(parseRecordedModelLine);
+    let pi = 0;
+    propose = async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!);
+  } else {
+    const { adapter } = createAdapterFromDeployment(deployment);
+    propose = async () =>
       toRuntimeProposal(
         await adapter.propose({
           messages: [
@@ -353,11 +425,21 @@ async function cmdRun(agentDir: string, deploymentPath?: string): Promise<number
           ],
           tools: toolsFromAgent(agent.tools),
         }),
-      ),
-    tools: buildTools(agent),
+      );
+  }
+
+  const runtime = new FaustRuntime({
+    agent,
+    propose,
+    tools,
   });
-  await runtime.runLoop(4);
-  console.log(eventsToJsonl(runtime.events));
+  await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? 32 : 4));
+  const jsonl = eventsToJsonl(runtime.events);
+  if (opts.dump) {
+    mkdirSync(dirname(resolve(opts.dump)), { recursive: true });
+    writeFileSync(resolve(opts.dump), jsonl, "utf8");
+  }
+  console.log(jsonl);
   return 0;
 }
 
@@ -596,7 +678,14 @@ async function main(): Promise<void> {
   if (cmd === "run") {
     const a = parseArgs(rest);
     const target = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
-    process.exit(await cmdRun(target ?? join(repoRoot(), "examples/greenhouse"), a.deployment));
+    process.exit(
+      await cmdRun(target ?? join(repoRoot(), "examples/greenhouse"), {
+        deployment: a.deployment,
+        model: a.model,
+        dump: a.dump,
+        maxSteps: a["max-steps"] ? Number(a["max-steps"]) : undefined,
+      }),
+    );
   }
   if (cmd === "provider") process.exit(await cmdProvider(rest));
   if (cmd === "review") process.exit(await cmdReview(parseArgs(rest)));
