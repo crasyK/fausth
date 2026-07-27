@@ -61,7 +61,17 @@ pnpm install
 pnpm test
 pnpm replay
 pnpm ci:multi-host   # same coding-counterbalance harness: TS ≡ Python ≡ golden
-pnpm ci:packaging    # validate + test + pack coding-counterbalance
+pnpm ci:packaging    # validate + test + pack coding + support harnesses
+pnpm fausth -- help
+```
+
+Author / check a harness:
+
+```bash
+pnpm fausth -- validate examples/coding-counterbalance
+pnpm fausth -- test examples/support-bot
+pnpm fausth -- inspect examples/coding-counterbalance
+pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth.json
 ```
 
 Validate an example:

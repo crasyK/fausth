@@ -657,9 +657,22 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd || cmd === "help") {
-    console.log(
-      "fausth validate|test|inspect|pack|run|replay|live|capture|provider|review",
-    );
+    console.log(`Fausth — portable Counterbalance harness runtime
+
+Usage:
+  fausth validate <harness>
+  fausth test <harness> [--deployment <yml>] [--skip-fixtures]
+  fausth inspect <harness>
+  fausth pack <harness> [--out <file|dir>]
+  fausth run <harness> [--deployment <yml>] [--model <jsonl>] [--dump <jsonl>]
+  fausth replay [fixturesDir] [--dump-dir <dir>]
+  fausth live --scenarios <dir> --deployment <yml> [--report <json>] [--catch-rate-min <n>]
+  fausth capture --from <events> --scenario <id> --out <dir>
+  fausth provider probe --deployment <yml>
+  fausth review --mode deterministic|advisory ...
+
+Harness dirs live under examples/ (agent.yml + deployment.*.yml).
+`);
     process.exit(0);
   }
   if (cmd === "validate") process.exit(await cmdValidate(rest[0] ?? join(repoRoot(), "examples/greenhouse")));

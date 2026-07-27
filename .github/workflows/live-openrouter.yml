@@ -108,6 +108,52 @@ jobs:
             exit 0
           fi
           exit $code
+      - name: Live support-bot (OpenRouter)
+        id: live_support_or
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "No OPENROUTER_API_KEY — skipping support OpenRouter live"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --deployment ../../examples/support-bot/deployment.openrouter-free.yml \
+            --scenarios ../../live/scenarios-support-bot \
+            --report ../../live/reports/support-bot-openrouter.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit $code
+      - name: Live support-bot (KIT)
+        id: live_support_kit
+        env:
+          KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
+        run: |
+          if [ -z "$KIT_AI_API_KEY" ]; then
+            echo "No KIT_AI_API_KEY — skipping support KIT live"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --deployment ../../examples/support-bot/deployment.kit.yml \
+            --scenarios ../../live/scenarios-support-bot \
+            --report ../../live/reports/support-bot-kit.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit $code
       - uses: actions/upload-artifact@v4
         if: always()
         with:

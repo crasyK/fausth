@@ -1,55 +1,38 @@
-# Harness packaging and multi-host portability (M4–M7 roadmap)
+# Fausth packaging and multi-host (status)
 
-These capabilities wait until the single-agent Counterbalance loop is proven (coding + support fixtures green).
+M4–M7 of the plan of record are **shipped**. This page is the operator map; normative rules stay in [`spec-v0.1.md`](spec-v0.1.md).
 
 ## M4 — Simulation and adapter compatibility
 
-- [`engines/ts/src/adapters/simulation.ts`](../engines/ts/src/adapters/simulation.ts) — in-memory coding world (no real FS/process).
-- Distinguish **adapter failure** (binding missing) from **harness failure** (gate/sequence deny).
-- Command goal: `fausth test <harness>` runs entirely from fixtures + simulation.
+- [`engines/ts/src/adapters/simulation.ts`](../engines/ts/src/adapters/simulation.ts) — in-memory coding world
+- Adapter failure (`binding_missing` / `adapter_unresolved`) ≠ harness authorize deny
+- `fausth test <harness>` runs validate + bindings + smoke + related Track A fixtures
 
 ## M5 — Multi-host
 
-**Exit (this milestone):** the same [`examples/coding-counterbalance/`](../examples/coding-counterbalance/) harness runs on:
+Same [`examples/coding-counterbalance/`](../examples/coding-counterbalance/) harness on:
 
-1. Local TypeScript (`fausth run … --deployment …`)
-2. Python process host (`python -m fausth run …`)
-3. GitHub Actions ([`.github/workflows/multi-host.yml`](../.github/workflows/multi-host.yml) via `scripts/multi-host-smoke.mjs`)
-
-Only `deployment.yml` + bindings change; `agent.yml` is shared. Bindings are enforced: missing/unknown natives are **adapter failures**, distinct from harness deny.
+1. Local TypeScript (`fausth run`)
+2. Python (`python -m fausth run`)
+3. GitHub Actions ([`multi-host.yml`](../.github/workflows/multi-host.yml))
 
 ### M5.1 — Live models (Track B)
 
-Same coding-counterbalance harness against real model transports (TS host). Swap only the deployment:
-
 | Deployment | Env |
 |---|---|
-| [`deployment.openrouter-free.yml`](../examples/coding-counterbalance/deployment.openrouter-free.yml) | `OPENROUTER_API_KEY` |
-| [`deployment.kit.yml`](../examples/coding-counterbalance/deployment.kit.yml) | `KIT_AI_API_KEY` |
-| [`deployment.openai.yml`](../examples/coding-counterbalance/deployment.openai.yml) | `OPENAI_API_KEY` |
+| `deployment.openrouter-free.yml` | `OPENROUTER_API_KEY` |
+| `deployment.kit.yml` | `KIT_AI_API_KEY` |
+| `deployment.openai.yml` | `OPENAI_API_KEY` (optional) |
 
-- Scenarios: [`live/scenarios-coding-counterbalance/`](../live/scenarios-coding-counterbalance/)
-- CI: [`.github/workflows/live-openrouter.yml`](../.github/workflows/live-openrouter.yml) (each provider skipped when its secret is absent)
+Support-bot has the same OpenRouter/KIT pattern under [`examples/support-bot/`](../examples/support-bot/).
 
-Python live transport remains out of scope (recorded `fausth-py run` only).
-
-**Deferred (M5.2):** browser / WASM host (security-permitting).
-
-**Not yet:** HTTP Python server; real FS/process adapter (simulation stubs prove portability for Track A).
+**Deferred (M5.2):** browser / WASM host; HTTP Python server; real FS/process adapter.
 
 ## M6 — Multi-agent
 
-Tighten-only spawn (v0.1) now **runs a nested reaction** when spawn args include recorded `proposals`:
-
-- Child IR is tighten-only (tools / FS / limits); `spawn.allow` only if parent `allow_nested`
-- Child events are appended to the parent log with `depth` + `spawn_id`
-- Track A fixtures: `spawn-nested-ok`, `spawn-nested-deny`, `spawn-child-escalate-deny`
-
-Stub-only spawn (no `proposals`) keeps existing `spawn-ok` goldens unchanged.
+Nested reaction when spawn args include `proposals`. Child events use `depth` / `spawn_id`. Fixtures: `spawn-nested-ok`, `spawn-nested-deny`, `spawn-child-escalate-deny`.
 
 ## M7 — Packaging
-
-Shipped commands (TS `fausth` and Python `fausth-py` / `python -m fausth`):
 
 ```text
 fausth validate <harness>
@@ -59,15 +42,9 @@ fausth pack <harness> [--out <path|dir>]
 fausth run <harness> --deployment <deployment>
 ```
 
-- **test** — schema/structure validate, binding resolve, recorded smoke vs `smoke.expected.jsonl`, related Track A fixtures
-- **inspect** — JSON summary of tools / modes / deployments / binding coverage
-- **pack** — portable `.fausth.json` bundle (share via git/archives; no registry yet)
-
 ```bash
-pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/coding-counterbalance
-pnpm -C engines/ts exec node --import tsx src/cli.ts inspect ../../examples/coding-counterbalance
-pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/coding-counterbalance
 pnpm ci:packaging
+pnpm ci:multi-host
 ```
 
 Share via git tags / release archives before any registry.

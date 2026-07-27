@@ -8,7 +8,7 @@
 
 Concrete line:
 
-> Give an agent skills, memory, and instincts. Define the gates, user checkpoints, and security that keep them true. Run the same harness locally, in CI, on a server, in a browser, or in simulation.
+> Give an agent skills, memory, and instincts. Define the gates, user checkpoints, and security that keep them true. Run the same harness locally, in CI, on a server, or in simulation (browser host deferred).
 
 **Lead demo bug:** agents that act on **stale reality** or **skip required sequences** and claim success without proof.
 

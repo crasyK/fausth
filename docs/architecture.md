@@ -10,7 +10,9 @@ Fausth is a **portable runtime and standard for agent harnesses**: one reaction 
                                 │
                      Environment / world adapter
                                 │
-              local · CI · server · browser · simulation
+              local · CI · Python · simulation
+                                │
+                    (browser deferred — M5.2)
 ```
 
 Glossary: [`glossary.md`](glossary.md).  

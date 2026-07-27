@@ -25,6 +25,15 @@ describe("packaging", () => {
     assert.equal(r.ok, true);
   });
 
+  it("tests support-bot smoke + fixtures", async () => {
+    const support = join(root, "examples/support-bot");
+    const r = await testHarness(support);
+    assert.equal(r.validate_ok, true);
+    assert.equal(r.bindings_ok, true);
+    assert.equal(r.smoke_ok, true);
+    assert.equal(r.ok, true);
+  });
+
   it("packs coding-counterbalance bundle", () => {
     const outDir = join(harness, "dist");
     if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });

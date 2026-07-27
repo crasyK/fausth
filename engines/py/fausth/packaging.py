@@ -146,10 +146,14 @@ def test_harness(
         details.append("no smoke.model.jsonl (skipped)")
 
     fixtures_ok: bool | None = None
-    if not skip_fixtures and d.name == "coding-counterbalance":
+    if not skip_fixtures:
         root = d.parents[1] / "conformance" / "fixtures"
-        if root.is_dir():
+        prefixes: tuple[str, ...] = ()
+        if d.name == "coding-counterbalance":
             prefixes = ("cb-coding-", "cb-write-", "cb-stale-", "cb-completion-")
+        elif d.name == "support-bot":
+            prefixes = ("cb-support-",)
+        if prefixes and root.is_dir():
             fixtures_ok = True
             for child in sorted(root.iterdir()):
                 if child.is_dir() and child.name.startswith(prefixes):
