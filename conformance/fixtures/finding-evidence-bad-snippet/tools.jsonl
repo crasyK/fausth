@@ -1,0 +1,1 @@
+{"call_seq":1,"tool":"finding.submit","args":{"category":"missing_instructions","severity":"warning","path":"projects/demo/README.md","line_start":1,"evidence":"THIS_SNIPPET_IS_ABSENT","recommendation":"Add a Demo section"},"result":{"output":{"accepted":0,"verified":0,"reason":"evidence_not_found"}}}

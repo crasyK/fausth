@@ -1,0 +1,94 @@
+spec: counterbalance-contract/v0.1
+name: slopathon-submission-review
+
+state:
+  findings_submitted: 0
+
+limits:
+  max_steps: 12
+  max_tool_calls: 16
+
+fallback_state:
+  findings_submitted: 0
+
+tools:
+  - id: packet.summary.read
+    description: Read the normalized review packet summary (already built deterministically)
+    read_only: true
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      additionalProperties: true
+  - id: repository.file.read
+    description: Read one included packet file by path
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found, content]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        found: { type: integer }
+        content: { type: string }
+  - id: finding.submit
+    description: Submit one evidence-bound finding
+    input:
+      type: object
+      required: [category, severity, path, evidence, recommendation]
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+          enum:
+            - incomplete_submission
+            - scope_violation
+            - missing_instructions
+            - potential_secret
+            - safety_concern
+            - contradiction
+            - human_review
+        severity:
+          type: string
+          enum: [info, warning, blocking]
+        path: { type: string }
+        line_start: { type: integer, minimum: 1 }
+        evidence: { type: string, minLength: 1 }
+        recommendation: { type: string, minLength: 1 }
+    output:
+      type: object
+      required: [accepted, verified]
+      additionalProperties: false
+      properties:
+        accepted: { type: integer }
+        verified: { type: integer }
+        reason: { type: string }
+    verify:
+      - kind: evidence
+        require:
+          path: result.verified
+          eq: 1
+        otherwise: deny
+
+gates:
+  - id: only-known-tools
+    require:
+      any:
+        - { path: action.name, eq: packet.summary.read }
+        - { path: action.name, eq: repository.file.read }
+        - { path: action.name, eq: finding.submit }
+    otherwise: deny
+
+permissions:
+  tools:
+    - packet.summary.read
+    - repository.file.read
+    - finding.submit

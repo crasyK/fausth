@@ -6,7 +6,7 @@ Each fixture directory contains:
 |------|------|
 | `agent.json` | Canonical IR (already validated) |
 | `model.jsonl` | Recorded model proposals (one JSON object per line) |
-| `tools.jsonl` | Recorded tool results / observations keyed by call order |
+| `tools.jsonl` | Bound recorded tool transcripts (`call_seq`, `tool`, `args`, `result`) |
 | `expected.jsonl` | Hand-derived expected event log from `docs/spec-v0.1.md` |
 
 Rules:

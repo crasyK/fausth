@@ -20,10 +20,14 @@ export function agentYamlToIr(raw: unknown): AgentIR {
   };
   if (a.gates) ir.gates = a.gates as AgentIR["gates"];
   if (a.limits) ir.limits = a.limits as AgentIR["limits"];
-  if (a.safe_state) ir.safe_state = a.safe_state as Record<string, unknown>;
+  if (a.fallback_state) ir.fallback_state = a.fallback_state as Record<string, unknown>;
+  if (a.safe_state) {
+    ir.safe_state = a.safe_state as Record<string, unknown>;
+    if (!ir.fallback_state) ir.fallback_state = ir.safe_state;
+  }
+  if (a.recovery) ir.recovery = a.recovery as AgentIR["recovery"];
   if (a.permissions) ir.permissions = a.permissions as AgentIR["permissions"];
   if (a.spawn) ir.spawn = a.spawn as AgentIR["spawn"];
-  // Validate integers in state
   canonicalJson(ir.state);
   return ir;
 }
@@ -36,6 +40,7 @@ export function loadAgentDir(dir: string): { agent: AgentIR; agentPath: string }
   }
   if (existsSync(json)) {
     const ir = JSON.parse(readFileSync(json, "utf8")) as AgentIR;
+    if (ir.safe_state && !ir.fallback_state) ir.fallback_state = ir.safe_state;
     canonicalJson(ir.state);
     return { agent: ir, agentPath: json };
   }
@@ -62,4 +67,8 @@ export function readJsonl(path: string): unknown[] {
 
 export function toCanonicalIrJson(agent: AgentIR): string {
   return canonicalJson(agent) + "\n";
+}
+
+export function fallbackStateOf(agent: AgentIR): Record<string, unknown> | undefined {
+  return agent.fallback_state ?? agent.safe_state;
 }

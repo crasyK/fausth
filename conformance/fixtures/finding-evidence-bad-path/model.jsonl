@@ -1,0 +1,1 @@
+{"type":"tool","name":"finding.submit","args":{"category":"missing_instructions","severity":"warning","path":"projects/missing/README.md","line_start":1,"evidence":"## Setup","recommendation":"Add a Demo section"}}

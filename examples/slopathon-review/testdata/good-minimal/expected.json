@@ -1,0 +1,8 @@
+{
+  "label": "good-minimal",
+  "expected_deterministic": "pass",
+  "expect_categories_any": [],
+  "min_ai_findings": 0,
+  "max_ai_findings": 0,
+  "forbid_recommendation_substrings": ["approve this pr", "merge this pr"]
+}

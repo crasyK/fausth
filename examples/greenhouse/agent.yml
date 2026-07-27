@@ -8,19 +8,68 @@ state:
 
 limits:
   max_steps: 6
-  max_tool_calls: 4
+  max_tool_calls: 8
   timeout_ms: 10000
 
-safe_state:
+fallback_state:
   fan_percent: 0
+
+recovery:
+  on: verify_effect_failed
+  execute:
+    tool: actuator.fan.set
+    args:
+      percent: 0
+  verify:
+    kind: effect
+    observe: sensor.fan.read_percent
+    require:
+      path: observation.percent
+      eq: 0
+  on_failure: terminal_failure
 
 tools:
   - id: sensor.temperature.read
     description: Read ambient temperature in decidegrees Celsius
+    read_only: true
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      required: [celsius_decidegrees]
+      additionalProperties: false
+      properties:
+        celsius_decidegrees: { type: integer }
   - id: sensor.fan.read_percent
     description: Read current fan power percent
+    read_only: true
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      required: [percent]
+      additionalProperties: false
+      properties:
+        percent: { type: integer, minimum: 0, maximum: 100 }
   - id: actuator.fan.set
     description: Set fan power 0-100
+    input:
+      type: object
+      required: [percent]
+      additionalProperties: false
+      properties:
+        percent: { type: integer, minimum: 0, maximum: 100 }
+    output:
+      type: object
+      required: [ok, percent]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+        percent: { type: integer }
     verify:
       - kind: effect
         observe: sensor.fan.read_percent
@@ -30,6 +79,17 @@ tools:
         otherwise: safe_state
   - id: system.wait
     description: Wait milliseconds
+    input:
+      type: object
+      additionalProperties: false
+      properties:
+        ms: { type: integer, minimum: 0 }
+    output:
+      type: object
+      required: [waited_ms]
+      additionalProperties: false
+      properties:
+        waited_ms: { type: integer }
 
 gates:
   - id: fan-cap

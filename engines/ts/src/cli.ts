@@ -2,18 +2,64 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
-import { listFixtureDirs, readJsonl, loadAgentDir, toCanonicalIrJson, loadYamlFile } from "./load.js";
+import {
+  listFixtureDirs,
+  readJsonl,
+  loadAgentDir,
+  toCanonicalIrJson,
+  loadYamlFile,
+  loadDeployment,
+} from "./load.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
-import { createOpenRouterAdapter, createOllamaAdapter } from "./adapters/openai.js";
+import {
+  createAdapterFromDeployment,
+  toolsFromAgent,
+  probeProvider,
+  writeProbeReport,
+} from "./model/index.js";
+import type { ModelProposal as PortProposal } from "./model/port.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
 import { validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
-import type { AgentIR, Event, ModelProposal } from "./types.js";
+import type { AgentIR, Deployment, Event, ModelProposal, RecordedToolCall } from "./types.js";
+import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
+import {
+  buildAdvisoryPrompt,
+  createReviewTools,
+  formatReviewMarkdown,
+  type ReviewReport,
+  type ReviewToolState,
+} from "./integrations/github/review-runtime.js";
+import { filterVerifiedFindings } from "./integrations/github/submission-check.js";
+import { postReviewToGithub } from "./integrations/github/poster.js";
+import { createConversationalPropose } from "./integrations/github/conversational-propose.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 function repoRoot(): string {
   return resolve(join(here, "../../.."));
 }
+
+/** Load gitignored .env into process.env (does not override existing vars). */
+function loadDotEnv(path = join(repoRoot(), ".env")): void {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq <= 0) continue;
+    const key = t.slice(0, eq).trim();
+    let val = t.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+}
+
+loadDotEnv();
 
 function loadFixtureAgent(dir: string): AgentIR {
   const json = join(dir, "agent.json");
@@ -38,13 +84,25 @@ function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealt
   };
 }
 
+function toRuntimeProposal(p: PortProposal): ModelProposal {
+  if (p.type === "tool") return { type: "tool", name: p.name, args: p.args };
+  if (p.type === "stop") return { type: "stop", message: p.message };
+  return { type: "stop", message: "" };
+}
+
+function defaultDeploymentPath(agentDir: string, profile: "openrouter" | "ollama" | "kit"): string {
+  if (profile === "openrouter") return join(agentDir, "deployment.openrouter-free.yml");
+  if (profile === "kit") return join(agentDir, "deployment.kit.yml");
+  return join(agentDir, "deployment.ollama.yml");
+}
+
 async function replayFixture(dir: string): Promise<{ ok: boolean; actual: string; expected: string; name: string }> {
   const name = dir.split(/[/\\]/).pop()!;
   const agent = loadFixtureAgent(dir);
   const modelLines = readJsonl(join(dir, "model.jsonl"));
   const proposals: ModelProposal[] = modelLines.map(parseRecordedModelLine);
   const toolsQueue = existsSync(join(dir, "tools.jsonl"))
-    ? (readJsonl(join(dir, "tools.jsonl")) as Record<string, unknown>[])
+    ? (readJsonl(join(dir, "tools.jsonl")) as RecordedToolCall[])
     : [];
   let pi = 0;
   const runtime = new FaustRuntime({
@@ -60,16 +118,20 @@ async function replayFixture(dir: string): Promise<{ ok: boolean; actual: string
   return { ok: actual === expected, actual, expected, name };
 }
 
-async function cmdReplay(fixturesRoot?: string): Promise<number> {
+async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<number> {
   const root = fixturesRoot ?? join(repoRoot(), "conformance/fixtures");
   const dirs = listFixtureDirs(root);
   if (dirs.length === 0) {
     console.error("No fixtures found — failing (CI requires fixtures)");
     return 1;
   }
+  if (dumpDir) mkdirSync(resolve(dumpDir), { recursive: true });
   let failed = 0;
   for (const d of dirs) {
     const r = await replayFixture(d);
+    if (dumpDir) {
+      writeFileSync(join(resolve(dumpDir), `${r.name}.jsonl`), r.actual);
+    }
     if (!r.ok) {
       failed++;
       console.error(`FAIL ${r.name}\n--- actual ---\n${r.actual}\n--- expected ---\n${r.expected}`);
@@ -84,6 +146,7 @@ async function cmdValidate(target: string): Promise<number> {
     console.error(r.errors.join("\n"));
     return 1;
   }
+  for (const w of r.warnings) console.warn(`WARN ${w}`);
   console.log(`OK ${r.agent.name}`);
   console.log(toCanonicalIrJson(r.agent).trim());
   return 0;
@@ -104,9 +167,15 @@ async function cmdLive(args: {
   scenarios: string;
   report: string;
   catchRateMin: number;
+  deployment?: string;
 }): Promise<number> {
   try {
-    const adapter = createOpenRouterAdapter();
+    const depPath =
+      args.deployment ??
+      join(repoRoot(), "examples/greenhouse/deployment.openrouter-free.yml");
+    const deployment = loadDeployment(depPath) as Deployment;
+    const { adapter } = createAdapterFromDeployment(deployment);
+
     const scenarioDir = resolve(args.scenarios);
     const files = readdirSync(scenarioDir)
       .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
@@ -120,6 +189,10 @@ async function cmdLive(args: {
     let judgePass = 0;
     let judgeTotal = 0;
 
+    const judgeModels = deployment.model.judge_model
+      ? [deployment.model.judge_model]
+      : deployment.model.models;
+
     for (const f of files) {
       const scen = loadYamlFile(join(scenarioDir, f)) as Record<string, unknown>;
       const agent = loadAgentDir(resolve(repoRoot(), String(scen.agent))).agent;
@@ -130,16 +203,18 @@ async function cmdLive(args: {
       const runtime = new FaustRuntime({
         agent,
         propose: async () =>
-          adapter.propose({
-            messages: [
-              {
-                role: "system",
-                content: `You are ${agent.name}. Prefer tools. Never exceed fan 80. Stay in write scopes.`,
-              },
-              { role: "user", content: prompt },
-            ],
-            tools: agent.tools.map((t) => ({ id: t.id, description: t.description })),
-          }),
+          toRuntimeProposal(
+            await adapter.propose({
+              messages: [
+                {
+                  role: "system",
+                  content: `You are ${agent.name}. Prefer tools. Never exceed fan 80. Stay in write scopes.`,
+                },
+                { role: "user", content: prompt },
+              ],
+              tools: toolsFromAgent(agent.tools),
+            }),
+          ),
         tools: buildTools(agent, {
           testExit: Number(scen.test_exit_code ?? 0),
           sensorHealthy: Number(scen.sensor_healthy ?? 1),
@@ -147,10 +222,14 @@ async function cmdLive(args: {
         allowJudge: true,
         judge: async (rubric, ctx) => {
           judgeTotal++;
-          const j = createOpenRouterAdapter([
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "openrouter/free",
-          ]);
+          const jDep: Deployment = {
+            ...deployment,
+            model: {
+              ...deployment.model,
+              models: judgeModels,
+            },
+          };
+          const { adapter: j } = createAdapterFromDeployment(jDep);
           const r = await j.propose({
             messages: [
               { role: "system", content: rubric },
@@ -183,7 +262,13 @@ async function cmdLive(args: {
       }
 
       const gateDenies = runtime.events.filter(
-        (e) => e.reason === "gate_denied" || e.reason === "capability_missing" || e.reason === "limit_exceeded",
+        (e) =>
+          e.reason === "gate_denied" ||
+          e.reason === "capability_missing" ||
+          e.reason === "limit_exceeded" ||
+          e.reason === "input_schema_invalid" ||
+          e.reason === "output_schema_invalid" ||
+          e.reason === "tool_execution_failed",
       ).length;
       const verifyFails = runtime.events.filter((e) => e.reason?.startsWith("verify_")).length;
       verifyTriggers += verifyFails;
@@ -192,6 +277,7 @@ async function cmdLive(args: {
       results.push({
         scenario: f,
         model: adapter.lastModelUsed,
+        profile: deployment.model.profile ?? deployment.model.transport,
         steps: runtime.events.length,
         gate_denies: gateDenies,
         verify_failures: verifyFails,
@@ -246,14 +332,239 @@ async function cmdCapture(from: string, scenario: string, out: string): Promise<
   return 0;
 }
 
+async function cmdRun(agentDir: string, deploymentPath?: string): Promise<number> {
+  const dir = resolve(agentDir);
+  const agent = loadAgentDir(dir).agent;
+  const depFile =
+    deploymentPath ??
+    (existsSync(join(dir, "deployment.ollama.yml"))
+      ? join(dir, "deployment.ollama.yml")
+      : defaultDeploymentPath(dir, "openrouter"));
+  const deployment = loadDeployment(depFile) as Deployment;
+  const { adapter } = createAdapterFromDeployment(deployment);
+  const runtime = new FaustRuntime({
+    agent,
+    propose: async () =>
+      toRuntimeProposal(
+        await adapter.propose({
+          messages: [
+            { role: "system", content: `You are ${agent.name}. Prefer tools.` },
+            { role: "user", content: "Take one safe next action." },
+          ],
+          tools: toolsFromAgent(agent.tools),
+        }),
+      ),
+    tools: buildTools(agent),
+  });
+  await runtime.runLoop(4);
+  console.log(eventsToJsonl(runtime.events));
+  return 0;
+}
+
+async function cmdProvider(argv: string[]): Promise<number> {
+  const [sub, ...rest] = argv;
+  if (sub !== "probe") {
+    console.error("Usage: fausth provider probe --deployment <path> [--report <path>]");
+    return 1;
+  }
+  const a = parseArgs(rest);
+  const depPath = a.deployment;
+  if (!depPath) {
+    console.error("--deployment is required");
+    return 1;
+  }
+  const deployment = loadDeployment(resolve(depPath)) as Deployment;
+  const report = await probeProvider(deployment);
+  const out = a.report ?? join(repoRoot(), "live/reports/provider-probe.json");
+  writeProbeReport(out, report);
+  console.log(JSON.stringify(report, null, 2));
+  return report.auth && report.chat_completions ? 0 : 1;
+}
+
+async function cmdReview(args: Record<string, string>): Promise<number> {
+  const mode = (args.mode ?? "deterministic") as "deterministic" | "advisory";
+  let packet;
+  try {
+    if (args.fixture) {
+      packet = packetFromFixtureDir(resolve(args.fixture));
+    } else if (args.packet) {
+      packet = JSON.parse(readFileSync(resolve(args.packet), "utf8"));
+    } else if (args.repo && args.pr) {
+      packet = packetFromGithubPr(args.repo, Number(args.pr));
+    } else if (args.input) {
+      packet = packetFromInput(JSON.parse(readFileSync(resolve(args.input), "utf8")));
+    } else {
+      console.error("Usage: fausth review --mode deterministic|advisory (--fixture DIR | --repo R --pr N | --packet FILE)");
+      return 1;
+    }
+  } catch (e) {
+    const report: ReviewReport = {
+      mode,
+      conclusion: "infrastructure_error",
+      deterministic: packetFromInput({
+        changed_paths: [],
+        file_contents: {},
+        pr_body: "",
+      }),
+      ai_findings: [],
+      markdown: `## Faust submission review\n\n**Conclusion:** \`infrastructure_error\`\n\n${e instanceof Error ? e.message : String(e)}\n`,
+    };
+    if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2));
+    if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
+    console.error(report.markdown);
+    return 2;
+  }
+
+  if (mode === "deterministic") {
+    const report: ReviewReport = {
+      mode: "deterministic",
+      conclusion: packet.conclusion,
+      deterministic: packet,
+      ai_findings: [],
+      markdown: formatReviewMarkdown({
+        mode: "deterministic",
+        conclusion: packet.conclusion,
+        deterministic: packet,
+        ai_findings: [],
+      }),
+    };
+    if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
+    if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
+    if (args.post && args.repo && args.pr) {
+      postReviewToGithub(
+        { repo: args.repo, pr: Number(args.pr), checkRun: args["check-run"] === "1" || args["check-run"] === "true" },
+        report,
+      );
+    }
+    console.log(report.markdown);
+    return packet.conclusion === "fail" ? 1 : 0;
+  }
+
+  // advisory
+  const depPath =
+    args.deployment ?? join(repoRoot(), "examples/slopathon-review/deployment.openrouter.yml");
+  let deployment: Deployment;
+  try {
+    deployment = loadDeployment(resolve(depPath)) as Deployment;
+  } catch (e) {
+    console.error(e);
+    return 2;
+  }
+
+  let adapter;
+  try {
+    ({ adapter } = createAdapterFromDeployment(deployment));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const report: ReviewReport = {
+      mode: "advisory",
+      conclusion: "infrastructure_error",
+      deterministic: packet,
+      ai_findings: [],
+      markdown: `## Faust advisory\n\n**Conclusion:** \`infrastructure_error\`\n\n${msg}\n`,
+    };
+    if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
+    if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
+    console.log(report.markdown);
+    return 2;
+  }
+
+  const agent = loadAgentDir(join(repoRoot(), "examples/slopathon-review")).agent;
+  const state: ReviewToolState = { packet, aiFindings: [] };
+  const { system, user } = buildAdvisoryPrompt(packet);
+  let runtime!: FaustRuntime;
+  const propose = createConversationalPropose({
+    adapter,
+    tools: toolsFromAgent(agent.tools),
+    system,
+    user,
+    getRuntime: () => runtime,
+  });
+  runtime = new FaustRuntime({
+    agent,
+    propose: async () => toRuntimeProposal(await propose()),
+    tools: createReviewTools(state),
+    allowJudge: false,
+  });
+
+  try {
+    await runtime.runLoop(12);
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("RATE_LIMIT")) {
+      const report: ReviewReport = {
+        mode: "advisory",
+        conclusion: "neutral",
+        deterministic: packet,
+        ai_findings: [],
+        model: adapter.lastModelUsed,
+        provider: deployment.model.profile ?? deployment.model.transport,
+        markdown: formatReviewMarkdown({
+          mode: "advisory",
+          conclusion: "neutral",
+          deterministic: packet,
+          ai_findings: [],
+          model: adapter.lastModelUsed,
+        }) + "\n_Rate limited — neutral, not pass._\n",
+      };
+      if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
+      if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
+      console.log(report.markdown);
+      return 2;
+    }
+    throw e;
+  }
+
+  // Re-verify (defense in depth)
+  const { kept, dropped } = filterVerifiedFindings(state.aiFindings, packet);
+  let conclusion: ReviewReport["conclusion"] = packet.conclusion;
+  if (kept.some((f) => f.severity === "blocking" || f.category === "human_review")) {
+    conclusion = "action_required";
+  } else if (packet.conclusion === "pass" && kept.length > 0) {
+    conclusion = "action_required";
+  }
+
+  const report: ReviewReport = {
+    mode: "advisory",
+    conclusion,
+    deterministic: packet,
+    ai_findings: kept,
+    dropped_findings: dropped,
+    model: adapter.lastModelUsed,
+    provider: String(deployment.model.profile ?? deployment.model.transport ?? "openai-compatible"),
+    markdown: formatReviewMarkdown({
+      mode: "advisory",
+      conclusion,
+      deterministic: packet,
+      ai_findings: kept,
+      dropped_findings: dropped,
+      model: adapter.lastModelUsed,
+      provider: String(deployment.model.profile ?? "openai-compatible"),
+    }),
+  };
+  if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
+  if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
+  if (args.post && args.repo && args.pr) {
+    postReviewToGithub(
+      { repo: args.repo, pr: Number(args.pr), checkRun: args["check-run"] === "1" || args["check-run"] === "true" },
+      report,
+    );
+  }
+  console.log(report.markdown);
+  return packet.conclusion === "fail" ? 1 : 0;
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd || cmd === "help") {
-    console.log("fausth validate|replay|live|capture|run");
+    console.log("fausth validate|replay|live|capture|run|provider|review");
     process.exit(0);
   }
   if (cmd === "validate") process.exit(await cmdValidate(rest[0] ?? join(repoRoot(), "examples/greenhouse")));
-  if (cmd === "replay") process.exit(await cmdReplay(rest[0]));
+  if (cmd === "replay") {
+    const a = parseArgs(rest);
+    const fixturesRoot = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
+    process.exit(await cmdReplay(fixturesRoot, a["dump-dir"]));
+  }
   if (cmd === "live") {
     const a = parseArgs(rest);
     process.exit(
@@ -261,6 +572,7 @@ async function main(): Promise<void> {
         scenarios: a.scenarios ?? join(repoRoot(), "live/scenarios"),
         report: a.report ?? join(repoRoot(), "live/reports/out.json"),
         catchRateMin: Number(a["catch-rate-min"] ?? 0.5),
+        deployment: a.deployment,
       }),
     );
   }
@@ -269,25 +581,12 @@ async function main(): Promise<void> {
     process.exit(await cmdCapture(a.from!, a.scenario!, a.out!));
   }
   if (cmd === "run") {
-    const target = rest[0] ?? join(repoRoot(), "examples/greenhouse");
-    const agent = loadAgentDir(resolve(target)).agent;
-    const adapter = createOllamaAdapter();
-    const runtime = new FaustRuntime({
-      agent,
-      propose: async () =>
-        adapter.propose({
-          messages: [
-            { role: "system", content: "Greenhouse caretaker. Fan <= 80." },
-            { role: "user", content: "Set fan to a safe level." },
-          ],
-          tools: agent.tools.map((t) => ({ id: t.id, description: t.description })),
-        }),
-      tools: buildTools(agent),
-    });
-    await runtime.runLoop(4);
-    console.log(eventsToJsonl(runtime.events));
-    process.exit(0);
+    const a = parseArgs(rest);
+    const target = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
+    process.exit(await cmdRun(target ?? join(repoRoot(), "examples/greenhouse"), a.deployment));
   }
+  if (cmd === "provider") process.exit(await cmdProvider(rest));
+  if (cmd === "review") process.exit(await cmdReview(parseArgs(rest)));
   console.error(`Unknown command ${cmd}`);
   process.exit(1);
 }

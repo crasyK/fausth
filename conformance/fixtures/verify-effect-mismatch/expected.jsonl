@@ -2,5 +2,13 @@
 {"args":{"percent":40},"seq":2,"stage":"validate","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":2,"verdict":"allow"}
 {"args":{"percent":40},"seq":3,"stage":"authorize","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":3,"verdict":"allow"}
 {"args":{"percent":40},"result":{"ok":1,"percent":40},"seq":4,"stage":"execute","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":4,"verdict":"allow"}
-{"args":{"percent":40},"observation":{"percent":0},"reason":"verify_effect_failed","seq":5,"stage":"verify","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":5,"verdict":"safe_state"}
-{"reason":"safe_state_entered","seq":6,"stage":"record","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","ts_logical":6,"verdict":"safe_state"}
+{"args":{},"result":{"percent":0},"seq":5,"stage":"observe","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"sensor.fan.read_percent","ts_logical":5,"verdict":"allow"}
+{"args":{"percent":40},"observation":{"percent":0},"reason":"verify_effect_failed","seq":6,"stage":"verify","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":6,"verdict":"safe_state"}
+{"args":{"percent":0},"seq":7,"stage":"propose","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":7}
+{"args":{"percent":0},"seq":8,"stage":"validate","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":8,"verdict":"allow"}
+{"args":{"percent":0},"seq":9,"stage":"authorize","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":9,"verdict":"allow"}
+{"args":{"percent":0},"result":{"ok":1,"percent":0},"seq":10,"stage":"execute","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":10,"verdict":"allow"}
+{"args":{},"result":{"percent":0},"seq":11,"stage":"observe","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"sensor.fan.read_percent","ts_logical":11,"verdict":"allow"}
+{"observation":{"percent":0},"seq":12,"stage":"verify","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":12,"verdict":"allow"}
+{"reason":"recovery_succeeded","seq":13,"stage":"record","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","ts_logical":13,"verdict":"allow"}
+{"reason":"safe_state_entered","seq":14,"stage":"record","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","ts_logical":14,"verdict":"safe_state"}

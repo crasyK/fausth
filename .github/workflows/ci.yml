@@ -11,8 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -29,6 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e "engines/py[dev]"
+      - run: pytest engines/py/tests -q
       - run: fausth-py replay
 
   parity:
@@ -37,8 +36,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

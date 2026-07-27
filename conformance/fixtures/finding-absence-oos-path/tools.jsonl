@@ -1,0 +1,1 @@
+{"call_seq":1,"tool":"finding.submit","args":{"category":"missing_instructions","severity":"warning","path":"../secrets/key.txt","line_start":1,"evidence":"## Setup","recommendation":"Add a Demo section"},"result":{"output":{"accepted":0,"verified":0,"out_of_scope":1,"reason":"path_out_of_scope"}}}

@@ -1,7 +1,11 @@
 platform: ollama-greenhouse
 model:
-  transport: ollama
-  model: llama3.2
+  transport: openai-compatible
+  profile: ollama
+  base_url: http://127.0.0.1:11434/v1
+  api_key_env: OLLAMA_API_KEY
+  models:
+    - llama3.2
   temperature: 0
   max_tokens: 1024
 bindings:

@@ -2,5 +2,6 @@
 {"args":{"percent":40},"seq":2,"stage":"validate","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":2,"verdict":"allow"}
 {"args":{"percent":40},"seq":3,"stage":"authorize","state_hash":"de5fd9deedc68baa4e935c81933ca2c150f66a43005170e79a57b882bc026948","tool":"actuator.fan.set","ts_logical":3,"verdict":"allow"}
 {"args":{"percent":40},"result":{"ok":1,"percent":40},"seq":4,"stage":"execute","state_hash":"0994c94010473c5b17234123913350e214089d24ef179e577c782284a1118099","tool":"actuator.fan.set","ts_logical":4,"verdict":"allow"}
-{"observation":{"percent":40},"seq":5,"stage":"verify","state_hash":"0994c94010473c5b17234123913350e214089d24ef179e577c782284a1118099","tool":"actuator.fan.set","ts_logical":5,"verdict":"allow"}
-{"seq":6,"stage":"propose","state_hash":"0994c94010473c5b17234123913350e214089d24ef179e577c782284a1118099","ts_logical":6,"verdict":"allow"}
+{"args":{},"result":{"percent":40},"seq":5,"stage":"observe","state_hash":"0994c94010473c5b17234123913350e214089d24ef179e577c782284a1118099","tool":"sensor.fan.read_percent","ts_logical":5,"verdict":"allow"}
+{"observation":{"percent":40},"seq":6,"stage":"verify","state_hash":"0994c94010473c5b17234123913350e214089d24ef179e577c782284a1118099","tool":"actuator.fan.set","ts_logical":6,"verdict":"allow"}
+{"seq":7,"stage":"propose","state_hash":"0994c94010473c5b17234123913350e214089d24ef179e577c782284a1118099","ts_logical":7,"verdict":"allow"}
