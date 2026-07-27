@@ -550,7 +550,9 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
     );
   }
   console.log(report.markdown);
-  return packet.conclusion === "fail" ? 1 : 0;
+  // Advisory posts findings even when Layer 1 already failed; do not fail the job on that.
+  if (report.conclusion === "infrastructure_error" || report.conclusion === "neutral") return 2;
+  return 0;
 }
 
 async function main(): Promise<void> {
