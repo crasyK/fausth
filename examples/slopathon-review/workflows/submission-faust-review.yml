@@ -21,7 +21,7 @@ jobs:
         with:
           repository: crasyK/fausth
           path: fausth
-          ref: 0c76a5601d534c5a3fbb90aa550abc4d6901e752
+          ref: dd6a022ac7c26b3550e3fe962786a8301365cad8
 
       - uses: pnpm/action-setup@v4
         with:
