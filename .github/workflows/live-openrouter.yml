@@ -39,6 +39,75 @@ jobs:
             exit 0
           fi
           exit $code
+      - name: Live coding-counterbalance (OpenRouter)
+        id: live_cb_or
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "No OPENROUTER_API_KEY — skipping CB OpenRouter live"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --deployment ../../examples/coding-counterbalance/deployment.openrouter-free.yml \
+            --scenarios ../../live/scenarios-coding-counterbalance \
+            --report ../../live/reports/coding-counterbalance-openrouter.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit $code
+      - name: Live coding-counterbalance (KIT)
+        id: live_cb_kit
+        env:
+          KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
+        run: |
+          if [ -z "$KIT_AI_API_KEY" ]; then
+            echo "No KIT_AI_API_KEY — skipping CB KIT live"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --deployment ../../examples/coding-counterbalance/deployment.kit.yml \
+            --scenarios ../../live/scenarios-coding-counterbalance \
+            --report ../../live/reports/coding-counterbalance-kit.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit $code
+      - name: Live coding-counterbalance (OpenAI)
+        id: live_cb_openai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "No OPENAI_API_KEY — skipping CB OpenAI live"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --deployment ../../examples/coding-counterbalance/deployment.openai.yml \
+            --scenarios ../../live/scenarios-coding-counterbalance \
+            --report ../../live/reports/coding-counterbalance-openai.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit $code
       - uses: actions/upload-artifact@v4
         if: always()
         with:

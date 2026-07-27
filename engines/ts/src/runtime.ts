@@ -34,6 +34,10 @@ export type RuntimeOptions = {
   judge?: JudgeFn;
   allowJudge?: boolean;
   recordedToolResults?: RecordedToolCall[];
+  /** Nesting depth for spawn children (default 0). */
+  depth?: number;
+  /** Parent spawn id when this runtime is a child reaction. */
+  spawnId?: string;
 };
 
 function normalizeEnvelope(
@@ -69,6 +73,8 @@ export class FaustRuntime {
   private recorded: RecordedToolCall[];
   private recordedIdx = 0;
   private recovering = false;
+  private depth: number;
+  private spawnId?: string;
 
   constructor(opts: RuntimeOptions) {
     this.agent = structuredClone(opts.agent);
@@ -80,6 +86,8 @@ export class FaustRuntime {
     this.judge = opts.judge;
     this.allowJudge = opts.allowJudge ?? false;
     this.recorded = opts.recordedToolResults ?? [];
+    this.depth = opts.depth ?? 0;
+    this.spawnId = opts.spawnId;
   }
 
   private emit(partial: Omit<Event, "seq" | "ts_logical" | "state_hash"> & { state_hash?: string }): Event {
@@ -97,6 +105,10 @@ export class FaustRuntime {
     if (partial.result !== undefined) ev.result = partial.result;
     if (partial.observation !== undefined) ev.observation = partial.observation;
     if (partial.error !== undefined) ev.error = partial.error;
+    if (this.depth > 0) ev.depth = this.depth;
+    if (this.spawnId) ev.spawn_id = this.spawnId;
+    if (partial.depth !== undefined) ev.depth = partial.depth;
+    if (partial.spawn_id !== undefined) ev.spawn_id = partial.spawn_id;
     this.events.push(ev);
     return ev;
   }
@@ -322,6 +334,87 @@ export class FaustRuntime {
     }
 
     return { ok: true };
+  }
+
+  /** Build a tighten-only child harness IR from spawn args. */
+  private buildChildAgent(args: Record<string, unknown>): AgentIR {
+    const childToolIds = (args.tools as string[]) ?? [];
+    const maxSteps = this.agent.limits?.max_steps ?? 1000;
+    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
+    const remainingSteps = Math.max(1, maxSteps - this.steps);
+    const remainingCalls = Math.max(1, maxTools - this.toolCalls);
+    const childLimits = args.limits as { max_steps?: number; max_tool_calls?: number } | undefined;
+    const childFs = args.filesystem as
+      | { write_scopes?: string[]; read_scopes?: string[] }
+      | undefined;
+
+    return {
+      spec: this.agent.spec,
+      name: `${this.agent.name}/child`,
+      state: { ...this.agent.state },
+      tools: this.agent.tools.filter((t) => childToolIds.includes(t.id)),
+      gates: this.agent.gates,
+      limits: {
+        max_steps: childLimits?.max_steps ?? remainingSteps,
+        max_tool_calls: childLimits?.max_tool_calls ?? remainingCalls,
+      },
+      fallback_state: this.agent.fallback_state,
+      safe_state: this.agent.safe_state,
+      recovery: this.agent.recovery,
+      permissions: {
+        tools: childToolIds,
+        filesystem: childFs ?? this.agent.permissions?.filesystem,
+      },
+      spawn: {
+        allow: this.agent.spawn?.allow_nested === true,
+        allow_nested: false,
+        tighten_only: true,
+      },
+      counterbalance: this.agent.counterbalance,
+    };
+  }
+
+  /**
+   * When spawn args include `proposals`, run a nested FaustRuntime and append
+   * child events to the parent log (with depth / spawn_id). Otherwise stub-only.
+   */
+  private async runNestedChild(
+    args: Record<string, unknown>,
+    spawnId: string,
+  ): Promise<{ child_steps: number }> {
+    const rawProposals = args.proposals;
+    if (!Array.isArray(rawProposals) || rawProposals.length === 0) {
+      return { child_steps: 0 };
+    }
+    const proposals = rawProposals as ModelProposal[];
+    let pi = 0;
+    const childAgent = this.buildChildAgent(args);
+    const childToolIds = new Set((args.tools as string[]) ?? []);
+    const childTools: Record<string, ToolHandler> = {};
+    for (const id of childToolIds) {
+      if (this.tools[id]) childTools[id] = this.tools[id]!;
+    }
+    const child = new FaustRuntime({
+      agent: childAgent,
+      propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
+      tools: childTools,
+      depth: this.depth + 1,
+      spawnId,
+      allowJudge: false,
+    });
+    await child.runLoop(childAgent.limits?.max_steps ?? 32);
+    for (const cev of child.events) {
+      this.seq += 1;
+      const merged: Event = {
+        ...cev,
+        seq: this.seq,
+        ts_logical: this.seq,
+        depth: this.depth + 1,
+        spawn_id: spawnId,
+      };
+      this.events.push(merged);
+    }
+    return { child_steps: child.events.length };
   }
 
   /** Governed observation path for effect verifies. */
@@ -802,6 +895,18 @@ export class FaustRuntime {
         args: action.args,
         result: envelope.output,
       });
+
+      if (action.name === "agent.spawn") {
+        const spawnId = `spawn-${this.seq}`;
+        const nested = await this.runNestedChild(action.args, spawnId);
+        if (nested.child_steps > 0) {
+          // Annotate parent execute result with child event count (non-breaking for stub-only).
+          const execEv = this.events[this.events.length - 1 - nested.child_steps];
+          if (execEv && execEv.stage === "execute" && execEv.tool === "agent.spawn") {
+            execEv.result = { ...envelope.output, child_events: nested.child_steps };
+          }
+        }
+      }
 
       const verified = await this.runVerifies(tool, action, envelope.output);
       if (!verified) break;

@@ -1,0 +1,50 @@
+# KIT KI-Toolbox — institutional OpenAI-compatible gateway.
+# Never put API keys in this file. Set KIT_AI_API_KEY in .env.
+
+platform: kit-scc-coding-counterbalance
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.minimax-m2.7-229b
+    - kit.mistral-small-4-119b-a8b
+    - kit.qwen3.5-397b-A17b
+    - kit.gemma4-31b-it
+  temperature: 0
+  max_tokens: 1024
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+model_catalog:
+  - id: kit.minimax-m2.7-229b
+    capabilities: { tools: true, json: true }
+    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
+  - id: kit.mistral-small-4-119b-a8b
+    capabilities: { tools: true, json: true }
+    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
+  - id: kit.qwen3.5-397b-A17b
+    capabilities: { tools: true, json: true }
+    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
+  - id: kit.gemma4-31b-it
+    capabilities: { tools: true, json: true }
+    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
+
+bindings:
+  fs.read:
+    native: stub.fs_read
+  fs.write_scoped:
+    native: stub.fs_write
+  shell.run_allowlisted:
+    native: stub.shell
+  user.approve:
+    native: stub.approve
+  user.correct:
+    native: stub.user_correct
+  mode.enter:
+    native: stub.mode_enter
+  task.complete:
+    native: stub.task_complete

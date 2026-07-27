@@ -26,6 +26,8 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 | Model transports swappable independently | Proven (adapters) |
 | Memory freshness / sequence enforcement (Counterbalance slice) | Proven (Track A `cb-*` fixtures) |
 | Multi-host (TS / Python / GHA) same harness + bindings | Proven (`pnpm ci:multi-host`) |
+| Live coding-counterbalance (OpenRouter Track B) | Secrets-gated (`live-openrouter` + CB scenarios) |
+| Nested spawn child log (M6) | Proven (Track A `spawn-nested-*`) |
 | Model-adaptive scaffolding | **Not yet** |
 | Production-ready isolation / security | **Not yet** |
 

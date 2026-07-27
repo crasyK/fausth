@@ -41,6 +41,9 @@ class FaustRuntime:
         proposals: list[dict[str, Any]],
         tools: dict[str, ToolHandler],
         recorded_tool_results: list[dict[str, Any]] | None = None,
+        *,
+        depth: int = 0,
+        spawn_id: str | None = None,
     ) -> None:
         self.agent = copy.deepcopy(agent)
         if self.agent.get("safe_state") and not self.agent.get("fallback_state"):
@@ -55,6 +58,8 @@ class FaustRuntime:
         self.steps = 0
         self.tool_calls = 0
         self.recovering = False
+        self.depth = depth
+        self.spawn_id = spawn_id
 
     def emit(self, partial: dict[str, Any]) -> dict[str, Any]:
         self.seq += 1
@@ -67,6 +72,14 @@ class FaustRuntime:
         for k in ("verdict", "reason", "tool", "args", "result", "observation", "error"):
             if k in partial and partial[k] is not None:
                 ev[k] = partial[k]
+        if self.depth > 0:
+            ev["depth"] = self.depth
+        if self.spawn_id:
+            ev["spawn_id"] = self.spawn_id
+        if "depth" in partial and partial["depth"] is not None:
+            ev["depth"] = partial["depth"]
+        if "spawn_id" in partial and partial["spawn_id"] is not None:
+            ev["spawn_id"] = partial["spawn_id"]
         self.events.append(ev)
         return ev
 
@@ -99,6 +112,69 @@ class FaustRuntime:
             if not eval_predicate(g["require"], snapshot):
                 return False, g.get("otherwise", "deny"), "gate_denied"
         return True, None, None
+
+    def build_child_agent(self, args: dict[str, Any]) -> dict[str, Any]:
+        child_tool_ids = list(args.get("tools") or [])
+        limits = self.agent.get("limits") or {}
+        max_steps = limits.get("max_steps", 1000)
+        max_tools = limits.get("max_tool_calls", 1000)
+        remaining_steps = max(1, max_steps - self.steps)
+        remaining_calls = max(1, max_tools - self.tool_calls)
+        child_limits = args.get("limits") or {}
+        child_fs = args.get("filesystem")
+        parent_spawn = self.agent.get("spawn") or {}
+        return {
+            "spec": self.agent.get("spec"),
+            "name": f"{self.agent.get('name', 'agent')}/child",
+            "state": dict(self.agent.get("state") or {}),
+            "tools": [t for t in self.agent.get("tools") or [] if t["id"] in child_tool_ids],
+            "gates": self.agent.get("gates"),
+            "limits": {
+                "max_steps": child_limits.get("max_steps", remaining_steps),
+                "max_tool_calls": child_limits.get("max_tool_calls", remaining_calls),
+            },
+            "fallback_state": self.agent.get("fallback_state"),
+            "safe_state": self.agent.get("safe_state"),
+            "recovery": self.agent.get("recovery"),
+            "permissions": {
+                "tools": child_tool_ids,
+                "filesystem": child_fs
+                if child_fs is not None
+                else (self.agent.get("permissions") or {}).get("filesystem"),
+            },
+            "spawn": {
+                "allow": parent_spawn.get("allow_nested") is True,
+                "allow_nested": False,
+                "tighten_only": True,
+            },
+            "counterbalance": self.agent.get("counterbalance"),
+        }
+
+    def run_nested_child(self, args: dict[str, Any], spawn_id: str) -> int:
+        raw = args.get("proposals")
+        if not isinstance(raw, list) or not raw:
+            return 0
+        child_agent = self.build_child_agent(args)
+        child_tool_ids = set(args.get("tools") or [])
+        child_tools = {tid: self.tools[tid] for tid in child_tool_ids if tid in self.tools}
+        child = FaustRuntime(
+            child_agent,
+            list(raw),
+            child_tools,
+            None,
+            depth=self.depth + 1,
+            spawn_id=spawn_id,
+        )
+        child.run_loop((child_agent.get("limits") or {}).get("max_steps", 32))
+        for cev in child.events:
+            self.seq += 1
+            merged = dict(cev)
+            merged["seq"] = self.seq
+            merged["ts_logical"] = self.seq
+            merged["depth"] = self.depth + 1
+            merged["spawn_id"] = spawn_id
+            self.events.append(merged)
+        return len(child.events)
 
     def successful_executes(self) -> set[str]:
         done: set[str] = set()
@@ -680,6 +756,19 @@ class FaustRuntime:
                     "result": envelope["output"],
                 }
             )
+            if action["name"] == "agent.spawn":
+                spawn_id = f"spawn-{self.seq}"
+                child_steps = self.run_nested_child(action["args"], spawn_id)
+                if child_steps > 0:
+                    exec_ev = self.events[len(self.events) - 1 - child_steps]
+                    if (
+                        exec_ev.get("stage") == "execute"
+                        and exec_ev.get("tool") == "agent.spawn"
+                    ):
+                        exec_ev["result"] = {
+                            **envelope["output"],
+                            "child_events": child_steps,
+                        }
             if not self.run_verifies(tool, action, envelope["output"]):
                 break
             self.apply_invalidate_after(action["name"])

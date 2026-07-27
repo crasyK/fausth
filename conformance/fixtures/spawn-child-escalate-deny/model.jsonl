@@ -1,0 +1,1 @@
+{"type":"tool","name":"agent.spawn","args":{"tools":["fs.read"],"proposals":[{"type":"tool","name":"fs.write_scoped","args":{"path":"src/app.ts","content":"x"}}]}}

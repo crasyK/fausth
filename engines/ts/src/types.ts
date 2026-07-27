@@ -227,6 +227,10 @@ export type Event = {
   observation?: Record<string, unknown>;
   state_hash: string;
   error?: string;
+  /** Nesting depth (0 = root). Set on child reaction events. */
+  depth?: number;
+  /** Id of the parent spawn that produced this event (child log only). */
+  spawn_id?: string;
 };
 
 export type ModelProposal =

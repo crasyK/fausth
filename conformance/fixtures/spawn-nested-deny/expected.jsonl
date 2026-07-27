@@ -1,0 +1,3 @@
+{"args":{"spawn_nested":true,"tools":["fs.read"]},"seq":1,"stage":"propose","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":1}
+{"args":{"spawn_nested":true,"tools":["fs.read"]},"seq":2,"stage":"validate","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":2,"verdict":"allow"}
+{"args":{"spawn_nested":true,"tools":["fs.read"]},"error":"nested spawn denied","reason":"gate_denied","seq":3,"stage":"authorize","state_hash":"3d3b18da74cf5e2e3948973787276eef95e4cab44590273bfda818b70c4f8751","tool":"agent.spawn","ts_logical":3,"verdict":"deny"}

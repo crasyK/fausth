@@ -30,6 +30,33 @@ pnpm ci:multi-host
 
 Missing or unknown `bindings.*.native` values fail as **adapter** errors (`binding_missing` / `adapter_unresolved`), not harness authorize denies.
 
+### Live models (M5.1)
+
+Same harness; swap deployment for the key you have:
+
+```bash
+# OpenRouter (OPENROUTER_API_KEY)
+pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+  --deployment ../../examples/coding-counterbalance/deployment.openrouter-free.yml \
+  --scenarios ../../live/scenarios-coding-counterbalance \
+  --report ../../live/reports/coding-counterbalance-openrouter.json \
+  --catch-rate-min 0.5
+
+# KIT (KIT_AI_API_KEY)
+pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+  --deployment ../../examples/coding-counterbalance/deployment.kit.yml \
+  --scenarios ../../live/scenarios-coding-counterbalance \
+  --report ../../live/reports/coding-counterbalance-kit.json \
+  --catch-rate-min 0.5
+
+# OpenAI (OPENAI_API_KEY)
+pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+  --deployment ../../examples/coding-counterbalance/deployment.openai.yml \
+  --scenarios ../../live/scenarios-coding-counterbalance \
+  --report ../../live/reports/coding-counterbalance-openai.json \
+  --catch-rate-min 0.5
+```
+
 ```bash
 pnpm -C engines/ts exec node --import tsx src/cli.ts validate ../../examples/coding-counterbalance
 pnpm replay   # includes cb-* fixtures
