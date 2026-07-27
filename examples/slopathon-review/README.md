@@ -48,9 +48,10 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode advisory \
 # Force every pinned OpenRouter + KIT model once (writes live/reports/model-matrix/)
 pnpm -C engines/ts exec node --import tsx src/run-model-matrix.ts
 
-# Optional: post comment (+ check run) to a PR you can write
+# Optional: post findings to Checks (default; no PR comment clutter)
 pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
-  --repo OWNER/REPO --pr N --post 1 --check-run true
+  --repo OWNER/REPO --pr N --post 1
+# Opt-in PR comment only if you really want it: add --comment 1
 ```
 
 ## Land in HACK-OPS-KA/SLOPATHON

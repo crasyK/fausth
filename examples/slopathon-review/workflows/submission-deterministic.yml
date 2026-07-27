@@ -2,6 +2,7 @@ name: Faust deterministic submission check
 
 # Copy into SLOPATHON as .github/workflows/submission-deterministic.yml
 # No secrets. Hosts the Faust TS checker — not a separate engine.
+# Findings appear on the Checks tab (annotations + summary), not as PR comments.
 
 on:
   pull_request:
@@ -9,7 +10,8 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
+  checks: write
 
 jobs:
   deterministic:
@@ -45,6 +47,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set +e
           pnpm -C fausth/engines/ts exec node --import tsx src/cli.ts review \
             --mode deterministic \
             --repo "${{ github.repository }}" \
@@ -52,16 +55,15 @@ jobs:
             --out "${GITHUB_WORKSPACE}/review-out.json" \
             --markdown "${GITHUB_WORKSPACE}/review.md" \
             --post 1
+          code=$?
           echo "conclusion=$(node -e "console.log(require('${GITHUB_WORKSPACE}/review-out.json').conclusion)")" >> "$GITHUB_OUTPUT"
+          exit $code
 
       - name: Upload packet artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: review-packet
           path: |
             review-out.json
             review.md
-
-      - name: Fail on blocking conclusion
-        if: steps.review.outputs.conclusion == 'fail'
-        run: exit 1
