@@ -1,0 +1,26 @@
+platform: kit-scc-support-bot
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.mistral-small-4-119b-a8b
+    - kit.gemma4-31b-it
+  temperature: 0
+  max_tokens: 1024
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+bindings:
+  kb.lookup:
+    native: stub.kb_lookup
+  answer.send:
+    native: stub.answer_send
+  human.handoff:
+    native: stub.human_handoff
+  user.correct:
+    native: stub.user_correct
+  refund.request:
+    native: stub.refund_request

@@ -63,4 +63,5 @@ jobs:
       - run: pip install -e "engines/py[dev]"
       - run: pnpm ci:packaging
       - run: python -m fausth test examples/coding-counterbalance
+      - run: python -m fausth test examples/support-bot
       - run: python -m fausth pack examples/coding-counterbalance --out live/reports/coding-counterbalance-py.fausth.json
