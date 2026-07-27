@@ -26,7 +26,7 @@ jobs:
           repository: crasyK/fausth
           path: fausth
           # Pin to a commit SHA in the host repo
-          ref: main
+          ref: 022d590e9e1739d19858d4f1bdb9305c8ca5ce7a
 
       - uses: pnpm/action-setup@v4
         with:

@@ -13,6 +13,8 @@ The **host** is GitHub Actions in the event repo. The **engine** is pinned from 
 
 Findings show on the **Checks** job summary (one check per layer). No PR comment spam; no duplicate Check Runs.
 
+Example workflows pin `crasyK/fausth` to a **commit SHA** (never floating `main`). After pulling updates into an event repo, bump both workflow `ref:` values together.
+
 ## Layout
 
 | Path | Role |

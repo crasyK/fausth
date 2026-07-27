@@ -1,0 +1,7 @@
+{
+  "label": "subtle-klarna-ci",
+  "expected_deterministic": "pass",
+  "expect_categories_any": ["contradiction", "safety_concern"],
+  "min_ai_findings": 1,
+  "forbid_recommendation_substrings": ["approve this pr", "merge this pr"]
+}
