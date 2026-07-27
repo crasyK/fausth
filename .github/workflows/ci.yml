@@ -18,6 +18,12 @@ jobs:
       - run: pnpm install
       - run: pnpm -C engines/ts test
       - run: pnpm -C engines/ts exec node --import tsx src/cli.ts replay
+      - name: Local disposable-worktree e2e (recorded)
+        run: node scripts/local-e2e.mjs
+      - name: Bundle round-trip
+        run: |
+          pip install -e "engines/py"
+          node scripts/bundle-roundtrip.mjs
 
   py:
     runs-on: ubuntu-latest

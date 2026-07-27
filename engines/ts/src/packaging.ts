@@ -40,6 +40,13 @@ const DEPLOYMENT_CANDIDATES = [
   "deployment.ollama.yml",
 ];
 
+/** Local real-I/O deployments — never auto-selected by test/replay/default discovery. */
+const LOCAL_DEPLOYMENT_PREFIX = "deployment.local";
+
+export function isLocalOnlyDeploymentFile(name: string): boolean {
+  return name.startsWith(LOCAL_DEPLOYMENT_PREFIX);
+}
+
 export function listHarnessDeployments(harnessDir: string): string[] {
   return DEPLOYMENT_CANDIDATES.filter((n) => existsSync(join(harnessDir, n))).map((n) =>
     join(harnessDir, n),
@@ -52,7 +59,10 @@ export function pickTestDeployment(harnessDir: string, explicit?: string): strin
     const p = join(harnessDir, n);
     if (existsSync(p)) return p;
   }
-  return listHarnessDeployments(harnessDir)[0];
+  return listHarnessDeployments(harnessDir).find((p) => {
+    const base = p.split(/[/\\]/).pop() ?? "";
+    return !isLocalOnlyDeploymentFile(base);
+  });
 }
 
 export type InspectReport = {
@@ -78,7 +88,11 @@ export type InspectReport = {
 export function inspectHarness(harnessDir: string): InspectReport {
   const dir = resolve(harnessDir);
   const { agent } = loadAgentDir(dir);
-  const deployments = listHarnessDeployments(dir).map((p) => {
+  const auto = listHarnessDeployments(dir);
+  const localExtras = readdirSync(dir)
+    .filter((n) => isLocalOnlyDeploymentFile(n) && /\.ya?ml$/i.test(n))
+    .map((n) => join(dir, n));
+  const deployments = [...auto, ...localExtras].map((p) => {
     const d = loadDeployment(p) as Deployment;
     return {
       file: basename(p),
@@ -347,11 +361,14 @@ export function packHarness(
       seen.add(n);
     }
   }
-  for (const ent of readdirSync(dir)) {
+  for (const ent of readdirSync(dir).sort()) {
     if (/^deployment\..+\.ya?ml$/i.test(ent) && !seen.has(ent)) {
       files.push({ path: ent, content: readFileSync(join(dir, ent), "utf8") });
     }
   }
+
+  // Stable key order for byte-identical TS↔Python packs
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
   const bundle = {
     format: "fausth-harness-bundle/v0.1",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fausth"
-version = "0.1.1"
+version = "0.1.2a0"
 description = "Faust Harness Python twin — Counterbalance Contract replay engine"
 readme = "README.md"
 license = { text = "Apache-2.0" }

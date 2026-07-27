@@ -8,6 +8,7 @@ from pathlib import Path
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
 from .packaging import inspect_harness, pack_harness, test_harness
+from .bundle import BundleError, resolve_harness_ref, unpack_bundle
 
 
 def repo_root() -> Path:
@@ -103,6 +104,13 @@ def cmd_run(
 
 
 def main(argv: list[str] | None = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] in ("--version", "-V", "version"):
+        from . import __version__
+
+        print(f"fausth-py {__version__}")
+        raise SystemExit(0)
     parser = argparse.ArgumentParser(prog="fausth-py")
     sub = parser.add_subparsers(dest="cmd")
     p_replay = sub.add_parser("replay")
@@ -122,38 +130,62 @@ def main(argv: list[str] | None = None) -> None:
     p_pack = sub.add_parser("pack")
     p_pack.add_argument("agent", nargs="?", default=None)
     p_pack.add_argument("--out", default=None)
+    p_unpack = sub.add_parser("unpack")
+    p_unpack.add_argument("bundle")
+    p_unpack.add_argument("--out", required=True)
+    p_unpack.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
     default_agent = str(repo_root() / "examples" / "coding-counterbalance")
     if args.cmd == "replay":
         raise SystemExit(cmd_replay(args.dump_dir))
     if args.cmd == "run":
         agent = args.agent or default_agent
-        raise SystemExit(
-            cmd_run(agent, args.deployment, args.model, args.dump, args.max_steps)
-        )
+        resolved = resolve_harness_ref(agent)
+        try:
+            raise SystemExit(
+                cmd_run(str(resolved.harness_dir), args.deployment, args.model, args.dump, args.max_steps)
+            )
+        finally:
+            resolved.cleanup()
     if args.cmd == "inspect":
-        report = inspect_harness(args.agent or default_agent)
-        print(json.dumps(report, indent=2, sort_keys=True))
-        cov = report.get("binding_coverage") or {}
-        raise SystemExit(0 if cov.get("ok", True) else 1)
+        resolved = resolve_harness_ref(args.agent or default_agent)
+        try:
+            report = inspect_harness(str(resolved.harness_dir))
+            print(json.dumps(report, indent=2, sort_keys=True))
+            cov = report.get("binding_coverage") or {}
+            raise SystemExit(0 if cov.get("ok", True) else 1)
+        finally:
+            resolved.cleanup()
     if args.cmd == "test":
-        result = test_harness(
-            args.agent or default_agent,
-            deployment=args.deployment,
-            skip_fixtures=args.skip_fixtures,
-        )
-        for d in result.get("details") or []:
-            print(d)
-        if not result.get("ok"):
-            for e in result.get("errors") or []:
-                print(e, file=sys.stderr)
-            raise SystemExit(1)
-        print("test OK")
-        raise SystemExit(0)
+        resolved = resolve_harness_ref(args.agent or default_agent)
+        try:
+            result = test_harness(
+                str(resolved.harness_dir),
+                deployment=args.deployment,
+                skip_fixtures=args.skip_fixtures,
+            )
+            for d in result.get("details") or []:
+                print(d)
+            if not result.get("ok"):
+                for e in result.get("errors") or []:
+                    print(e, file=sys.stderr)
+                raise SystemExit(1)
+            print("test OK")
+            raise SystemExit(0)
+        finally:
+            resolved.cleanup()
     if args.cmd == "pack":
         r = pack_harness(args.agent or default_agent, args.out)
-        print(f"packed {len(r['files'])} files → {r['out']}")
+        print(f"packed {len(r['files'])} files -> {r['out']}")
         raise SystemExit(0)
+    if args.cmd == "unpack":
+        try:
+            dest = unpack_bundle(args.bundle, args.out, force=args.force)
+            print(f"unpacked -> {dest}")
+            raise SystemExit(0)
+        except BundleError as e:
+            print(str(e), file=sys.stderr)
+            raise SystemExit(1)
     parser.print_help()
     raise SystemExit(0)
 

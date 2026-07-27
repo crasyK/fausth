@@ -1,0 +1,45 @@
+# Explicit-only local coding deployment (KIT).
+# Never selected by `fausth test`, replay, or default deployment discovery.
+# Requires: --workspace <linked disposable git worktree> and KIT_AI_API_KEY.
+
+platform: kit-scc-coding-counterbalance-local
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.minimax-m2.7-229b
+    - kit.mistral-small-4-119b-a8b
+  temperature: 0
+  max_tokens: 2048
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+world:
+  shell_timeout_ms: 60000
+  max_read_bytes: 256000
+  max_output_bytes: 64000
+  commands:
+    test: ["node", "--test"]
+  scopes:
+    read: [src/]
+    write: [src/]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve
+  user.correct:
+    native: local.user_correct
+  mode.enter:
+    native: local.mode_enter
+  task.complete:
+    native: local.task_complete

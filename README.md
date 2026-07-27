@@ -4,7 +4,7 @@ Portable runtime and standard for **agent harnesses**: give an agent skills, mem
 
 **Counterbalance:** agent and world counterweight each other across **ability**, **awareness**, and **behaviour**. The model proposes; Fausth governs the exchange. See [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md).
 
-**Status:** v0.1.1 research alpha — correctness-focused. Baseline freeze: [`docs/BASELINE-v0.1.md`](docs/BASELINE-v0.1.md). Not production-safe.
+**Status:** v0.1.2-alpha research alpha — usable local coding harness. Normative contract remains `counterbalance-contract/v0.1`. Not production-safe.
 
 ## Two MVP claims
 
@@ -13,7 +13,7 @@ Portable runtime and standard for **agent harnesses**: give an agent skills, mem
 
 Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 
-## What v0.1.1 proves
+## What v0.1.2-alpha proves
 
 | Claim | Status |
 |-------|--------|
@@ -28,7 +28,9 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 | Multi-host (TS / Python / GHA) same harness + bindings | Proven (`pnpm ci:multi-host`) |
 | Live coding-counterbalance (OpenRouter Track B) | Secrets-gated (`live-openrouter` + CB scenarios) |
 | Nested spawn child log (M6) | Proven (Track A `spawn-nested-*`) |
-| Packaging CLI (`validate`/`test`/`inspect`/`pack`/`run`) | Proven (`pnpm ci:packaging`) |
+| Packaging CLI (`validate`/`test`/`inspect`/`pack`/`unpack`/`run`) | Proven (`pnpm ci:packaging`) |
+| Disposable-worktree local FS/process adapter (M8) | Proven (`pnpm ci:local-e2e`) |
+| Bundle TS↔Python byte-identical pack | Proven (`scripts/bundle-roundtrip.mjs`) |
 | Model-adaptive scaffolding | **Not yet** |
 | Production-ready isolation / security | **Not yet** |
 
@@ -44,7 +46,7 @@ Pre-execution deny gates are table stakes. Faust declares **how the world proves
 
 Primary integration is **OpenAI-compatible Chat Completions** with provider profiles (`openrouter`, `ollama`, `kit-scc`, `generic`). See [`docs/openai-compatible.md`](docs/openai-compatible.md). Secrets use `api_key_env` only — never YAML literals.
 
-```bash
+```bash +code
 # Public free-model demo
 pnpm live -- --deployment examples/greenhouse/deployment.openrouter-free.yml
 
@@ -53,38 +55,51 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts provider probe \
   --deployment ../../examples/greenhouse/deployment.kit.yml
 ```
 
-## Quickstart
+## Quickstart (first harness path)
 
-```bash
+```bash +code
 corepack enable
 pnpm install
 pnpm test
 pnpm replay
 pnpm ci:multi-host   # same coding-counterbalance harness: TS ≡ Python ≡ golden
-pnpm ci:packaging    # validate + test + pack coding + support harnesses
+pnpm ci:packaging    # validate + test + pack + TS↔Py bundle bytes
+pnpm ci:local-e2e    # recorded completion in a disposable linked worktree
 pnpm fausth -- help
 ```
 
-Author / check a harness:
+Author / check a harness (see [`docs/authoring.md`](docs/authoring.md)):
 
-```bash
+```bash +code
 pnpm fausth -- validate examples/coding-counterbalance
 pnpm fausth -- test examples/support-bot
 pnpm fausth -- inspect examples/coding-counterbalance
 pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth.json
+pnpm fausth -- unpack live/reports/out.fausth.json --out /tmp/cb --force
 ```
 
-Validate an example:
+### Security boundaries (alpha)
 
-```bash
-pnpm -C engines/ts exec node --import tsx src/cli.ts validate ../../examples/greenhouse
-```
+- Real I/O only with an explicit `deployment.local-*.yml` and `--workspace` = linked disposable worktree.
+- Not a VM sandbox. Do not use on valuable primary checkouts.
+- Track A goldens never depend on live models or local writes.
 
 Prove the harness with free models (needs `OPENROUTER_API_KEY` — see `.env.example`):
 
-```bash
+```bash +code
 cp .env.example .env   # add your key
 pnpm live
+```
+
+Primary OpenAI-compatible integration:
+
+```bash +code
+# Public free-model demo
+pnpm live -- --deployment examples/greenhouse/deployment.openrouter-free.yml
+
+# Institutional KIT gateway (requires KIT_AI_API_KEY)
+pnpm -C engines/ts exec node --import tsx src/cli.ts provider probe \
+  --deployment ../../examples/greenhouse/deployment.kit.yml
 ```
 
 ## Spec
