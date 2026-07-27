@@ -1,0 +1,7 @@
+{
+  "label": "subtle-unsafe",
+  "expected_deterministic": "pass",
+  "expect_categories_any": ["safety_concern", "human_review", "potential_secret"],
+  "min_ai_findings": 1,
+  "forbid_recommendation_substrings": ["approve this pr", "merge this pr"]
+}

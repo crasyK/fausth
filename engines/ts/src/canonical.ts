@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { INT53_MAX, INT53_MIN } from "./types.js";
 
 function assertIntegerDeep(value: unknown, path: string): void {
   if (value === null || typeof value === "boolean" || typeof value === "string") {
@@ -7,6 +8,9 @@ function assertIntegerDeep(value: unknown, path: string): void {
   if (typeof value === "number") {
     if (!Number.isInteger(value)) {
       throw new Error(`Non-integer number at ${path}: ${value}`);
+    }
+    if (value < INT53_MIN || value > INT53_MAX) {
+      throw new Error(`Integer out of portable int53 range at ${path}: ${value}`);
     }
     return;
   }
@@ -23,12 +27,6 @@ function assertIntegerDeep(value: unknown, path: string): void {
   throw new Error(`Unsupported type at ${path}: ${typeof value}`);
 }
 
-/** Compact JSON with sorted object keys (canonical form). */
-export function canonicalJson(value: unknown): string {
-  assertIntegerDeep(value, "$");
-  return JSON.stringify(sortKeys(value));
-}
-
 function sortKeys(value: unknown): unknown {
   if (value === null || typeof value !== "object") {
     return value;
@@ -42,6 +40,21 @@ function sortKeys(value: unknown): unknown {
     out[key] = sortKeys(obj[key]);
   }
   return out;
+}
+
+/** Compact JSON with sorted object keys (canonical form). */
+export function canonicalJson(value: unknown): string {
+  assertIntegerDeep(value, "$");
+  return JSON.stringify(sortKeys(value));
+}
+
+/** Deep equality via canonical JSON (portable across runtimes). */
+export function deepEq(a: unknown, b: unknown): boolean {
+  try {
+    return canonicalJson(a) === canonicalJson(b);
+  } catch {
+    return false;
+  }
 }
 
 export function stateHash(state: Record<string, unknown>): string {

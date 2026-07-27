@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,10 +20,34 @@ if (dirs.length === 0) {
   process.exit(1);
 }
 
-// TS: use replay which already checks expected; also dump actual via node script
+function firstDiff(a, b) {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  for (; i < n; i++) {
+    if (a[i] !== b[i]) break;
+  }
+  if (i === n && a.length === b.length) {
+    return { byte: -1, lineA: "", lineB: "" };
+  }
+  const lineA = a.slice(0, i).split("\n").pop() + a.slice(i).split("\n")[0];
+  const lineB = b.slice(0, i).split("\n").pop() + b.slice(i).split("\n")[0];
+  return { byte: i, lineA, lineB };
+}
+
 const ts = spawnSync(
   "pnpm",
-  ["-C", "engines/ts", "exec", "node", "--import", "tsx", "src/cli.ts", "replay"],
+  [
+    "-C",
+    "engines/ts",
+    "exec",
+    "node",
+    "--import",
+    "tsx",
+    "src/cli.ts",
+    "replay",
+    "--dump-dir",
+    outTs,
+  ],
   { cwd: root, encoding: "utf8", shell: true },
 );
 if (ts.status !== 0) {
@@ -31,36 +55,58 @@ if (ts.status !== 0) {
   process.exit(ts.status ?? 1);
 }
 
-const py = spawnSync("fausth-py", ["replay", "--dump-dir", outPy], {
+let py = spawnSync("fausth-py", ["replay", "--dump-dir", outPy], {
   cwd: root,
   encoding: "utf8",
   shell: true,
 });
 if (py.status !== 0) {
-  // try python -m
-  const py2 = spawnSync("python", ["-m", "fausth", "replay", "--dump-dir", outPy], {
+  py = spawnSync("python", ["-m", "fausth", "replay", "--dump-dir", outPy], {
     cwd: root,
     encoding: "utf8",
     shell: true,
   });
-  if (py2.status !== 0) {
-    console.error(py.stdout, py.stderr, py2.stdout, py2.stderr);
-    process.exit(py2.status ?? 1);
+  if (py.status !== 0) {
+    console.error(py.stdout, py.stderr);
+    process.exit(py.status ?? 1);
   }
 }
 
-// Compare dumps if present; else rely on both replays matching expected (transitive parity)
-let compared = 0;
+let failed = 0;
 for (const name of dirs) {
-  const a = join(outPy, `${name}.jsonl`);
-  const exp = join(fixtures, name, "expected.jsonl");
-  if (!existsSync(a)) continue;
-  const pyLog = readFileSync(a, "utf8").replace(/\r\n/g, "\n");
-  const expected = readFileSync(exp, "utf8").replace(/\r\n/g, "\n");
-  if (pyLog !== expected) {
-    console.error(`PARITY FAIL ${name}`);
-    process.exit(1);
+  const tsPath = join(outTs, `${name}.jsonl`);
+  const pyPath = join(outPy, `${name}.jsonl`);
+  const expPath = join(fixtures, name, "expected.jsonl");
+  if (!existsSync(tsPath) || !existsSync(pyPath)) {
+    console.error(`PARITY FAIL ${name}: missing dump (ts=${existsSync(tsPath)} py=${existsSync(pyPath)})`);
+    failed++;
+    continue;
   }
-  compared++;
+  const tsLog = readFileSync(tsPath, "utf8").replace(/\r\n/g, "\n");
+  const pyLog = readFileSync(pyPath, "utf8").replace(/\r\n/g, "\n");
+  const expected = readFileSync(expPath, "utf8").replace(/\r\n/g, "\n");
+
+  if (tsLog !== pyLog) {
+    const d = firstDiff(tsLog, pyLog);
+    console.error(`PARITY FAIL ${name}: TS ↔ Python differ at byte ${d.byte}`);
+    console.error(`  TS: ${d.lineA}`);
+    console.error(`  PY: ${d.lineB}`);
+    failed++;
+    continue;
+  }
+  if (tsLog !== expected) {
+    const d = firstDiff(tsLog, expected);
+    console.error(`PARITY FAIL ${name}: engines ↔ golden differ at byte ${d.byte}`);
+    console.error(`  got: ${d.lineA}`);
+    console.error(`  exp: ${d.lineB}`);
+    failed++;
+    continue;
+  }
+  console.log(`PARITY OK ${name}`);
 }
-console.log(`parity ok (${dirs.length} fixtures, ${compared} py dumps checked)`);
+
+if (failed) {
+  console.error(`parity failed (${failed}/${dirs.length})`);
+  process.exit(1);
+}
+console.log(`parity ok (${dirs.length} fixtures, TS ↔ Python ↔ golden)`);

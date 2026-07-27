@@ -1,13 +1,18 @@
-import { canonicalJson, stateHash } from "./canonical.js";
+import { canonicalJson, deepEq, stateHash } from "./canonical.js";
 import { evalPredicate } from "./predicates.js";
+import { validateAgainstSchema } from "./schema-validate.js";
+import { fallbackStateOf } from "./load.js";
 import type {
   AgentIR,
   Event,
   Gate,
   ModelProposal,
   ReasonCode,
+  RecordedToolCall,
   Snapshot,
+  StateTransition,
   ToolDef,
+  ToolResultEnvelope,
   Verdict,
   Verify,
 } from "./types.js";
@@ -15,7 +20,7 @@ import type {
 export type ToolHandler = (
   args: Record<string, unknown>,
   ctx: { state: Record<string, unknown> },
-) => Promise<Record<string, unknown>> | Record<string, unknown>;
+) => Promise<ToolResultEnvelope | Record<string, unknown>> | ToolResultEnvelope | Record<string, unknown>;
 
 export type JudgeFn = (
   rubric: string,
@@ -28,9 +33,28 @@ export type RuntimeOptions = {
   tools: Record<string, ToolHandler>;
   judge?: JudgeFn;
   allowJudge?: boolean;
-  /** Recorded tool results queue for fixtures (consume in order). */
-  recordedToolResults?: Record<string, unknown>[];
+  recordedToolResults?: RecordedToolCall[];
 };
+
+function normalizeEnvelope(
+  raw: ToolResultEnvelope | Record<string, unknown>,
+): ToolResultEnvelope {
+  if (raw && typeof raw === "object" && "output" in raw && typeof (raw as ToolResultEnvelope).output === "object") {
+    return raw as ToolResultEnvelope;
+  }
+  if (raw && typeof raw === "object" && "_state_patch" in raw) {
+    throw new Error("_state_patch is forbidden; use state_transition");
+  }
+  return { output: raw as Record<string, unknown> };
+}
+
+function scopeCovered(child: string, parents: string[]): boolean {
+  return parents.some((p) => {
+    if (child === p) return true;
+    const prefix = p.endsWith("/") ? p : p + "/";
+    return child.startsWith(prefix) || child === p.replace(/\/$/, "");
+  });
+}
 
 export class FaustRuntime {
   agent: AgentIR;
@@ -42,16 +66,20 @@ export class FaustRuntime {
   private tools: Record<string, ToolHandler>;
   private judge?: JudgeFn;
   private allowJudge: boolean;
-  private recordedToolResults: Record<string, unknown>[];
+  private recorded: RecordedToolCall[];
   private recordedIdx = 0;
+  private recovering = false;
 
   constructor(opts: RuntimeOptions) {
     this.agent = structuredClone(opts.agent);
+    if (this.agent.safe_state && !this.agent.fallback_state) {
+      this.agent.fallback_state = this.agent.safe_state;
+    }
     this.propose = opts.propose;
     this.tools = opts.tools;
     this.judge = opts.judge;
     this.allowJudge = opts.allowJudge ?? false;
-    this.recordedToolResults = opts.recordedToolResults ?? [];
+    this.recorded = opts.recordedToolResults ?? [];
   }
 
   private emit(partial: Omit<Event, "seq" | "ts_logical" | "state_hash"> & { state_hash?: string }): Event {
@@ -75,6 +103,10 @@ export class FaustRuntime {
 
   private toolById(id: string): ToolDef | undefined {
     return this.agent.tools.find((t) => t.id === id);
+  }
+
+  private parentTools(): string[] {
+    return this.agent.permissions?.tools ?? this.agent.tools.map((t) => t.id);
   }
 
   private checkLimits(): boolean {
@@ -106,27 +138,295 @@ export class FaustRuntime {
     return { ok: true };
   }
 
-  private async runTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (this.recordedToolResults.length > this.recordedIdx) {
-      const r = this.recordedToolResults[this.recordedIdx++]!;
-      return r as Record<string, unknown>;
+  private applyStateTransition(transition: StateTransition | undefined): void {
+    if (!transition) return;
+    const next = { ...this.agent.state };
+    if (transition.set) {
+      for (const [k, v] of Object.entries(transition.set)) {
+        if (!(k in this.agent.state) && Object.keys(this.agent.state).length > 0) {
+          // allow setting keys already in state; also allow new keys that match writable convention
+        }
+        next[k] = v;
+      }
+    }
+    if (transition.remove) {
+      for (const k of transition.remove) {
+        delete next[k];
+      }
+    }
+    this.agent.state = next;
+  }
+
+  private async invokeNative(name: string, args: Record<string, unknown>): Promise<ToolResultEnvelope> {
+    if (this.recorded.length > this.recordedIdx) {
+      const entry = this.recorded[this.recordedIdx]!;
+      const expectedSeq = this.recordedIdx + 1;
+      if (
+        entry.call_seq !== expectedSeq ||
+        entry.tool !== name ||
+        !deepEq(entry.args ?? {}, args)
+      ) {
+        throw new Error(
+          `Recorded transcript mismatch: expected call_seq=${expectedSeq} tool=${name} args=${canonicalJson(args)}, got call_seq=${entry.call_seq} tool=${entry.tool}`,
+        );
+      }
+      this.recordedIdx += 1;
+      return normalizeEnvelope(entry.result as ToolResultEnvelope | Record<string, unknown>);
     }
     const handler = this.tools[name];
     if (!handler) {
       throw new Error(`No native handler for ${name}`);
     }
-    return await handler(args, { state: this.agent.state });
+    return normalizeEnvelope(await handler(args, { state: this.agent.state }));
   }
 
-  private applySafeState(): void {
-    if (this.agent.safe_state) {
-      this.agent.state = { ...this.agent.state, ...this.agent.safe_state };
+  private applyFallbackState(): void {
+    const fb = fallbackStateOf(this.agent);
+    if (fb) {
+      this.agent.state = { ...this.agent.state, ...fb };
     }
     this.emit({
       stage: "record",
       verdict: "safe_state",
       reason: "safe_state_entered",
     });
+  }
+
+  private compareChildEnvelope(args: Record<string, unknown>): { ok: true } | { ok: false; reason: ReasonCode; error?: string } {
+    if (this.agent.spawn?.allow === false) {
+      return { ok: false, reason: "gate_denied", error: "spawn.allow is false" };
+    }
+    // If spawn policy exists and allow is explicitly required
+    if (this.agent.spawn && this.agent.spawn.allow !== true && this.agent.spawn.allow !== undefined) {
+      return { ok: false, reason: "gate_denied" };
+    }
+
+    const childTools = (args.tools as string[]) ?? [];
+    const parentTools = this.parentTools();
+    if (childTools.some((t) => !parentTools.includes(t))) {
+      return { ok: false, reason: "gate_denied", error: "tool escalation" };
+    }
+
+    const childFs = args.filesystem as { write_scopes?: string[]; read_scopes?: string[] } | undefined;
+    const parentFs = this.agent.permissions?.filesystem;
+    if (childFs?.write_scopes) {
+      const parents = parentFs?.write_scopes ?? [];
+      if (childFs.write_scopes.some((s) => !scopeCovered(s, parents))) {
+        return { ok: false, reason: "gate_denied", error: "write_scopes escalation" };
+      }
+    }
+    if (childFs?.read_scopes && parentFs?.read_scopes) {
+      if (childFs.read_scopes.some((s) => !scopeCovered(s, parentFs.read_scopes!))) {
+        return { ok: false, reason: "gate_denied", error: "read_scopes escalation" };
+      }
+    }
+
+    const childLimits = args.limits as { max_steps?: number; max_tool_calls?: number } | undefined;
+    const maxSteps = this.agent.limits?.max_steps ?? 1000;
+    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
+    const remainingSteps = maxSteps - this.steps;
+    const remainingCalls = maxTools - this.toolCalls;
+    if (childLimits?.max_steps !== undefined && childLimits.max_steps > remainingSteps) {
+      return { ok: false, reason: "gate_denied", error: "max_steps escalation" };
+    }
+    if (childLimits?.max_tool_calls !== undefined && childLimits.max_tool_calls > remainingCalls) {
+      return { ok: false, reason: "gate_denied", error: "max_tool_calls escalation" };
+    }
+
+    if (args.spawn_nested === true || (args.spawn as { allow?: boolean })?.allow === true) {
+      if (this.agent.spawn?.allow_nested !== true) {
+        return { ok: false, reason: "gate_denied", error: "nested spawn denied" };
+      }
+    }
+
+    return { ok: true };
+  }
+
+  /** Governed observation path for effect verifies. */
+  private async runObservation(
+    observerId: string,
+  ): Promise<{ ok: true; observation: Record<string, unknown> } | { ok: false }> {
+    const observer = this.toolById(observerId);
+    if (!observer || observer.read_only !== true) {
+      this.emit({
+        stage: "validate",
+        verdict: "deny",
+        reason: "capability_missing",
+        tool: observerId,
+        error: "observer missing or not read_only",
+      });
+      return { ok: false };
+    }
+
+    const allowed = this.agent.permissions?.tools;
+    if (allowed && !allowed.includes(observerId)) {
+      this.emit({
+        stage: "authorize",
+        verdict: "deny",
+        reason: "capability_missing",
+        tool: observerId,
+      });
+      return { ok: false };
+    }
+
+    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
+    if (this.toolCalls >= maxTools) {
+      this.emit({
+        stage: "authorize",
+        verdict: "deny",
+        reason: "limit_exceeded",
+        tool: observerId,
+      });
+      return { ok: false };
+    }
+
+    this.toolCalls += 1;
+    let envelope: ToolResultEnvelope;
+    try {
+      envelope = await this.invokeNative(observerId, {});
+    } catch (e) {
+      this.emit({
+        stage: "observe",
+        verdict: "deny",
+        reason: "tool_execution_failed",
+        tool: observerId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return { ok: false };
+    }
+
+    const outCheck = validateAgainstSchema(observer.output, envelope.output);
+    if (!outCheck.ok) {
+      this.emit({
+        stage: "observe",
+        verdict: "deny",
+        reason: "output_schema_invalid",
+        tool: observerId,
+        error: "output schema validation failed",
+      });
+      return { ok: false };
+    }
+
+    this.emit({
+      stage: "observe",
+      verdict: "allow",
+      tool: observerId,
+      args: {},
+      result: envelope.output,
+    });
+    return { ok: true, observation: envelope.output };
+  }
+
+  private async runRecovery(triggerReason: ReasonCode): Promise<void> {
+    const recovery = this.agent.recovery;
+    if (!recovery || this.recovering) {
+      this.applyFallbackState();
+      return;
+    }
+    if (recovery.on && recovery.on !== triggerReason) {
+      this.applyFallbackState();
+      return;
+    }
+
+    this.recovering = true;
+    const action = {
+      name: recovery.execute.tool,
+      args: recovery.execute.args ?? {},
+    };
+
+    // Governed recovery execute
+    this.emit({ stage: "propose", tool: action.name, args: action.args });
+
+    const tool = this.toolById(action.name);
+    if (!tool) {
+      this.emit({
+        stage: "validate",
+        verdict: "deny",
+        reason: "capability_missing",
+        tool: action.name,
+        args: action.args,
+      });
+      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
+      this.applyFallbackState();
+      this.recovering = false;
+      return;
+    }
+
+    const inCheck = validateAgainstSchema(tool.input, action.args);
+    if (!inCheck.ok) {
+      this.emit({
+        stage: "validate",
+        verdict: "deny",
+        reason: "input_schema_invalid",
+        tool: action.name,
+        args: action.args,
+        error: "input schema validation failed",
+      });
+      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
+      this.applyFallbackState();
+      this.recovering = false;
+      return;
+    }
+    this.emit({ stage: "validate", verdict: "allow", tool: action.name, args: action.args });
+    this.emit({ stage: "authorize", verdict: "allow", tool: action.name, args: action.args });
+
+    this.toolCalls += 1;
+    let envelope: ToolResultEnvelope;
+    try {
+      envelope = await this.invokeNative(action.name, action.args);
+    } catch (e) {
+      this.emit({
+        stage: "execute",
+        verdict: "deny",
+        reason: "tool_execution_failed",
+        tool: action.name,
+        args: action.args,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
+      this.applyFallbackState();
+      this.recovering = false;
+      return;
+    }
+
+    const outCheck = validateAgainstSchema(tool.output, envelope.output);
+    if (!outCheck.ok) {
+      this.emit({
+        stage: "execute",
+        verdict: "deny",
+        reason: "output_schema_invalid",
+        tool: action.name,
+        args: action.args,
+        error: "output schema validation failed",
+      });
+      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
+      this.applyFallbackState();
+      this.recovering = false;
+      return;
+    }
+
+    this.applyStateTransition(envelope.state_transition);
+    this.emit({
+      stage: "execute",
+      verdict: "allow",
+      tool: action.name,
+      args: action.args,
+      result: envelope.output,
+    });
+
+    const verified = await this.runOneVerify(recovery.verify, action, envelope.output);
+    if (verified) {
+      this.emit({ stage: "record", verdict: "allow", reason: "recovery_succeeded" });
+      this.applyFallbackState();
+    } else {
+      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
+      this.applyFallbackState();
+    }
+    this.recovering = false;
+  }
+
+  private async enterSafeFlow(triggerReason: ReasonCode): Promise<void> {
+    await this.runRecovery(triggerReason);
   }
 
   private async runVerifies(
@@ -200,12 +500,13 @@ export class FaustRuntime {
     }
 
     if (v.kind === "effect") {
-      const observation = await this.runTool(v.observe, {});
+      const obs = await this.runObservation(v.observe);
+      if (!obs.ok) return false;
       const snapshot: Snapshot = {
         action,
         state: this.agent.state,
         result,
-        observation,
+        observation: obs.observation,
       };
       if (!evalPredicate(v.require, snapshot)) {
         const verdict = v.otherwise ?? "safe_state";
@@ -215,16 +516,18 @@ export class FaustRuntime {
           reason: "verify_effect_failed",
           tool: action.name,
           args: action.args,
-          observation,
+          observation: obs.observation,
         });
-        if (verdict === "safe_state") this.applySafeState();
+        if (verdict === "safe_state" && !this.recovering) {
+          await this.enterSafeFlow("verify_effect_failed");
+        }
         return false;
       }
       this.emit({
         stage: "verify",
         verdict: "allow",
         tool: action.name,
-        observation,
+        observation: obs.observation,
       });
       return true;
     }
@@ -242,14 +545,15 @@ export class FaustRuntime {
         args: action.args,
         result,
       });
-      if (verdict === "safe_state") this.applySafeState();
+      if (verdict === "safe_state" && !this.recovering) {
+        await this.enterSafeFlow(reason);
+      }
       return false;
     }
     this.emit({ stage: "verify", verdict: "allow", tool: action.name, result });
     return true;
   }
 
-  /** Run until stop proposal or deny/limit. */
   async runLoop(maxIterations = 32): Promise<Event[]> {
     for (let i = 0; i < maxIterations; i++) {
       if (!this.checkLimits()) break;
@@ -283,7 +587,6 @@ export class FaustRuntime {
         break;
       }
 
-      // permissions tool allowlist
       const allowed = this.agent.permissions?.tools;
       if (allowed && !allowed.includes(action.name) && action.name !== "agent.spawn") {
         this.emit({
@@ -292,6 +595,19 @@ export class FaustRuntime {
           reason: "capability_missing",
           tool: action.name,
           args: action.args,
+        });
+        break;
+      }
+
+      const inCheck = validateAgainstSchema(tool.input, action.args);
+      if (!inCheck.ok) {
+        this.emit({
+          stage: "validate",
+          verdict: "deny",
+          reason: "input_schema_invalid",
+          tool: action.name,
+          args: action.args,
+          error: "input schema validation failed",
         });
         break;
       }
@@ -308,22 +624,20 @@ export class FaustRuntime {
           tool: action.name,
           args: action.args,
         });
-        if (gated.verdict === "safe_state") this.applySafeState();
+        if (gated.verdict === "safe_state") await this.enterSafeFlow("gate_denied");
         break;
       }
 
-      // tighten-only: child tools must be ⊆ parent permissions
       if (action.name === "agent.spawn") {
-        const childTools = (action.args.tools as string[]) ?? [];
-        const parentTools = this.agent.permissions?.tools ?? this.agent.tools.map((t) => t.id);
-        const escalate = childTools.some((t) => !parentTools.includes(t));
-        if (escalate) {
+        const child = this.compareChildEnvelope(action.args);
+        if (!child.ok) {
           this.emit({
             stage: "authorize",
             verdict: "deny",
-            reason: "gate_denied",
+            reason: child.reason,
             tool: action.name,
             args: action.args,
+            error: child.error,
           });
           break;
         }
@@ -333,14 +647,14 @@ export class FaustRuntime {
 
       this.toolCalls += 1;
 
-      let result: Record<string, unknown>;
+      let envelope: ToolResultEnvelope;
       try {
-        result = await this.runTool(action.name, action.args);
+        envelope = await this.invokeNative(action.name, action.args);
       } catch (e) {
         this.emit({
           stage: "execute",
           verdict: "deny",
-          reason: "schema_invalid",
+          reason: "tool_execution_failed",
           tool: action.name,
           args: action.args,
           error: e instanceof Error ? e.message : String(e),
@@ -348,25 +662,30 @@ export class FaustRuntime {
         break;
       }
 
-      // Apply state patches from result if present
-      if (result._state_patch && typeof result._state_patch === "object") {
-        this.agent.state = {
-          ...this.agent.state,
-          ...(result._state_patch as Record<string, unknown>),
-        };
-        const { _state_patch: _, ...rest } = result;
-        result = rest;
+      const outCheck = validateAgainstSchema(tool.output, envelope.output);
+      if (!outCheck.ok) {
+        this.emit({
+          stage: "execute",
+          verdict: "deny",
+          reason: "output_schema_invalid",
+          tool: action.name,
+          args: action.args,
+          error: "output schema validation failed",
+        });
+        break;
       }
+
+      this.applyStateTransition(envelope.state_transition);
 
       this.emit({
         stage: "execute",
         verdict: "allow",
         tool: action.name,
         args: action.args,
-        result,
+        result: envelope.output,
       });
 
-      const verified = await this.runVerifies(tool, action, result);
+      const verified = await this.runVerifies(tool, action, envelope.output);
       if (!verified) break;
     }
     return this.events;

@@ -1,0 +1,65 @@
+name: Faust deterministic submission check
+
+# Copy into SLOPATHON as .github/workflows/submission-deterministic.yml
+# No secrets. Hosts the Faust TS checker — not a separate engine.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deterministic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR (untrusted code — no secrets in this job)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: crasyK/fausth
+          path: fausth
+          # Pin to a commit SHA in production
+          ref: main
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: fausth/pnpm-lock.yaml
+
+      - name: Install Faust
+        working-directory: fausth
+        run: pnpm install
+
+      - name: Build review packet + deterministic check
+        id: review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm -C fausth/engines/ts exec node --import tsx src/cli.ts review \
+            --mode deterministic \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --out "${GITHUB_WORKSPACE}/review-out.json" \
+            --markdown "${GITHUB_WORKSPACE}/review.md" \
+            --post 1
+          echo "conclusion=$(node -e "console.log(require('${GITHUB_WORKSPACE}/review-out.json').conclusion)")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload packet artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-packet
+          path: |
+            review-out.json
+            review.md
+
+      - name: Fail on blocking conclusion
+        if: steps.review.outputs.conclusion == 'fail'
+        run: exit 1

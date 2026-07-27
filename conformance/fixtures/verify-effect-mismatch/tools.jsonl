@@ -1,2 +1,4 @@
-{"ok":1,"percent":40}
-{"percent":0}
+{"call_seq":1,"tool":"actuator.fan.set","args":{"percent":40},"result":{"output":{"ok":1,"percent":40}}}
+{"call_seq":2,"tool":"sensor.fan.read_percent","args":{},"result":{"output":{"percent":0}}}
+{"call_seq":3,"tool":"actuator.fan.set","args":{"percent":0},"result":{"output":{"ok":1,"percent":0},"state_transition":{"set":{"fan_percent":0}}}}
+{"call_seq":4,"tool":"sensor.fan.read_percent","args":{},"result":{"output":{"percent":0}}}

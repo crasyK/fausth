@@ -1,0 +1,5 @@
+{
+  "title": "Add good-minimal project",
+  "body": "## Project\n**Name:** good-minimal\n\n## Submission check\n- [x] Our project lives inside one folder under `projects`.\n- [x] We completed the project `README.md`.\n- [x] We included setup and demo instructions.\n- [x] We did not commit passwords, API keys, tokens or private data.\n- [x] We have permission to publish the submitted code and assets.\n",
+  "changed_paths": ["projects/good-minimal/README.md", "projects/good-minimal/app.js"]
+}

@@ -1,0 +1,27 @@
+platform: slopathon-kit
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.mistral-small-4-119b-a8b
+    - kit.gemma4-31b-it
+  temperature: 0
+  max_tokens: 1024
+model_catalog:
+  - id: kit.mistral-small-4-119b-a8b
+    policy: { residency: kit-local, personal_data: allowed }
+  - id: kit.gemma4-31b-it
+    policy: { residency: kit-local, personal_data: allowed }
+data_policy:
+  classification: personal
+  require:
+    residency: kit-local
+bindings:
+  packet.summary.read:
+    native: review.packet_summary
+  repository.file.read:
+    native: review.file_read
+  finding.submit:
+    native: review.finding_submit

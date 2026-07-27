@@ -1,6 +1,7 @@
 /**
  * Generates golden fixtures from spec-aligned scenarios.
  * Expected logs follow docs/spec-v0.1.md lifecycle rules.
+ * Review every expected.jsonl before treating as normative.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ import { dirname, resolve } from "node:path";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { agentYamlToIr, loadYamlFile, toCanonicalIrJson } from "./load.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
-import type { AgentIR, ModelProposal } from "./types.js";
+import type { AgentIR, ModelProposal, RecordedToolCall } from "./types.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -17,7 +18,7 @@ async function writeFixture(
   name: string,
   agent: AgentIR,
   proposals: ModelProposal[],
-  toolsQueue: Record<string, unknown>[] | undefined,
+  toolsQueue: RecordedToolCall[] | undefined,
   toolFactory: (agent: AgentIR) => Record<string, import("./runtime.js").ToolHandler>,
 ) {
   const dir = join(root, "conformance/fixtures", name);
@@ -91,14 +92,38 @@ async function main() {
     ghTools,
   );
 
-  // execute claims 40 but observe returns 0 → effect mismatch
   await writeFixture(
     "verify-effect-mismatch",
     gh,
     [{ type: "tool", name: "actuator.fan.set", args: { percent: 40 } }],
     [
-      { ok: 1, percent: 40 }, // execute result without updating world (recorded)
-      { percent: 0 }, // observe
+      {
+        call_seq: 1,
+        tool: "actuator.fan.set",
+        args: { percent: 40 },
+        result: { output: { ok: 1, percent: 40 } },
+      },
+      {
+        call_seq: 2,
+        tool: "sensor.fan.read_percent",
+        args: {},
+        result: { output: { percent: 0 } },
+      },
+      {
+        call_seq: 3,
+        tool: "actuator.fan.set",
+        args: { percent: 0 },
+        result: {
+          output: { ok: 1, percent: 0 },
+          state_transition: { set: { fan_percent: 0 } },
+        },
+      },
+      {
+        call_seq: 4,
+        tool: "sensor.fan.read_percent",
+        args: {},
+        result: { output: { percent: 0 } },
+      },
     ],
     ghTools,
   );
@@ -123,9 +148,14 @@ async function main() {
     ...gh,
     limits: { max_steps: 6, max_tool_calls: 0 },
   };
-  await writeFixture("budget-exceed", budgetAgent, [{ type: "tool", name: "actuator.fan.set", args: { percent: 10 } }], undefined, ghTools);
+  await writeFixture(
+    "budget-exceed",
+    budgetAgent,
+    [{ type: "tool", name: "actuator.fan.set", args: { percent: 10 } }],
+    undefined,
+    ghTools,
+  );
 
-  // spawn fixtures
   await writeFixture(
     "spawn-ok",
     code,
@@ -140,6 +170,67 @@ async function main() {
     [{ type: "tool", name: "agent.spawn", args: { tools: ["fs.read", "shell.unrestricted"] } }],
     undefined,
     codeTools,
+  );
+
+  // spawn.allow false
+  const spawnDisabled: AgentIR = {
+    ...code,
+    spawn: { allow: false, tighten_only: true },
+  };
+  await writeFixture(
+    "spawn-deny-when-disabled",
+    spawnDisabled,
+    [{ type: "tool", name: "agent.spawn", args: { tools: ["fs.read"] } }],
+    undefined,
+    codeTools,
+  );
+
+  // filesystem escalation
+  await writeFixture(
+    "spawn-deny-fs-escalate",
+    code,
+    [
+      {
+        type: "tool",
+        name: "agent.spawn",
+        args: {
+          tools: ["fs.read"],
+          filesystem: { write_scopes: ["/"] },
+        },
+      },
+    ],
+    undefined,
+    codeTools,
+  );
+
+  // input schema invalid
+  await writeFixture(
+    "input-schema-invalid",
+    gh,
+    [{ type: "tool", name: "actuator.fan.set", args: { percent: "maximum please" } as Record<string, unknown> }],
+    undefined,
+    ghTools,
+  );
+
+  // predicate missing path via gate that uses neq on missing — use a custom agent
+  const missingAgent: AgentIR = {
+    ...gh,
+    gates: [
+      {
+        id: "require-flag",
+        when: { path: "action.name", eq: "system.wait" },
+        require: { path: "action.args.flag", eq: 1 },
+        otherwise: "deny",
+      },
+      ...(gh.gates ?? []),
+    ],
+  };
+  await writeFixture(
+    "predicate-missing-path",
+    missingAgent,
+    [{ type: "tool", name: "system.wait", args: { ms: 0 } }],
+    undefined,
+    ghTools,
   );
 }
 

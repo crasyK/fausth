@@ -1,6 +1,6 @@
 # Counterbalance Contract — Specification v0.1
 
-**Status:** Normative for Faust Harness v0.1  
+**Status:** Normative for Faust Harness v0.1.1  
 **Spec id:** `counterbalance-contract/v0.1`
 
 This document is the source of truth. Golden `expected.jsonl` files MUST be hand-derived from this prose before any engine is treated as correct. Live OpenRouter runs MUST NOT rewrite golden expectations automatically.
@@ -11,7 +11,9 @@ This document is the source of truth. Golden `expected.jsonl` files MUST be hand
 
 ### 1.1 `agent.yml` (portable behavior)
 
-Declares identity, state schema defaults, tools (canonical IDs + I/O schemas), gates, verifies, limits, and optional spawn policy.
+Declares identity, state schema defaults, tools (canonical IDs + I/O schemas), gates, verifies, limits, optional spawn policy, optional `fallback_state` / `recovery`.
+
+`safe_state` is a deprecated alias for `fallback_state` (accepted in v0.1.x; validators SHOULD warn).
 
 ### 1.2 `deployment.yml` (local binding)
 
@@ -25,9 +27,12 @@ Authoring is YAML. Runtime normative form is **canonical JSON**:
 2. Object keys sorted lexicographically by Unicode code point
 3. No insignificant whitespace (compact separators `,` and `:`)
 4. Integers only — no floats, `NaN`, or `Infinity`
-5. Arrays preserve declaration order
+5. Portable integer range: `-(2^53-1) ≤ n ≤ 2^53-1` (signed 53-bit safe integers)
+6. Arrays preserve declaration order
 
 `state_hash` = lowercase hex SHA-256 of the canonical JSON encoding of the current `state` object.
+
+Deep equality of values (predicates, recorded-arg matching) MUST use canonical JSON string equality, not language-native object equality.
 
 ---
 
@@ -36,12 +41,21 @@ Authoring is YAML. Runtime normative form is **canonical JSON**:
 Shipped stages, in order, for each tool-using step:
 
 1. **propose** — model (or recorded fixture) emits a tool call or stop
-2. **validate** — args match tool input schema; unknown tool → `capability_missing`
+2. **validate** — args match tool input schema; unknown tool → `capability_missing`; bad args → `input_schema_invalid`
 3. **authorize** — evaluate gates in declaration order; first failing gate → `deny` with `gate_denied`
-4. **execute** — invoke native binding; record result
+4. **execute** — invoke native binding; validate output schema (`output_schema_invalid`); apply `state_transition`; record result; native failure → `tool_execution_failed`
 5. **verify** — evaluate verifies in declaration order (see §4)
 
-Named stubs (may emit events, no required semantics in v0.1): `observe`, `record`, `rebalance`.
+### Effect observation sub-path
+
+When an `effect` verify runs, observation MUST NOT call the native tool as an ungoverned side channel. Engines MUST follow:
+
+1. **validate_observer** — observer tool exists, `read_only: true`, args match input schema
+2. **authorize_observer** — observer id is in the permission allowlist (if present)
+3. **observe** — emit an `observe` stage event with tool/args/result; count against `max_tool_calls`
+4. **evaluate_evidence** — bind result as `observation` and evaluate `require`
+
+Named stubs (may emit events): `record`, `rebalance`.
 
 ### Verdicts
 
@@ -49,7 +63,7 @@ Named stubs (may emit events, no required semantics in v0.1): `observe`, `record
 |---------|---------|
 | `allow` | Step accepted |
 | `deny` | Step rejected; tool not executed (or spawn rejected) |
-| `safe_state` | Failure after execute (or authorize policy); enter declared safe state transition |
+| `safe_state` | Failure after execute (or authorize policy); enter recovery / fallback flow |
 
 ### Limits
 
@@ -80,7 +94,19 @@ Gates are data-only predicates evaluated against a **snapshot**:
 | `{ any: [pred...] }` | disjunction |
 | `{ not: pred }` | negation |
 
-Path strings use `.` separators (`action.args.percent`). Missing path → predicate fails (except under `not`).
+Path strings use `.` separators (`action.args.percent`).
+
+### Missing-path semantics (`MISSING` sentinel)
+
+Resolving a path that does not exist yields an internal `MISSING` value, distinct from JSON `null`.
+
+| Operator | Behavior when path is `MISSING` |
+|----------|----------------------------------|
+| `eq` | fails (unless comparing to an impossible literal — never equals a present value) |
+| `neq` | fails (missing is not “not equal”; it is absent) |
+| `eq_path` | succeeds only if **both** paths are `MISSING`; otherwise fails if either is missing while the other is present |
+| `lt` / `lte` / `gt` / `gte` | fails |
+| under `not` | negation of the above |
 
 **Forbidden:** loops, function calls, arithmetic, side effects, string eval, CEL, Rego.
 
@@ -92,7 +118,7 @@ Gates evaluate in **file / array declaration order**. First failure wins.
 
 | Kind | Track A? | Semantics |
 |------|----------|-----------|
-| `effect` | Yes | After execute, call `observe` tool; bind result as `observation`; require predicates; else `verify_effect_failed` → `otherwise` verdict (usually `safe_state`) |
+| `effect` | Yes | After execute, run governed observation (§2); require predicates; else `verify_effect_failed` → `otherwise` verdict (usually `safe_state`) |
 | `evidence` | Yes | After execute, require predicates on `result` (e.g. `result.exit_code eq 0`); else `verify_evidence_failed` |
 | `absence` | Yes | After execute, require predicates asserting nothing forbidden (e.g. `result.out_of_scope eq 0`); else `verify_absence_failed` |
 | `judge` | **No** | Live only. Call second model with rubric; parse JSON `{score, reason}` into `judgment`; invalid JSON → `verify_judge_invalid`; failed require → `verify_judge_failed`. MUST NOT mutate `state` used for `state_hash` in Track A. |
@@ -101,15 +127,81 @@ If `otherwise` is omitted, default is `deny` for gates and `safe_state` for veri
 
 ---
 
-## 5. Closed reason codes
+## 5. Tool schemas and result envelope
 
-Engines MUST only emit:
+### 5.1 Input / output
 
-`gate_denied` · `capability_missing` · `limit_exceeded` · `verify_effect_failed` · `verify_evidence_failed` · `verify_absence_failed` · `verify_judge_invalid` · `verify_judge_failed` · `schema_invalid` · `safe_state_entered`
+Executable tools SHOULD declare JSON Schema `input` and `output` objects. When present:
+
+- `validate` MUST reject args that fail `input` (`input_schema_invalid`).
+- Unknown properties are rejected unless the schema sets `additionalProperties: true`.
+- After native execution, the **output object** MUST match `output` (`output_schema_invalid`).
+
+### 5.2 Result envelope
+
+Native handlers return:
+
+```json
+{
+  "output": { },
+  "state_transition": { "set": { }, "remove": [] }
+}
+```
+
+Legacy `_state_patch` is forbidden in v0.1.1+.
+
+Sequence:
+
+1. Validate `output` against `tool.output` (if present)
+2. Validate `state_transition.set` / `remove` against allowed writable state keys (any key present in initial `state`, unless a future `state_writable` list is declared)
+3. Apply transition to agent `state`
+4. Emit `execute` with `result` = `output` and `state_hash` of the post-transition state
+5. Run verification
 
 ---
 
-## 6. Event log
+## 6. Fallback and recovery
+
+`fallback_state` (alias `safe_state`) is **internal bookkeeping only**. It MUST NOT be treated as proof that the physical world is safe.
+
+Optional `recovery` block:
+
+```yaml
+recovery:
+  on: verify_effect_failed   # reason that triggers recovery
+  execute:
+    tool: actuator.fan.set
+    args: { percent: 0 }
+  verify:
+    kind: effect
+    observe: sensor.fan.read_percent
+    require: { path: observation.percent, eq: 0 }
+  on_failure: terminal_failure
+```
+
+When a verify fails with verdict `safe_state`:
+
+1. If `recovery` is present and `recovery.on` matches the failure reason (or `recovery.on` is omitted), run `recovery.execute` through the normal validate → authorize → execute path (subject to limits).
+2. Run `recovery.verify` (governed observation if `effect`).
+3. On recovery success: emit `record` with `recovery_succeeded`, then apply `fallback_state` and emit `record` with `safe_state_entered`.
+4. On recovery failure: emit `record` with `terminal_failure`; do **not** claim world safety. Still apply `fallback_state` for logical consistency if declared.
+5. If no `recovery` block: apply `fallback_state` and emit `record` with `safe_state_entered` (v0.1 bookkeeping-only behavior).
+
+---
+
+## 7. Closed reason codes
+
+Engines MUST only emit:
+
+`gate_denied` · `capability_missing` · `limit_exceeded` · `verify_effect_failed` · `verify_evidence_failed` · `verify_absence_failed` · `verify_judge_invalid` · `verify_judge_failed` · `schema_invalid` · `input_schema_invalid` · `output_schema_invalid` · `tool_execution_failed` · `safe_state_entered` · `recovery_succeeded` · `terminal_failure`
+
+- `schema_invalid` — malformed contract IR / spawn packet
+- `input_schema_invalid` / `output_schema_invalid` — tool I/O schema failures
+- `tool_execution_failed` — native handler error or recorded-transcript mismatch
+
+---
+
+## 8. Event log
 
 JSON Lines, LF newlines, one event object per line, file ends with a trailing newline.
 
@@ -128,7 +220,8 @@ Events for a successful tool step (happy path):
 2. `validate` (`allow`)
 3. `authorize` (`allow`)
 4. `execute` (`tool`, `args`, `result`)
-5. `verify` (`allow`) — one event per verify item that passes; on failure emit `verify` with failing reason and `safe_state`/`deny`, then if safe_state apply transition and emit `record` with `safe_state_entered`
+5. For each `effect` verify: `observe` then `verify` (`allow`)
+6. For evidence/absence: `verify` (`allow`) only
 
 ### Deny before execute
 
@@ -138,24 +231,33 @@ Events for a successful tool step (happy path):
 
 ### Limit exceeded
 
-1. `propose` may be omitted if loop stops before propose  
-   Or: emit `authorize`-stage event with `deny` + `limit_exceeded` when the limit check fires at loop head — **v0.1 rule:** emit single event `{ stage: "authorize", verdict: "deny", reason: "limit_exceeded", state_hash }` and stop.
+Emit single event `{ stage: "authorize", verdict: "deny", reason: "limit_exceeded", state_hash }` and stop.
 
 ---
 
-## 7. Security / spawn
+## 9. Security / spawn
 
 `agent.spawn` accepts a child harness packet (subset of agent IR).
 
-- Child permissions MUST be ⊆ parent (tighten-only).
-- Escalation attempt → `deny` with `gate_denied` (or `schema_invalid` if malformed).
-- Orchestrator assigns work; runtime owns trust.
+Tighten-only capability lattice — child MUST be ≤ parent on every governed dimension:
+
+- `child.tools ⊆ parent.tools` (permission allowlist, else declared tool ids)
+- `child.filesystem.write_scopes` each must be equal to or a path-prefix child of some parent write scope
+- `child.filesystem.read_scopes ⊆ parent.read_scopes` (when parent declares read scopes)
+- `child.limits.max_steps ≤ parent.remaining_steps` (when specified)
+- `child.limits.max_tool_calls ≤ parent.remaining_calls` (when specified)
+- Nested spawn: denied unless parent `spawn.allow_nested: true`
+- If parent `spawn.allow` is `false` (or omitted when spawn tool is used without policy allow), deny
+
+Escalation → `deny` with `gate_denied` (or `schema_invalid` if malformed).
+
+Orchestrator assigns work; runtime owns trust.
 
 ---
 
-## 8. Determinism (Track A)
+## 10. Determinism (Track A)
 
-1. Integers only in state, tool args, and results
+1. Integers only in state, tool args, and results (within int53 range)
 2. Canonical JSON as defined in §1.3
 3. Logical clock only
 4. Declaration order evaluation
@@ -163,9 +265,19 @@ Events for a successful tool step (happy path):
 6. No wall-clock, RNG, locale, or environment reads inside gate or computational verify evaluation
 7. `judge` forbidden in fixtures
 
+### Recorded tool transcripts
+
+`tools.jsonl` entries MUST bind call identity:
+
+```json
+{"call_seq":1,"tool":"actuator.fan.set","args":{"percent":40},"result":{"ok":1,"percent":40}}
+```
+
+Replay MUST reject if requested tool, args (canonical equality), or call sequence disagree → `tool_execution_failed`.
+
 ---
 
-## 9. Adapters
+## 11. Adapters
 
 | Transport | Use |
 |-----------|-----|
@@ -176,6 +288,6 @@ Events for a successful tool step (happy path):
 
 ---
 
-## 10. Fixture derivation rule
+## 12. Fixture derivation rule
 
 If a golden `expected.jsonl` cannot be derived from this document alone, this specification is underspecified — fix the spec, not the engine.

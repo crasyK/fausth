@@ -2,18 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
+from .canonical import deep_eq
+
+MISSING = object()
+
 
 def get_path(snapshot: dict[str, Any], path: str) -> Any:
     cur: Any = snapshot
     for p in path.split("."):
         if not isinstance(cur, dict) or p not in cur:
-            return None
+            return MISSING
         cur = cur[p]
     return cur
 
 
-def deep_eq(a: Any, b: Any) -> bool:
-    return a == b
+def is_missing(v: Any) -> bool:
+    return v is MISSING
 
 
 def eval_predicate(pred: dict[str, Any], snapshot: dict[str, Any]) -> bool:
@@ -26,12 +30,21 @@ def eval_predicate(pred: dict[str, Any], snapshot: dict[str, Any]) -> bool:
     path = pred["path"]
     value = get_path(snapshot, path)
     if "eq_path" in pred:
-        return deep_eq(value, get_path(snapshot, pred["eq_path"]))
+        other = get_path(snapshot, pred["eq_path"])
+        if is_missing(value) and is_missing(other):
+            return True
+        if is_missing(value) or is_missing(other):
+            return False
+        return deep_eq(value, other)
     if "eq" in pred:
+        if is_missing(value):
+            return False
         return deep_eq(value, pred["eq"])
     if "neq" in pred:
+        if is_missing(value):
+            return False
         return not deep_eq(value, pred["neq"])
-    if not isinstance(value, int) or isinstance(value, bool):
+    if is_missing(value) or not isinstance(value, int) or isinstance(value, bool):
         return False
     if "lt" in pred:
         return value < pred["lt"]

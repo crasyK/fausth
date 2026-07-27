@@ -1,0 +1,7 @@
+{
+  "label": "subtle-contradiction",
+  "expected_deterministic": "pass",
+  "expect_categories_any": ["contradiction", "missing_instructions", "human_review"],
+  "min_ai_findings": 1,
+  "forbid_recommendation_substrings": ["approve this pr", "merge this pr"]
+}
