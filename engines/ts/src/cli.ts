@@ -31,7 +31,7 @@ import {
   type ReviewToolState,
 } from "./integrations/github/review-runtime.js";
 import { filterVerifiedFindings } from "./integrations/github/submission-check.js";
-import { postReviewToGithub } from "./integrations/github/poster.js";
+import { emitGithubActionsAnnotations, postReviewToGithub } from "./integrations/github/poster.js";
 import { createConversationalPropose } from "./integrations/github/conversational-propose.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -432,9 +432,16 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
     if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
     if (args.post && args.repo && args.pr) {
       postReviewToGithub(
-        { repo: args.repo, pr: Number(args.pr), checkRun: args["check-run"] === "1" || args["check-run"] === "true" },
+        {
+          repo: args.repo,
+          pr: Number(args.pr),
+          checkRun: args["check-run"] !== "0" && args["check-run"] !== "false",
+          comment: args.comment === "1" || args.comment === "true",
+        },
         report,
       );
+    } else {
+      emitGithubActionsAnnotations(report);
     }
     console.log(report.markdown);
     return packet.conclusion === "fail" ? 1 : 0;
@@ -545,9 +552,16 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
   if (args.post && args.repo && args.pr) {
     postReviewToGithub(
-      { repo: args.repo, pr: Number(args.pr), checkRun: args["check-run"] === "1" || args["check-run"] === "true" },
+      {
+        repo: args.repo,
+        pr: Number(args.pr),
+        checkRun: args["check-run"] !== "0" && args["check-run"] !== "false",
+        comment: args.comment === "1" || args.comment === "true",
+      },
       report,
     );
+  } else {
+    emitGithubActionsAnnotations(report);
   }
   console.log(report.markdown);
   // Advisory posts findings even when Layer 1 already failed; do not fail the job on that.

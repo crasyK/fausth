@@ -53,4 +53,8 @@ Never use `pull_request_target` with checkout/execution of contributor code whil
 
 AI findings must match a closed schema and survive deterministic evidence checks (cited path exists, line in range, snippet occurs). Unsupported conclusions are dropped before they reach the maintainer.
 
+## Reporting
+
+Findings land on the **Checks** tab (check-run title states the problem; annotations point at paths). PR comment spam is off by default (`--post 1`); use `--comment 1` only if you explicitly want a comment.
+
 See [`examples/slopathon-review/`](../examples/slopathon-review/) for the reference integration.

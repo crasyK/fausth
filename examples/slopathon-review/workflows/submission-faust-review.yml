@@ -1,6 +1,7 @@
 name: Faust advisory review (label-gated)
 
 # Copy into SLOPATHON. Requires secrets.OPENROUTER_API_KEY (or KIT_AI_API_KEY with kit deployment).
+# Findings appear on the Checks tab (annotations + summary), not as PR comments.
 # Never checkout/execute contributor workflows as the Faust source while secrets are present.
 # Faust code comes from the trusted fausth pin; PR content is fetched as inert API data.
 
@@ -10,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
   checks: write
 
 jobs:
@@ -41,19 +42,22 @@ jobs:
         id: review
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$OPENROUTER_API_KEY" ]; then
+          if [ -z "${KIT_AI_API_KEY:-${OPENROUTER_API_KEY:-}}" ]; then
             echo "conclusion=infrastructure_error" >> "$GITHUB_OUTPUT"
-            echo "## Faust advisory" > "${GITHUB_WORKSPACE}/review.md"
-            echo "OPENROUTER_API_KEY missing — conclusion \`infrastructure_error\` (not a pass)." >> "${GITHUB_WORKSPACE}/review.md"
-            echo '{"conclusion":"infrastructure_error","mode":"advisory","ai_findings":[],"markdown":"## Faust advisory\n\n**Conclusion:** `infrastructure_error`\n"}' > "${GITHUB_WORKSPACE}/review-out.json"
-            gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file "${GITHUB_WORKSPACE}/review.md"
-            exit 0
+            echo "::error title=infrastructure_error::API key missing — advisory review did not run (not a pass)."
+            echo '{"conclusion":"infrastructure_error","mode":"advisory","ai_findings":[],"markdown":"## Faust advisory\n\n**Conclusion:** `infrastructure_error`\n\nAPI key missing.\n"}' > "${GITHUB_WORKSPACE}/review-out.json"
+            SHA="${{ github.event.pull_request.head.sha }}"
+            gh api "repos/${{ github.repository }}/check-runs" --method POST --input - <<EOF
+          {"name":"Faust advisory","head_sha":"$SHA","status":"completed","conclusion":"neutral","output":{"title":"Infrastructure error — review did not complete","summary":"API key missing — advisory review did not run (not a pass)."}}
+          EOF
+            exit 1
           fi
           pnpm -C fausth/engines/ts exec node --import tsx src/cli.ts review \
             --mode advisory \
-            --deployment "${GITHUB_WORKSPACE}/fausth/examples/slopathon-review/deployment.openrouter.yml" \
+            --deployment "${GITHUB_WORKSPACE}/fausth/examples/slopathon-review/deployment.kit.yml" \
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --out "${GITHUB_WORKSPACE}/review-out.json" \
@@ -62,6 +66,7 @@ jobs:
           echo "conclusion=$(node -e "console.log(require('${GITHUB_WORKSPACE}/review-out.json').conclusion)")" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: faust-advisory
           path: |
