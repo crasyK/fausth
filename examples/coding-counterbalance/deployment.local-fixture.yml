@@ -1,0 +1,33 @@
+# Fixture/E2E local deployment with auto checkpoints (no TTY).
+# Explicit-only — never auto-selected. Pair with --workspace and recorded or live model.
+
+platform: local-coding-counterbalance-auto
+model:
+  transport: recorded
+
+world:
+  shell_timeout_ms: 30000
+  max_read_bytes: 256000
+  max_output_bytes: 64000
+  commands:
+    # Recorded/local-fixture automation: do not discover host tests.
+    test: ["node", "-e", "process.exit(0)"]
+  scopes:
+    read: [src/]
+    write: [src/]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve_auto
+  user.correct:
+    native: local.user_correct_auto
+  mode.enter:
+    native: local.mode_enter
+  task.complete:
+    native: local.task_complete

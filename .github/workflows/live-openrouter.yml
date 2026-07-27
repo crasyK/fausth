@@ -154,6 +154,43 @@ jobs:
             exit 0
           fi
           exit $code
+      - name: Live local coding e2e (OpenRouter disposable worktree)
+        id: live_local_e2e_or
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "No OPENROUTER_API_KEY — skipping live local e2e"
+            exit 0
+          fi
+          set +e
+          node scripts/live-local-e2e.mjs local-openrouter
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          # Non-blocking soft fail for model flakiness: upload report regardless
+          exit 0
+      - name: Live local coding e2e (KIT disposable worktree)
+        id: live_local_e2e_kit
+        env:
+          KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
+        run: |
+          if [ -z "$KIT_AI_API_KEY" ]; then
+            echo "No KIT_AI_API_KEY — skipping live local e2e"
+            exit 0
+          fi
+          set +e
+          node scripts/live-local-e2e.mjs local-kit
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .canonical import canonical_json
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
 
@@ -17,6 +18,8 @@ DEPLOYMENT_CANDIDATES = [
     "deployment.ollama.yml",
 ]
 
+LOCAL_DEPLOYMENT_PREFIX = "deployment.local"
+
 PACK_INCLUDE = [
     "agent.yml",
     "agent.json",
@@ -25,6 +28,10 @@ PACK_INCLUDE = [
     "smoke.expected.jsonl",
     *DEPLOYMENT_CANDIDATES,
 ]
+
+
+def is_local_only_deployment_file(name: str) -> bool:
+    return name.startswith(LOCAL_DEPLOYMENT_PREFIX)
 
 
 def list_deployments(harness_dir: Path) -> list[Path]:
@@ -38,15 +45,31 @@ def pick_test_deployment(harness_dir: Path, explicit: str | None = None) -> Path
         p = harness_dir / n
         if p.is_file():
             return p
-    deps = list_deployments(harness_dir)
-    return deps[0] if deps else None
+    for p in list_deployments(harness_dir):
+        if not is_local_only_deployment_file(p.name):
+            return p
+    return None
 
 
 def inspect_harness(harness_dir: str) -> dict[str, Any]:
     d = Path(harness_dir).resolve()
     agent = load_agent_dir(str(d))
     deployments = []
+    seen: set[str] = set()
     for p in list_deployments(d):
+        seen.add(p.name)
+        dep = load_yaml(str(p))
+        deployments.append(
+            {
+                "file": p.name,
+                "platform": dep.get("platform"),
+                "transport": (dep.get("model") or {}).get("transport"),
+                "binding_count": len(dep.get("bindings") or {}),
+            }
+        )
+    for p in sorted(d.glob("deployment.local*.y*ml")):
+        if p.name in seen or not p.is_file():
+            continue
         dep = load_yaml(str(p))
         deployments.append(
             {
@@ -181,13 +204,19 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
         p = d / n
         if p.is_file():
             files[n] = p.read_text(encoding="utf-8")
-    for p in d.glob("deployment.*.yml"):
-        if p.name not in files:
+    for p in sorted(d.iterdir()):
+        if (
+            p.is_file()
+            and p.name.startswith("deployment.")
+            and p.suffix.lower() in (".yml", ".yaml")
+            and p.name not in files
+        ):
             files[p.name] = p.read_text(encoding="utf-8")
+    ordered = {k: files[k] for k in sorted(files.keys())}
     bundle = {
         "format": "fausth-harness-bundle/v0.1",
         "name": d.name,
-        "files": files,
+        "files": ordered,
     }
     if out and out.endswith(".fausth.json"):
         out_path = Path(out).resolve()
@@ -196,5 +225,5 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
         out_dir = Path(out).resolve() if out else d / "dist"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{d.name}.fausth.json"
-    out_path.write_text(json.dumps(bundle, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")
-    return {"out": str(out_path), "files": sorted(files.keys())}
+    out_path.write_text(canonical_json(bundle) + "\n", encoding="utf-8", newline="\n")
+    return {"out": str(out_path), "files": sorted(ordered.keys())}

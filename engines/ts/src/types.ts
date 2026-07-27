@@ -202,6 +202,21 @@ export type DeploymentModelEntry = {
   policy?: ModelPolicyMeta;
 };
 
+/** Local disposable-worktree world settings (M8). Narrowing only — never widens agent scopes. */
+export type DeploymentWorld = {
+  /** Optional declared worktree; must match CLI `--workspace` when set. */
+  worktree_root?: string;
+  shell_timeout_ms?: number;
+  max_read_bytes?: number;
+  max_output_bytes?: number;
+  /** Logical command → argv (no shell). Keys typically `test` / `typecheck`. */
+  commands?: Record<string, string[]>;
+  scopes?: {
+    read?: string[];
+    write?: string[];
+  };
+};
+
 export type Deployment = {
   platform?: string;
   model: DeploymentModel;
@@ -213,6 +228,8 @@ export type Deployment = {
   };
   bindings: Record<string, { native: string; [k: string]: unknown }>;
   permissions?: Record<string, unknown>;
+  /** Real local I/O settings for `local.*` bindings. */
+  world?: DeploymentWorld;
 };
 
 export type Event = {

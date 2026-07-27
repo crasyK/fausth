@@ -15,7 +15,7 @@ Track A fixtures: `cb-coding-happy-path`, `cb-write-before-plan-denied`,
 
 Same harness + `deployment.fixture.yml` / `deployment.simulation.yml` bindings:
 
-```bash
+```bash +code
 # Local TypeScript (recorded smoke)
 pnpm -C engines/ts exec node --import tsx src/cli.ts run ../../examples/coding-counterbalance \
   --deployment ../../examples/coding-counterbalance/deployment.fixture.yml
@@ -34,7 +34,7 @@ Missing or unknown `bindings.*.native` values fail as **adapter** errors (`bindi
 
 Same harness; swap deployment for the key you have:
 
-```bash
+```bash +code
 # OpenRouter (OPENROUTER_API_KEY)
 pnpm -C engines/ts exec node --import tsx src/cli.ts live \
   --deployment ../../examples/coding-counterbalance/deployment.openrouter-free.yml \
@@ -48,18 +48,23 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts live \
   --scenarios ../../live/scenarios-coding-counterbalance \
   --report ../../live/reports/coding-counterbalance-kit.json \
   --catch-rate-min 0.5
-
-# OpenAI (OPENAI_API_KEY)
-pnpm -C engines/ts exec node --import tsx src/cli.ts live \
-  --deployment ../../examples/coding-counterbalance/deployment.openai.yml \
-  --scenarios ../../live/scenarios-coding-counterbalance \
-  --report ../../live/reports/coding-counterbalance-openai.json \
-  --catch-rate-min 0.5
 ```
 
-```bash
+## Local disposable worktree (M8)
+
+`deployment.local-*.yml` is **never** auto-selected by `test` / replay. Requires `--workspace` = linked disposable git worktree.
+
+```bash +code
+pnpm ci:local-e2e   # recorded happy path (CI-safe)
+
+# Live (secrets):
+node scripts/live-local-e2e.mjs local-openrouter
+node scripts/live-local-e2e.mjs local-kit
+```
+
+```bash +code
 pnpm -C engines/ts exec node --import tsx src/cli.ts validate ../../examples/coding-counterbalance
 pnpm replay   # includes cb-* fixtures
 ```
 
-See [`docs/counterbalance-architecture.md`](../../docs/counterbalance-architecture.md) and [`docs/harness-packaging-roadmap.md`](../../docs/harness-packaging-roadmap.md).
+See [`docs/authoring.md`](../../docs/authoring.md), [`docs/counterbalance-architecture.md`](../../docs/counterbalance-architecture.md), and [`docs/harness-packaging-roadmap.md`](../../docs/harness-packaging-roadmap.md).

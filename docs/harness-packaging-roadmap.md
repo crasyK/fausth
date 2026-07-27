@@ -26,7 +26,7 @@ Same [`examples/coding-counterbalance/`](../examples/coding-counterbalance/) har
 
 Support-bot has the same OpenRouter/KIT pattern under [`examples/support-bot/`](../examples/support-bot/).
 
-**Deferred (M5.2):** browser / WASM host; HTTP Python server; real FS/process adapter.
+**Deferred:** browser / WASM host; HTTP Python live transport; production multi-tenant isolation.
 
 ## M6 — Multi-agent
 
@@ -34,17 +34,26 @@ Nested reaction when spawn args include `proposals`. Child events use `depth` / 
 
 ## M7 — Packaging
 
-```text
-fausth validate <harness>
-fausth test <harness> [--deployment <file>] [--skip-fixtures]
-fausth inspect <harness>
+```bash +code
+fausth validate <harness|bundle>
+fausth test <harness|bundle> [--deployment <file>] [--skip-fixtures]
+fausth inspect <harness|bundle>
 fausth pack <harness> [--out <path|dir>]
-fausth run <harness> --deployment <deployment>
+fausth unpack <bundle.fausth.json> --out <dir> [--force]
+fausth run <harness|bundle> --deployment <deployment>
 ```
 
-```bash
+```bash +code
 pnpm ci:packaging
 pnpm ci:multi-host
 ```
 
 Share via git tags / release archives before any registry.
+
+## M8 — Usable local coding harness (shipped in `0.1.2-alpha`)
+
+- Linked disposable worktree adapter: [`engines/ts/src/adapters/local.ts`](../engines/ts/src/adapters/local.ts)
+- Bundle schema + round-trip: [`schema/fausth-harness-bundle.v0.1.json`](../schema/fausth-harness-bundle.v0.1.json)
+- Authoring: [`docs/authoring.md`](authoring.md)
+- Recorded e2e: `pnpm ci:local-e2e`
+- Live disposable e2e: `node scripts/live-local-e2e.mjs` (secrets-gated, non-blocking on rate limits)

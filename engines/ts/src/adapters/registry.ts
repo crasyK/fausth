@@ -7,6 +7,13 @@ import type { AgentIR, Deployment } from "../types.js";
 import { createGreenhouseTools } from "../tools/world.js";
 import { createSpawnTool } from "../tools/world.js";
 import { createSimulationCodingAdapter } from "./simulation.js";
+import {
+  assertBindingFamilyConsistency,
+  createLocalCodingTools,
+  createLocalWorld,
+  deploymentUsesLocal,
+  pickLocalHandler,
+} from "./local.js";
 
 export type AdapterErrorCode = "binding_missing" | "adapter_unresolved";
 
@@ -23,26 +30,35 @@ export class AdapterError extends Error {
 export const NATIVE_TO_TOOL: Record<string, string> = {
   "stub.fs_read": "fs.read",
   "sim.fs_read": "fs.read",
+  "local.fs_read": "fs.read",
   "fs.read": "fs.read",
   "stub.fs_write": "fs.write_scoped",
   "sim.fs_write": "fs.write_scoped",
+  "local.fs_write": "fs.write_scoped",
   "fs.write_scoped": "fs.write_scoped",
   "stub.shell": "shell.run_allowlisted",
   "sim.shell": "shell.run_allowlisted",
+  "local.shell": "shell.run_allowlisted",
   "shell.run_allowlisted": "shell.run_allowlisted",
   "stub.approve": "user.approve",
   "sim.approve": "user.approve",
+  "local.user_approve": "user.approve",
+  "local.user_approve_auto": "user.approve",
   "user.approve": "user.approve",
   "stub.ask": "user.ask",
   "user.ask": "user.ask",
   "stub.user_correct": "user.correct",
   "sim.user_correct": "user.correct",
+  "local.user_correct": "user.correct",
+  "local.user_correct_auto": "user.correct",
   "user.correct": "user.correct",
   "stub.mode_enter": "mode.enter",
   "sim.mode_enter": "mode.enter",
+  "local.mode_enter": "mode.enter",
   "mode.enter": "mode.enter",
   "stub.task_complete": "task.complete",
   "sim.task_complete": "task.complete",
+  "local.task_complete": "task.complete",
   "task.complete": "task.complete",
   "stub.kb_lookup": "kb.lookup",
   "sim.kb_lookup": "kb.lookup",
@@ -71,6 +87,10 @@ export type ResolveToolsOptions = {
   testExit?: number;
   sensorHealthy?: number;
   files?: Record<string, string>;
+  /** Required when deployment uses local.* bindings. */
+  workspace?: string;
+  /** Force interactive checkpoints off (non-TTY). */
+  interactive?: boolean;
 };
 
 function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Record<string, ToolHandler> {
@@ -84,7 +104,6 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
         : undefined,
   });
   if (opts.testExit !== undefined) {
-    // ensure coding world last_exit_code matches when shell falls through
     coding["shell.run_allowlisted"] = (args) => {
       const cmd = String(args.cmd);
       if (cmd === "test" || cmd === "typecheck") {
@@ -110,7 +129,34 @@ export function resolveToolsFromDeployment(
   deployment: Deployment,
   opts: ResolveToolsOptions = {},
 ): Record<string, ToolHandler> {
-  const pool = buildHandlerPool(agent, opts);
+  assertBindingFamilyConsistency(deployment);
+
+  let pool: Record<string, ToolHandler>;
+  if (deploymentUsesLocal(deployment)) {
+    if (!opts.workspace) {
+      throw new AdapterError(
+        "adapter_unresolved",
+        "adapter failure: local.* bindings require --workspace (linked disposable worktree)",
+      );
+    }
+    const world = createLocalWorld({
+      workspace: opts.workspace,
+      agent,
+      deployment,
+      interactive: opts.interactive,
+    });
+    const localTools = createLocalCodingTools(world);
+    const greenhouse = createGreenhouseTools({
+      temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
+      fan_percent: Number(agent.state.fan_percent ?? 0),
+      sensor_healthy: opts.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
+    });
+    const spawn = createSpawnTool(agent.permissions?.tools ?? []);
+    pool = { ...greenhouse, ...localTools, ...spawn };
+  } else {
+    pool = buildHandlerPool(agent, opts);
+  }
+
   const bindings = deployment.bindings ?? {};
   const out: Record<string, ToolHandler> = {};
 
@@ -136,7 +182,10 @@ export function resolveToolsFromDeployment(
         `adapter failure: native '${binding.native}' maps to '${mapped}', not '${id}' (adapter_unresolved)`,
       );
     }
-    const handler = pool[id];
+    const handler =
+      deploymentUsesLocal(deployment)
+        ? pickLocalHandler(pool, id, binding.native)
+        : pool[id];
     if (!handler) {
       throw new AdapterError(
         "adapter_unresolved",
