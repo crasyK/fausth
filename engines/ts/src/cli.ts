@@ -31,7 +31,7 @@ import {
   type ReviewToolState,
 } from "./integrations/github/review-runtime.js";
 import { filterVerifiedFindings } from "./integrations/github/submission-check.js";
-import { emitGithubActionsAnnotations, postReviewToGithub } from "./integrations/github/poster.js";
+import { publishReviewOutput } from "./integrations/github/poster.js";
 import { createConversationalPropose } from "./integrations/github/conversational-propose.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -430,19 +430,17 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
     };
     if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
     if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
-    if (args.post && args.repo && args.pr) {
-      postReviewToGithub(
-        {
-          repo: args.repo,
-          pr: Number(args.pr),
-          checkRun: args["check-run"] !== "0" && args["check-run"] !== "false",
-          comment: args.comment === "1" || args.comment === "true",
-        },
-        report,
-      );
-    } else {
-      emitGithubActionsAnnotations(report);
-    }
+    const posterOpts =
+      args.post && args.repo && args.pr
+        ? {
+            repo: args.repo,
+            pr: Number(args.pr),
+            checkRun: args["check-run"] === "1" || args["check-run"] === "true",
+            comment: args.comment === "1" || args.comment === "true",
+            annotate: args.annotate === "1" || args.annotate === "true",
+          }
+        : undefined;
+    publishReviewOutput(report, posterOpts);
     console.log(report.markdown);
     return packet.conclusion === "fail" ? 1 : 0;
   }
@@ -550,22 +548,21 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   };
   if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
   if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
-  if (args.post && args.repo && args.pr) {
-    postReviewToGithub(
-      {
-        repo: args.repo,
-        pr: Number(args.pr),
-        checkRun: args["check-run"] !== "0" && args["check-run"] !== "false",
-        comment: args.comment === "1" || args.comment === "true",
-      },
-      report,
-    );
-  } else {
-    emitGithubActionsAnnotations(report);
-  }
+  const posterOpts =
+    args.post && args.repo && args.pr
+      ? {
+          repo: args.repo,
+          pr: Number(args.pr),
+          checkRun: args["check-run"] === "1" || args["check-run"] === "true",
+          comment: args.comment === "1" || args.comment === "true",
+          annotate: args.annotate === "1" || args.annotate === "true",
+        }
+      : undefined;
+  publishReviewOutput(report, posterOpts);
   console.log(report.markdown);
-  // Advisory posts findings even when Layer 1 already failed; do not fail the job on that.
+  // Surface problems on the single workflow check (no duplicate Check Runs).
   if (report.conclusion === "infrastructure_error" || report.conclusion === "neutral") return 2;
+  if (report.conclusion === "action_required" || report.conclusion === "fail") return 1;
   return 0;
 }
 
