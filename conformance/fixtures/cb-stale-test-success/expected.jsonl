@@ -1,0 +1,8 @@
+{"args":{"cmd":"test"},"seq":1,"stage":"propose","state_hash":"18da10b8eb144305f9b7bc243d3d30b404770ab044b6faa7ec24b001e56f942a","tool":"shell.run_allowlisted","ts_logical":1}
+{"args":{"cmd":"test"},"seq":2,"stage":"validate","state_hash":"18da10b8eb144305f9b7bc243d3d30b404770ab044b6faa7ec24b001e56f942a","tool":"shell.run_allowlisted","ts_logical":2,"verdict":"allow"}
+{"args":{"cmd":"test"},"seq":3,"stage":"authorize","state_hash":"18da10b8eb144305f9b7bc243d3d30b404770ab044b6faa7ec24b001e56f942a","tool":"shell.run_allowlisted","ts_logical":3,"verdict":"allow"}
+{"args":{"cmd":"test"},"result":{"cmd":"test","exit_code":0},"seq":4,"stage":"execute","state_hash":"bae91d637200d32f067eedcea54242625804d2ba2f9e9c690036986d6d6a01b0","tool":"shell.run_allowlisted","ts_logical":4,"verdict":"allow"}
+{"result":{"cmd":"test","exit_code":0},"seq":5,"stage":"verify","state_hash":"bae91d637200d32f067eedcea54242625804d2ba2f9e9c690036986d6d6a01b0","tool":"shell.run_allowlisted","ts_logical":5,"verdict":"allow"}
+{"args":{"content":"export const x=1","path":"src/app.ts"},"seq":6,"stage":"propose","state_hash":"bae91d637200d32f067eedcea54242625804d2ba2f9e9c690036986d6d6a01b0","tool":"fs.write_scoped","ts_logical":6}
+{"args":{"content":"export const x=1","path":"src/app.ts"},"seq":7,"stage":"validate","state_hash":"bae91d637200d32f067eedcea54242625804d2ba2f9e9c690036986d6d6a01b0","tool":"fs.write_scoped","ts_logical":7,"verdict":"allow"}
+{"args":{"content":"export const x=1","path":"src/app.ts"},"reason":"sequence_requirement_failed","seq":8,"stage":"authorize","state_hash":"bae91d637200d32f067eedcea54242625804d2ba2f9e9c690036986d6d6a01b0","tool":"fs.write_scoped","ts_logical":8,"verdict":"deny"}

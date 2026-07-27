@@ -1,0 +1,3 @@
+{"args":{"cmd":"test"},"name":"shell.run_allowlisted","type":"tool"}
+{"args":{"content":"export const x=1","path":"src/app.ts"},"name":"fs.write_scoped","type":"tool"}
+{"args":{},"name":"task.complete","type":"tool"}

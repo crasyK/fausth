@@ -100,6 +100,81 @@ class FaustRuntime:
                 return False, g.get("otherwise", "deny"), "gate_denied"
         return True, None, None
 
+    def successful_executes(self) -> set[str]:
+        done: set[str] = set()
+        for e in self.events:
+            if e.get("stage") == "execute" and e.get("verdict") == "allow" and e.get("tool"):
+                done.add(str(e["tool"]))
+        return done
+
+    def check_mode(self, action_name: str) -> tuple[bool, str | None]:
+        modes = (self.agent.get("counterbalance") or {}).get("modes") or []
+        if not modes:
+            return True, None
+        mode_id = str(self.agent["state"].get("mode", ""))
+        mode = next((m for m in modes if m.get("id") == mode_id), None)
+        if not mode:
+            return False, "mode_denied"
+        tools = mode.get("tools")
+        if tools is not None and action_name not in tools:
+            return False, "mode_denied"
+        return True, None
+
+    def check_sequences(self, action: dict[str, Any]) -> tuple[bool, str | None]:
+        seqs = (self.agent.get("counterbalance") or {}).get("sequences") or []
+        if not seqs:
+            return True, None
+        done = self.successful_executes()
+        snap = {"action": action, "state": self.agent["state"]}
+        for seq in seqs:
+            if seq.get("action") != action["name"]:
+                continue
+            for prior in seq.get("require_prior_tools") or []:
+                if prior not in done:
+                    return False, "sequence_requirement_failed"
+            req = seq.get("require_state")
+            if req and not eval_predicate(req, snap):
+                return False, "sequence_requirement_failed"
+        return True, None
+
+    def apply_invalidate_after(self, action_name: str) -> None:
+        rules = (self.agent.get("counterbalance") or {}).get("invalidate_after") or []
+        touched = False
+        next_state = dict(self.agent["state"])
+        for rule in rules:
+            if rule.get("action") != action_name:
+                continue
+            for key in rule.get("memory_keys") or []:
+                next_state[key] = 0
+                touched = True
+        if not touched:
+            return
+        self.agent["state"] = next_state
+        self.emit(
+            {
+                "stage": "record",
+                "verdict": "allow",
+                "reason": "memory_stale",
+                "tool": action_name,
+                "result": {"invalidated": 1},
+            }
+        )
+
+    def check_completion(self, action_name: str) -> tuple[bool, str | None]:
+        completion = (self.agent.get("counterbalance") or {}).get("completion") or {}
+        if not completion:
+            return True, None
+        tool = completion.get("tool") or "task.complete"
+        if action_name != tool:
+            return True, None
+        req = completion.get("require")
+        if not req:
+            return True, None
+        snap = {"action": {"name": action_name, "args": {}}, "state": self.agent["state"]}
+        if not eval_predicate(req, snap):
+            return False, "completion_gate_failed"
+        return True, None
+
     def apply_state_transition(self, transition: dict[str, Any] | None) -> None:
         if not transition:
             return
@@ -523,6 +598,42 @@ class FaustRuntime:
                         ev["error"] = cerr
                     self.emit(ev)
                     break
+            mok, mreason = self.check_mode(action["name"])
+            if not mok:
+                self.emit(
+                    {
+                        "stage": "authorize",
+                        "verdict": "deny",
+                        "reason": mreason,
+                        "tool": action["name"],
+                        "args": action["args"],
+                    }
+                )
+                break
+            sok, sreason = self.check_sequences(action)
+            if not sok:
+                self.emit(
+                    {
+                        "stage": "authorize",
+                        "verdict": "deny",
+                        "reason": sreason,
+                        "tool": action["name"],
+                        "args": action["args"],
+                    }
+                )
+                break
+            cok2, creason2 = self.check_completion(action["name"])
+            if not cok2:
+                self.emit(
+                    {
+                        "stage": "authorize",
+                        "verdict": "deny",
+                        "reason": creason2,
+                        "tool": action["name"],
+                        "args": action["args"],
+                    }
+                )
+                break
             self.emit(
                 {
                     "stage": "authorize",
@@ -571,6 +682,7 @@ class FaustRuntime:
             )
             if not self.run_verifies(tool, action, envelope["output"]):
                 break
+            self.apply_invalidate_after(action["name"])
         return self.events
 
 
@@ -643,6 +755,36 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
     def spawn(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         return {"output": {"spawned": 1, "tools": args.get("tools") or []}}
 
+    def mode_enter(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        mode = str(args.get("mode", ""))
+        return {"output": {"ok": 1, "mode": mode}, "state_transition": {"set": {"mode": mode}}}
+
+    def task_complete(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        return {"output": {"ok": 1}}
+
+    def user_correct(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        sett = args.get("set") or {}
+        return {"output": {"ok": 1}, "state_transition": {"set": sett}}
+
+    def kb_lookup(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        q = str(args.get("query", "x"))[:24]
+        return {
+            "output": {"ok": 1, "article_id": f"kb-{q}"},
+            "state_transition": {"set": {"kb_cited": 1}},
+        }
+
+    def answer_send(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        return {"output": {"ok": 1}}
+
+    def human_handoff(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "output": {"ok": 1},
+            "state_transition": {"set": {"handoff": 1, "mode": "handoff"}},
+        }
+
+    def refund_request(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        return {"output": {"ok": 1}}
+
     return {
         "sensor.temperature.read": temp_read,
         "sensor.fan.read_percent": fan_read,
@@ -652,6 +794,13 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
         "fs.write_scoped": fs_write,
         "shell.run_allowlisted": shell,
         "user.approve": lambda a, c: {"output": {"approved": 0}},
+        "user.correct": user_correct,
+        "mode.enter": mode_enter,
+        "task.complete": task_complete,
+        "kb.lookup": kb_lookup,
+        "answer.send": answer_send,
+        "human.handoff": human_handoff,
+        "refund.request": refund_request,
         "agent.spawn": spawn,
     }
 

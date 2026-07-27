@@ -74,6 +74,37 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
     },
     "user.approve": (): ToolResultEnvelope => ({ output: { approved: 0 } }),
     "user.ask": (): ToolResultEnvelope => ({ output: { answer: "" } }),
+    "user.correct": (args): ToolResultEnvelope => {
+      const set = (args.set as Record<string, unknown>) ?? {};
+      return {
+        output: { ok: 1 },
+        state_transition: { set },
+      };
+    },
+    "mode.enter": (args): ToolResultEnvelope => {
+      const mode = String(args.mode ?? "");
+      return {
+        output: { ok: 1, mode },
+        state_transition: { set: { mode } },
+      };
+    },
+    "task.complete": (): ToolResultEnvelope => ({
+      output: { ok: 1 },
+    }),
+    "kb.lookup": (args): ToolResultEnvelope => ({
+      output: { ok: 1, article_id: `kb-${String(args.query ?? "x").slice(0, 24)}` },
+      state_transition: { set: { kb_cited: 1 } },
+    }),
+    "answer.send": (): ToolResultEnvelope => ({
+      output: { ok: 1 },
+    }),
+    "human.handoff": (): ToolResultEnvelope => ({
+      output: { ok: 1 },
+      state_transition: { set: { handoff: 1, mode: "handoff" } },
+    }),
+    "refund.request": (): ToolResultEnvelope => ({
+      output: { ok: 1 },
+    }),
   };
 }
 

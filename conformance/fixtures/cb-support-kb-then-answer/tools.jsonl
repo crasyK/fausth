@@ -1,0 +1,2 @@
+{"args":{"query":"refund-policy"},"call_seq":1,"result":{"output":{"article_id":"kb-refund-policy","ok":1},"state_transition":{"set":{"kb_cited":1}}},"tool":"kb.lookup"}
+{"args":{"text":"Per article, refunds need review."},"call_seq":2,"result":{"output":{"ok":1}},"tool":"answer.send"}

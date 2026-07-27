@@ -28,6 +28,7 @@ export function agentYamlToIr(raw: unknown): AgentIR {
   if (a.recovery) ir.recovery = a.recovery as AgentIR["recovery"];
   if (a.permissions) ir.permissions = a.permissions as AgentIR["permissions"];
   if (a.spawn) ir.spawn = a.spawn as AgentIR["spawn"];
+  if (a.counterbalance) ir.counterbalance = a.counterbalance as AgentIR["counterbalance"];
   canonicalJson(ir.state);
   return ir;
 }
