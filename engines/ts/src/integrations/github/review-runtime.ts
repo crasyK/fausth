@@ -110,43 +110,64 @@ export type ReviewReport = {
   markdown: string;
 };
 
-export function formatReviewMarkdown(report: ReviewReport): string {
-  const lines: string[] = [
-    `## Faust submission review`,
+function conclusionBadge(c: ReviewReport["conclusion"]): string {
+  if (c === "pass") return "✅ pass";
+  if (c === "fail") return "❌ fail";
+  if (c === "action_required") return "⚠️ action required";
+  if (c === "neutral") return "➖ neutral (not a pass)";
+  return "🔧 infrastructure error (not a pass)";
+}
+
+function formatFindingBlock(
+  index: number,
+  f: { severity: string; category: string; path: string; recommendation: string; evidence?: string },
+): string[] {
+  const lines = [
+    `### ${index}. \`${f.category}\` · ${f.severity}`,
     ``,
-    `**Mode:** ${report.mode}`,
-    `**Conclusion:** \`${report.conclusion}\``,
+    `- **File:** \`${f.path}\``,
+    `- **Fix:** ${f.recommendation}`,
   ];
-  if (report.model) lines.push(`**Model:** \`${report.model}\``);
-  if (report.provider) lines.push(`**Provider:** \`${report.provider}\``);
-  lines.push(``, `### Deterministic findings`);
-  if (report.deterministic.deterministic_findings.length === 0) {
-    lines.push(`_None_`);
+  if (f.evidence?.trim()) {
+    lines.push(`- **Evidence:** ${f.evidence.replace(/`/g, "'").slice(0, 280)}`);
+  }
+  lines.push(``);
+  return lines;
+}
+
+/** Readable Check / step-summary markdown (no PR-comment fluff). */
+export function formatReviewMarkdown(report: ReviewReport): string {
+  const layer = report.mode === "advisory" ? "Layer 2 · advisory" : "Layer 1 · deterministic";
+  const findings = [
+    ...report.deterministic.deterministic_findings,
+    ...report.ai_findings,
+  ];
+  const lines: string[] = [
+    `## Submission review · ${layer}`,
+    ``,
+    `| | |`,
+    `| --- | --- |`,
+    `| **Result** | ${conclusionBadge(report.conclusion)} |`,
+  ];
+  if (report.model) lines.push(`| **Model** | \`${report.model}\` |`);
+  if (report.provider) lines.push(`| **Provider** | \`${report.provider}\` |`);
+  lines.push(`| **Findings** | ${findings.length} |`, ``);
+
+  if (findings.length === 0) {
+    lines.push(`No issues found.`, ``);
   } else {
-    for (const f of report.deterministic.deterministic_findings) {
-      lines.push(
-        `- **${f.severity}** \`${f.category}\` — \`${f.path}\`: ${f.recommendation}`,
-      );
-    }
+    lines.push(`## Issues`, ``);
+    findings.forEach((f, i) => lines.push(...formatFindingBlock(i + 1, f)));
   }
-  if (report.mode === "advisory") {
-    lines.push(``, `### Advisory findings (evidence-verified)`);
-    if (report.ai_findings.length === 0) lines.push(`_None_`);
-    else {
-      for (const f of report.ai_findings) {
-        lines.push(
-          `- **${f.severity}** \`${f.category}\` — \`${f.path}\`: ${f.recommendation}`,
-        );
-        lines.push(`  - evidence: \`${f.evidence.replace(/`/g, "'")}\``);
-      }
+
+  if (report.mode === "advisory" && report.dropped_findings?.length) {
+    lines.push(`## Dropped (failed evidence gate)`, ``);
+    for (const d of report.dropped_findings) {
+      lines.push(`- \`${d.finding.path}\` — ${d.reason}`);
     }
-    if (report.dropped_findings?.length) {
-      lines.push(``, `### Dropped (failed evidence gate)`);
-      for (const d of report.dropped_findings) {
-        lines.push(`- \`${d.finding.path}\`: ${d.reason}`);
-      }
-    }
+    lines.push(``);
   }
-  lines.push(``, `_Human retains merge authority._`, ``);
+
+  lines.push(`> Human retains merge authority.`, ``);
   return lines.join("\n");
 }

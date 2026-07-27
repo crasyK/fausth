@@ -1,0 +1,5 @@
+{
+  "title": "klarna soft fault",
+  "body": "## Submission check\n- [x] Our project lives inside one folder under `projects`.\n- [x] We completed the project `README.md`.\n- [x] We included setup and demo instructions.\n- [x] We did not commit passwords, API keys, tokens or private data.\n- [x] We have permission to publish the submitted code and assets.\n",
+  "changed_paths": ["projects/klarna-bnpl/README.md", "projects/klarna-bnpl/index.html"]
+}

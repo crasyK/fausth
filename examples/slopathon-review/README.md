@@ -1,74 +1,58 @@
-# Faust × SLOPATHON — CI quality gate (case study)
+# HACK//OPS · submission quality gate (example)
 
-Reference **host integration** (not a third engine): GitHub Actions runs `engines/ts` to gate hackathon submissions.
+Case study for hosting a **two-layer submission review** in a hackathon repo (e.g. [SLOPATHON](https://github.com/HACK-OPS-KA/SLOPATHON)).
+
+The **host** is GitHub Actions in the event repo. The **engine** is pinned from `crasyK/fausth` (`engines/ts`). This folder is the portable example — copy the workflows, tweak rules/label/deployment, keep human merge authority.
 
 ## Layers
 
-1. **Deterministic (blocking)** — structure, scope, README headings, template checkboxes, secret heuristics. No API keys.
-2. **Advisory (label `faust-review`)** — Faust-bounded LLM review; findings must pass evidence verify. Secrets only in this job.
+| Layer | Trigger | Secrets | Role |
+|-------|---------|---------|------|
+| **L1 deterministic** | PR open/sync | none | Structure, scope, README headings, template boxes, secret heuristics |
+| **L2 advisory** | label `faust-review` | `KIT_AI_API_KEY` and/or `OPENROUTER_API_KEY` | Soft issues (contradictions, unsafe demo advice); evidence-gated |
 
-Human retains merge authority.
+Findings show on the **Checks** job summary (one check per layer). No PR comment spam; no duplicate Check Runs.
 
 ## Layout
 
 | Path | Role |
 |------|------|
-| `agent.yml` | Counterbalance contract for advisory tools |
-| `deployment.openrouter.yml` | Public demo models |
-| `deployment.kit.yml` | KIT local models (`residency: kit-local`) |
-| `workflows/*.yml` | Copy into target repo `.github/workflows/` |
-| `testdata/*` | Synthetic packets for local CLI checks |
+| `agent.yml` | Counterbalance contract (advisory tools) |
+| `deployment.kit.yml` | KIT local models |
+| `deployment.openrouter.yml` | Public OpenRouter models |
+| `workflows/submission-deterministic.yml` | L1 host workflow |
+| `workflows/submission-faust-review.yml` | L2 host workflow |
+| `testdata/*` | Local CLI fixtures |
 
-Design notes: [`docs/ci-quality-gate.md`](../../docs/ci-quality-gate.md).  
-Verification matrix: [`VERIFICATION.md`](./VERIFICATION.md).
+Design: [`docs/ci-quality-gate.md`](../../docs/ci-quality-gate.md) · matrix: [`VERIFICATION.md`](./VERIFICATION.md)
 
-## Local commands
+## Local
 
 ```bash
-# Validate contract
 pnpm -C engines/ts exec node --import tsx src/cli.ts validate ../../examples/slopathon-review
 
-# Deterministic fixtures
 pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
   --fixture ../../examples/slopathon-review/testdata/good-minimal
-pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
-  --fixture ../../examples/slopathon-review/testdata/bad-empty-readme
-pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
-  --fixture ../../examples/slopathon-review/testdata/bad-scope
 
-# Against a real PR (needs gh auth)
-pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
-  --repo HACK-OPS-KA/SLOPATHON --pr 13 --out review-out.json
-
-# Advisory (needs OPENROUTER_API_KEY or KIT_AI_API_KEY)
 pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode advisory \
-  --fixture ../../examples/slopathon-review/testdata/bad-empty-readme \
-  --deployment ../../examples/slopathon-review/deployment.openrouter.yml
-
-# Force every pinned OpenRouter + KIT model once (writes live/reports/model-matrix/)
-pnpm -C engines/ts exec node --import tsx src/run-model-matrix.ts
-
-# Optional: post findings to Checks (default; no PR comment clutter)
-pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
-  --repo OWNER/REPO --pr N --post 1
-# Opt-in PR comment only if you really want it: add --comment 1
+  --fixture ../../examples/slopathon-review/testdata/subtle-contradiction \
+  --deployment ../../examples/slopathon-review/deployment.kit.yml
 ```
 
-## Land in HACK-OPS-KA/SLOPATHON
+Against a real PR (`gh` auth):
 
-1. Fork [HACK-OPS-KA/SLOPATHON](https://github.com/HACK-OPS-KA/SLOPATHON) (or open a PR from a branch with write access).
-2. Copy:
-   - `workflows/submission-deterministic.yml` → `.github/workflows/submission-deterministic.yml`
-   - `workflows/submission-faust-review.yml` → `.github/workflows/submission-faust-review.yml`
-3. Pin `crasyK/fausth` `ref:` to a commit SHA (not floating `main`) before production use.
-4. For advisory only: add repo secret `OPENROUTER_API_KEY` (and/or `KIT_AI_API_KEY` + switch deployment).
-5. Maintainers apply label **`faust-review`** to run Layer 2.
-6. Open a PR describing the gate; link this README and `docs/ci-quality-gate.md`.
+```bash
+pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
+  --repo HACK-OPS-KA/SLOPATHON --pr N --out review-out.json --post 1
+```
 
-**Do not** use `pull_request_target` with checkout/execution of contributor code while secrets are present.
+`--post 1` writes the Checks **step summary**. Opt-in only: `--annotate 1`, `--check-run 1`, `--comment 1`.
 
-## Security reminders
+## Land on a HACK//OPS event repo
 
-- Deterministic job: no model secrets.
-- Advisory job: Faust from trusted pin; PR content via API as inert data.
-- Missing keys / rate limits → `infrastructure_error` / `neutral`, never silent pass.
+1. Copy both `workflows/*.yml` into `.github/workflows/`.
+2. Pin `ref:` to a `crasyK/fausth` commit SHA.
+3. Add label `faust-review` and the advisory secret(s).
+4. Adjust paths/rules in the engine contract / checker if the event layout differs from SLOPATHON `projects/`.
+
+Never use `pull_request_target` with checkout/execution of contributor code while secrets are present.

@@ -55,6 +55,6 @@ AI findings must match a closed schema and survive deterministic evidence checks
 
 ## Reporting
 
-Findings land on the **Checks** tab (check-run title states the problem; annotations point at paths). PR comment spam is off by default (`--post 1`); use `--comment 1` only if you explicitly want a comment.
+Each layer is **one** Checks job (`Submission L1` / `Submission L2`). The readable report goes to the job **summary**. Duplicate Check Runs, file-annotation spam, and PR comments are off by default (`--post 1`); opt in with `--annotate`, `--check-run`, or `--comment` if needed.
 
-See [`examples/slopathon-review/`](../examples/slopathon-review/) for the reference integration.
+See [`examples/slopathon-review/`](../examples/slopathon-review/) for the HACK//OPS / SLOPATHON host example.
