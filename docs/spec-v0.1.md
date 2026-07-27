@@ -251,6 +251,8 @@ Tighten-only capability lattice — child MUST be ≤ parent on every governed d
 
 Escalation → `deny` with `gate_denied` (or `schema_invalid` if malformed).
 
+When spawn args include a recorded `proposals` array, the runtime runs a **nested reaction** (child `FaustRuntime`) after the parent spawn execute succeeds. Child events are appended to the parent log with `depth` and `spawn_id`. Without `proposals`, spawn remains stub-only (`{spawned, tools}`) for backward-compatible Track A goldens.
+
 Orchestrator assigns work; runtime owns trust.
 
 ---

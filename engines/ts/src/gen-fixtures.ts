@@ -203,6 +203,71 @@ async function main() {
     codeTools,
   );
 
+  // Nested spawn denied without allow_nested
+  await writeFixture(
+    "spawn-nested-deny",
+    code,
+    [
+      {
+        type: "tool",
+        name: "agent.spawn",
+        args: { tools: ["fs.read"], spawn_nested: true },
+      },
+    ],
+    undefined,
+    codeTools,
+  );
+
+  // Nested child reaction: child events appear in parent log
+  const nestedOk: AgentIR = {
+    ...code,
+    spawn: { allow: true, allow_nested: true, tighten_only: true },
+  };
+  await writeFixture(
+    "spawn-nested-ok",
+    nestedOk,
+    [
+      {
+        type: "tool",
+        name: "agent.spawn",
+        args: {
+          tools: ["fs.read"],
+          proposals: [
+            { type: "tool", name: "fs.read", args: { path: "src/app.ts" } },
+            { type: "stop" },
+          ],
+        },
+      },
+      { type: "stop" },
+    ],
+    undefined,
+    codeTools,
+  );
+
+  // Child proposes escalated tool → deny visible in parent log
+  await writeFixture(
+    "spawn-child-escalate-deny",
+    nestedOk,
+    [
+      {
+        type: "tool",
+        name: "agent.spawn",
+        args: {
+          tools: ["fs.read"],
+          proposals: [
+            {
+              type: "tool",
+              name: "fs.write_scoped",
+              args: { path: "src/app.ts", content: "x" },
+            },
+          ],
+        },
+      },
+    ],
+    undefined,
+    codeTools,
+  );
+
   // input schema invalid
   await writeFixture(
     "input-schema-invalid",

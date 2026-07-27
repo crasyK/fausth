@@ -39,6 +39,29 @@ jobs:
             exit 0
           fi
           exit $code
+      - name: Live coding-counterbalance (M5.1)
+        id: live_cb
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "No OPENROUTER_API_KEY — skipping CB live suite"
+            exit 0
+          fi
+          mkdir -p live/reports
+          set +e
+          pnpm -C engines/ts exec node --import tsx src/cli.ts live \
+            --deployment ../../examples/coding-counterbalance/deployment.openrouter-free.yml \
+            --scenarios ../../live/scenarios-coding-counterbalance \
+            --report ../../live/reports/coding-counterbalance-nightly.json \
+            --catch-rate-min 0.5
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "Rate limited — skipping fail"
+            exit 0
+          fi
+          exit $code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
