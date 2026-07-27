@@ -66,6 +66,11 @@
         "tighten_only": { "type": "boolean" },
         "allow_nested": { "type": "boolean" }
       }
+    },
+    "counterbalance": {
+      "type": "object",
+      "description": "Executable Counterbalance bridge (modes, sequences, invalidate_after). See docs/spec-v0.2-draft.md.",
+      "additionalProperties": true
     }
   },
   "$defs": {

@@ -1,0 +1,3 @@
+{"args":{},"seq":1,"stage":"propose","state_hash":"73a009319d38fa219095d67b0edff9f7ece4f4de879172e3c843a940757afbf4","tool":"task.complete","ts_logical":1}
+{"args":{},"seq":2,"stage":"validate","state_hash":"73a009319d38fa219095d67b0edff9f7ece4f4de879172e3c843a940757afbf4","tool":"task.complete","ts_logical":2,"verdict":"allow"}
+{"args":{},"reason":"completion_gate_failed","seq":3,"stage":"authorize","state_hash":"73a009319d38fa219095d67b0edff9f7ece4f4de879172e3c843a940757afbf4","tool":"task.complete","ts_logical":3,"verdict":"deny"}

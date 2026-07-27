@@ -1,8 +1,10 @@
 # Faust Harness (`fausth`)
 
-Portable **Counterbalance Contract** runtime: define an agent once, enforce gates and **post-execution verification**, swap the model.
+Portable runtime and standard for **agent harnesses**: give an agent skills, memory, and instincts; define the gates, user checkpoints, and security that keep them true; run the same harness locally, in CI, on a server, or in simulation.
 
-**Status:** v0.1.1 research alpha — correctness-focused. Not production-safe.
+**Counterbalance:** agent and world counterweight each other across **ability**, **awareness**, and **behaviour**. The model proposes; Fausth governs the exchange. See [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md).
+
+**Status:** v0.1.1 research alpha — correctness-focused. Baseline freeze: [`docs/BASELINE-v0.1.md`](docs/BASELINE-v0.1.md). Not production-safe.
 
 ## Two MVP claims
 
@@ -22,6 +24,7 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 | Verified recovery / compensation path | Proven (fixtures) |
 | Tighten-only spawn lattice (tools, fs, limits) | Proven (fixtures) |
 | Model transports swappable independently | Proven (adapters) |
+| Memory freshness / sequence enforcement (Counterbalance slice) | In progress (v0.2 fixtures) |
 | Model-adaptive scaffolding | **Not yet** |
 | Production-ready isolation / security | **Not yet** |
 
@@ -29,11 +32,9 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 
 Pre-execution deny gates are table stakes. Faust declares **how the world proves the action worked** (`effect`, `evidence`, `absence`; live-only `judge`), and can run **verified recovery** when the world disagrees.
 
-## Product surface: CI quality gate
+## Reference surface: CI quality gate
 
-First external case study: Faust as a **layered PR quality gate** (deterministic blocking + evidence-verified advisory LLM), hosted by GitHub Actions — not a third engine.
-
-See [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md) and [`examples/slopathon-review/`](examples/slopathon-review/) (SLOPATHON).
+[`examples/slopathon-review/`](examples/slopathon-review/) hosts Faust in GitHub Actions as a layered PR gate. That is a **reference harness / portability proof**, not the definition of Fausth. See [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md).
 
 ## Model transport
 
@@ -73,7 +74,8 @@ pnpm live
 ## Spec
 
 Normative prose: [`docs/spec-v0.1.md`](docs/spec-v0.1.md).  
-Theory / Counterbalance Architecture: [My Harness Engineering Journey](https://www.notion.so/My-Harness-Engineering-Journey-36d7c4b5883280ab9480d1f85d816ef3).
+Architecture: [`docs/architecture.md`](docs/architecture.md) · [`docs/glossary.md`](docs/glossary.md).  
+Counterbalance draft: [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md).
 
 ## License
 

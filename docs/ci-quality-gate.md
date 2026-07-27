@@ -1,6 +1,9 @@
 # Faust as a CI quality gate
 
-Faust’s first product surface for external repos: a **portable, governed AI quality gate** inside GitHub Actions — not a third engine.
+Faust’s **reference product surface** for external event repos: a **portable, governed AI quality gate** inside GitHub Actions — not a third engine, and **not** the definition of Fausth.
+
+Fausth itself is the Counterbalance harness runtime ([`counterbalance-architecture.md`](counterbalance-architecture.md)). SLOPATHON-style CI is one host adapter configuration among coding, support, and future surfaces.
+
 
 ## Engines vs hosts
 

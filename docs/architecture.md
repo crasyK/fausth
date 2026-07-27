@@ -1,34 +1,58 @@
 # Architecture
 
+Fausth is a **portable runtime and standard for agent harnesses**: one reaction vessel with two programmable sides and an externally constrained model in the middle.
+
+```text
+┌────────────────────────── FAUSTH HARNESS ──────────────────────────┐
+│   AGENT                         WORLD                               │
+│   Skills / Memory / Instincts ↔ Gates / User / Permissions+hooks   │
+└───────────────────────────────┬────────────────────────────────────┘
+                                │
+                     Environment / world adapter
+                                │
+              local · CI · server · browser · simulation
 ```
-agent.yml + deployment.yml
+
+Glossary: [`glossary.md`](glossary.md).  
+Counterbalance thesis: [`counterbalance-architecture.md`](counterbalance-architecture.md).  
+Normative v0.1: [`spec-v0.1.md`](spec-v0.1.md).  
+v0.1 baseline freeze: [`BASELINE-v0.1.md`](BASELINE-v0.1.md).
+
+## Artifacts
+
+| Artifact | Role |
+|----------|------|
+| Harness (`agent.yml` today) | Portable reaction semantics (agent + world policy) |
+| `deployment.yml` | Model transport + native bindings (not portable policy) |
+| Canonical JSON IR | Schema-validated runtime form |
+
+```
+harness + deployment
         ↓
-  Canonical JSON IR  (schema-validated)
+  Canonical JSON IR
         ↓
-  ┌─────┴─────┐
-  engines/ts   engines/py
+  engines/ts · engines/py
         ↓
-  ModelPort ← openai-compatible transport + provider profiles
+  ModelPort (openai-compatible + profiles)   ← deployment concern
         ↓
-  Native tool registry → world
+  Native tool registry / world adapter
 ```
 
 ## Lifecycle (v0.1 shipped)
 
 `propose → validate → authorize → execute → verify`
 
-Named stubs: `observe`, `record`, `rebalance`.
-
+Named stubs: `observe`, `record`, `rebalance`.  
 Verdicts: `allow` | `deny` | `safe_state`.
 
-## Model transport
-
-One primary **OpenAI-compatible** adapter. Profiles (`openrouter`, `ollama`, `kit-scc`, `generic`) supply base URL, key env, headers, and capability quirks. Secrets via `api_key_env` only. Details: [`openai-compatible.md`](openai-compatible.md).
+v0.2 extends this kernel with explicit observe/orient/complete and memory invalidation — see the Counterbalance draft. New semantics land only behind Track A fixtures.
 
 ## Two tracks
 
-- **Track A:** golden-log replay (`recorded` adapter) — byte-identical across TS/Py.
-- **Track B:** live suites via deployment profiles (OpenRouter public demo; KIT institutional optional) — never mutates Track A expectations automatically.
+- **Track A:** golden-log replay (`recorded`) — byte-identical TS/Py.
+- **Track B:** live suites via deployment profiles — never mutates Track A automatically.
 
-Normative semantics: [`spec-v0.1.md`](spec-v0.1.md).  
-Philosophy (Counterbalance Architecture): Notion *My Harness Engineering Journey*.
+## Reference surfaces
+
+- Coding / greenhouse examples — local harness demos.
+- [`examples/slopathon-review/`](../examples/slopathon-review/) — CI host case study (GitHub Actions), **not** the product boundary.

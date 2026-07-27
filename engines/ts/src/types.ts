@@ -15,8 +15,42 @@ export type ReasonCode =
   | "tool_execution_failed"
   | "safe_state_entered"
   | "recovery_succeeded"
-  | "terminal_failure";
+  | "terminal_failure"
+  | "mode_denied"
+  | "sequence_requirement_failed"
+  | "memory_stale"
+  | "completion_gate_failed"
+  | "user_checkpoint_required";
 
+export type CounterbalanceMode = {
+  id: string;
+  tools?: string[];
+};
+
+export type CounterbalanceSequence = {
+  id?: string;
+  action: string;
+  require_prior_tools?: string[];
+  require_state?: Predicate;
+};
+
+export type CounterbalanceInvalidateAfter = {
+  action: string;
+  memory_keys: string[];
+};
+
+export type CounterbalanceCompletion = {
+  tool?: string;
+  require?: Predicate;
+};
+
+/** Executable Counterbalance extensions (v0.1 bridge). */
+export type CounterbalanceExt = {
+  modes?: CounterbalanceMode[];
+  sequences?: CounterbalanceSequence[];
+  invalidate_after?: CounterbalanceInvalidateAfter[];
+  completion?: CounterbalanceCompletion;
+};
 export type Stage =
   | "propose"
   | "validate"
@@ -125,6 +159,8 @@ export type AgentIR = {
     tighten_only?: boolean;
     allow_nested?: boolean;
   };
+  /** Counterbalance bridge — modes, sequences, invalidate_after (see spec-v0.2-draft). */
+  counterbalance?: CounterbalanceExt;
 };
 
 export type DeploymentModel = {

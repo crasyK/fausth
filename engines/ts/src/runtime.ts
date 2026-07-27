@@ -138,6 +138,88 @@ export class FaustRuntime {
     return { ok: true };
   }
 
+  private successfulExecutes(): Set<string> {
+    const s = new Set<string>();
+    for (const e of this.events) {
+      if (e.stage === "execute" && e.verdict === "allow" && e.tool) s.add(e.tool);
+    }
+    return s;
+  }
+
+  private checkMode(actionName: string): { ok: true } | { ok: false; reason: ReasonCode } {
+    const modes = this.agent.counterbalance?.modes;
+    if (!modes || modes.length === 0) return { ok: true };
+    const modeId = String(this.agent.state.mode ?? "");
+    const mode = modes.find((m) => m.id === modeId);
+    if (!mode) {
+      return { ok: false, reason: "mode_denied" };
+    }
+    if (mode.tools && !mode.tools.includes(actionName)) {
+      return { ok: false, reason: "mode_denied" };
+    }
+    return { ok: true };
+  }
+
+  private checkSequences(
+    action: { name: string; args: Record<string, unknown> },
+  ): { ok: true } | { ok: false; reason: ReasonCode } {
+    const seqs = this.agent.counterbalance?.sequences;
+    if (!seqs || seqs.length === 0) return { ok: true };
+    const done = this.successfulExecutes();
+    const snap: Snapshot = { action, state: this.agent.state };
+    for (const seq of seqs) {
+      if (seq.action !== action.name) continue;
+      for (const prior of seq.require_prior_tools ?? []) {
+        if (!done.has(prior)) {
+          return { ok: false, reason: "sequence_requirement_failed" };
+        }
+      }
+      if (seq.require_state && !evalPredicate(seq.require_state, snap)) {
+        return { ok: false, reason: "sequence_requirement_failed" };
+      }
+    }
+    return { ok: true };
+  }
+
+  private applyInvalidateAfter(actionName: string): void {
+    const rules = this.agent.counterbalance?.invalidate_after;
+    if (!rules) return;
+    let touched = false;
+    const next = { ...this.agent.state };
+    for (const rule of rules) {
+      if (rule.action !== actionName) continue;
+      for (const key of rule.memory_keys) {
+        next[key] = 0;
+        touched = true;
+      }
+    }
+    if (!touched) return;
+    this.agent.state = next;
+    this.emit({
+      stage: "record",
+      verdict: "allow",
+      reason: "memory_stale",
+      tool: actionName,
+      result: { invalidated: 1 },
+    });
+  }
+
+  private checkCompletion(actionName: string): { ok: true } | { ok: false; reason: ReasonCode } {
+    const completion = this.agent.counterbalance?.completion;
+    if (!completion) return { ok: true };
+    const tool = completion.tool ?? "task.complete";
+    if (actionName !== tool) return { ok: true };
+    if (!completion.require) return { ok: true };
+    const snap: Snapshot = {
+      action: { name: actionName, args: {} },
+      state: this.agent.state,
+    };
+    if (!evalPredicate(completion.require, snap)) {
+      return { ok: false, reason: "completion_gate_failed" };
+    }
+    return { ok: true };
+  }
+
   private applyStateTransition(transition: StateTransition | undefined): void {
     if (!transition) return;
     const next = { ...this.agent.state };
@@ -643,6 +725,42 @@ export class FaustRuntime {
         }
       }
 
+      const modeCheck = this.checkMode(action.name);
+      if (!modeCheck.ok) {
+        this.emit({
+          stage: "authorize",
+          verdict: "deny",
+          reason: modeCheck.reason,
+          tool: action.name,
+          args: action.args,
+        });
+        break;
+      }
+
+      const seqCheck = this.checkSequences(action);
+      if (!seqCheck.ok) {
+        this.emit({
+          stage: "authorize",
+          verdict: "deny",
+          reason: seqCheck.reason,
+          tool: action.name,
+          args: action.args,
+        });
+        break;
+      }
+
+      const completionAuth = this.checkCompletion(action.name);
+      if (!completionAuth.ok) {
+        this.emit({
+          stage: "authorize",
+          verdict: "deny",
+          reason: completionAuth.reason,
+          tool: action.name,
+          args: action.args,
+        });
+        break;
+      }
+
       this.emit({ stage: "authorize", verdict: "allow", tool: action.name, args: action.args });
 
       this.toolCalls += 1;
@@ -687,6 +805,8 @@ export class FaustRuntime {
 
       const verified = await this.runVerifies(tool, action, envelope.output);
       if (!verified) break;
+
+      this.applyInvalidateAfter(action.name);
     }
     return this.events;
   }

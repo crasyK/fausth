@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/counterbalance-contract.v0.2.draft.json",
+  "title": "Counterbalance Contract v0.2 (DRAFT — non-normative)",
+  "description": "Design-direction schema. Not enforced by engines until fixtures promote fields. See docs/spec-v0.2-draft.md.",
+  "type": "object",
+  "required": ["spec", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": {
+      "type": "string",
+      "enum": ["counterbalance-contract/v0.2", "counterbalance-contract/v0.2-draft"]
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "skills": { "type": "array", "items": { "$ref": "#/$defs/skill" } },
+        "memory": { "type": "array", "items": { "$ref": "#/$defs/memorySlot" } },
+        "instincts": { "type": "array", "items": { "$ref": "#/$defs/instinct" } }
+      }
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gates": { "type": "array", "items": { "type": "object" } },
+        "user": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "can_correct": { "type": "array", "items": { "type": "string" } },
+            "can_interrupt": { "type": "boolean" },
+            "approval_required_for": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permissions": { "type": "object" },
+            "modes": { "type": "array", "items": { "$ref": "#/$defs/mode" } },
+            "hooks": { "type": "array", "items": { "type": "object" } },
+            "sequences": { "type": "array", "items": { "$ref": "#/$defs/sequence" } },
+            "invalidate_after": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/invalidateAfter" }
+            }
+          }
+        }
+      }
+    },
+    "exchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lifecycle": { "type": "array", "items": { "type": "string" } },
+        "completion": { "type": "object" },
+        "recovery": { "type": "object" }
+      }
+    },
+    "limits": { "type": "object" },
+    "state": { "type": "object" },
+    "counterbalance": { "$ref": "#/$defs/counterbalanceExt" }
+  },
+  "$defs": {
+    "skill": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "read_only": { "type": "boolean" },
+        "input": { "type": "object" },
+        "output": { "type": "object" },
+        "verify": { "type": "array" }
+      }
+    },
+    "memorySlot": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string", "enum": ["user", "world", "agent-inference"] },
+        "authority": { "type": "string", "enum": ["user", "world", "agent"] },
+        "freshness": { "type": "string" },
+        "correction": { "type": "string" }
+      }
+    },
+    "instinct": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "directive": { "type": "string" },
+        "when": { "type": "string" }
+      }
+    },
+    "mode": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "required": ["id", "action"],
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "require_prior_tools": { "type": "array", "items": { "type": "string" } },
+        "require_state": { "type": "object" }
+      }
+    },
+    "invalidateAfter": {
+      "type": "object",
+      "required": ["action", "memory_keys"],
+      "properties": {
+        "action": { "type": "string" },
+        "memory_keys": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "counterbalanceExt": {
+      "type": "object",
+      "description": "Executable bridge on v0.1 IR — see docs/spec-v0.2-draft.md §2",
+      "additionalProperties": true
+    }
+  }
+}

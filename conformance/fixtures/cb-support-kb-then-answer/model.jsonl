@@ -1,0 +1,2 @@
+{"args":{"query":"refund-policy"},"name":"kb.lookup","type":"tool"}
+{"args":{"text":"Per article, refunds need review."},"name":"answer.send","type":"tool"}
