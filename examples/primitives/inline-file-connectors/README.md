@@ -7,6 +7,7 @@ Minimal harness demonstrating the connector compile/link layer:
 - `fausth run` and `fausth test` bind and execute the resolved tool set
 - the inline temperature sensor and file-backed wait capability use existing deterministic `stub.*` natives
 - `fausth pack` emits **`fausth-harness-bundle/v0.2`** with top-level `resolved` + `resolved_sha256`
+- optional Ed25519 signatures via `--sign-key` / `FAUSTH_SIGN_KEY` (default unsigned)
 - legacy manifest-less packs remain **byte-identical** `v0.1`
 
 ```bash +code
@@ -20,4 +21,4 @@ pnpm ci:resolve
 pnpm ci:packaging
 ```
 
-Deferred: module/MCP connectors, signatures, and registries.
+Deferred: module/MCP connectors and registries.

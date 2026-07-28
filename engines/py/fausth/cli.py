@@ -8,7 +8,8 @@ from pathlib import Path
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
 from .packaging import inspect_harness, pack_harness, test_harness
-from .bundle import BundleError, resolve_harness_ref, unpack_bundle
+from .bundle import BundleError, load_bundle_file, resolve_harness_ref, unpack_bundle
+from .bundle_signature import BundleSignatureError
 from .connectors import (
     ConnectorError,
     resolve_harness,
@@ -146,10 +147,13 @@ def main(argv: list[str] | None = None) -> None:
     p_pack = sub.add_parser("pack")
     p_pack.add_argument("agent", nargs="?", default=None)
     p_pack.add_argument("--out", default=None)
+    p_pack.add_argument("--sign-key", default=None, dest="sign_key")
     p_unpack = sub.add_parser("unpack")
     p_unpack.add_argument("bundle")
     p_unpack.add_argument("--out", required=True)
     p_unpack.add_argument("--force", action="store_true")
+    p_verify = sub.add_parser("verify")
+    p_verify.add_argument("bundle")
     args = parser.parse_args(argv)
     default_agent = str(repo_root() / "examples" / "coding-counterbalance")
     if args.cmd == "replay":
@@ -229,13 +233,36 @@ def main(argv: list[str] | None = None) -> None:
         finally:
             resolved.cleanup()
     if args.cmd == "pack":
-        r = pack_harness(args.agent or default_agent, args.out)
-        print(f"packed {len(r['files'])} files -> {r['out']} ({r['format']})")
-        raise SystemExit(0)
+        try:
+            r = pack_harness(
+                args.agent or default_agent,
+                args.out,
+                sign_key=args.sign_key,
+            )
+            signed = ", signed ed25519" if r.get("signed") else ""
+            print(f"packed {len(r['files'])} files -> {r['out']} ({r['format']}{signed})")
+            raise SystemExit(0)
+        except BundleSignatureError as e:
+            print(str(e), file=sys.stderr)
+            raise SystemExit(1)
     if args.cmd == "unpack":
         try:
             dest = unpack_bundle(args.bundle, args.out, force=args.force)
             print(f"unpacked -> {dest}")
+            raise SystemExit(0)
+        except BundleError as e:
+            print(str(e), file=sys.stderr)
+            raise SystemExit(1)
+    if args.cmd == "verify":
+        try:
+            bundle = load_bundle_file(args.bundle)
+            sig = bundle.get("signature")
+            if sig:
+                print(
+                    f"OK signature ed25519 public_key={sig['public_key']} ({bundle['format']})"
+                )
+            else:
+                print(f"OK unsigned bundle ({bundle['format']})")
             raise SystemExit(0)
         except BundleError as e:
             print(str(e), file=sys.stderr)

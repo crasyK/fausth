@@ -19,6 +19,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { canonicalJson } from "./canonical.js";
 import {
+  type BundleSignature,
+  BundleSignatureError,
+  verifyBundleSignature,
+} from "./bundle-signature.js";
+import {
   RESOLVED_HARNESS_FORMAT,
   resolvedHarnessHash,
 } from "./connectors/resolve.js";
@@ -36,6 +41,7 @@ export type HarnessBundleV1 = {
   format: typeof BUNDLE_FORMAT_V01;
   name: string;
   files: Record<string, string>;
+  signature?: BundleSignature;
 };
 
 export type HarnessBundleV2 = {
@@ -44,6 +50,7 @@ export type HarnessBundleV2 = {
   files: Record<string, string>;
   resolved: ResolvedHarnessIR;
   resolved_sha256: string;
+  signature?: BundleSignature;
 };
 
 export type HarnessBundle = HarnessBundleV1 | HarnessBundleV2;
@@ -57,6 +64,8 @@ export class BundleError extends Error {
     | "bundle_resolved_hash_mismatch"
     | "bundle_lock_file_missing"
     | "bundle_lock_hash_mismatch"
+    | "bundle_signature_invalid"
+    | "bundle_signature_unsupported"
     | "not_found";
   constructor(code: BundleError["code"], message: string) {
     super(message);
@@ -221,6 +230,29 @@ export function verifyBundleIntegrity(bundle: HarnessBundleV2): void {
   }
 }
 
+function attachOptionalSignature(
+  bundle: HarnessBundle,
+  obj: Record<string, unknown>,
+): HarnessBundle {
+  if (!("signature" in obj) || obj.signature === undefined) {
+    return bundle;
+  }
+  try {
+    verifyBundleSignature(obj);
+  } catch (e) {
+    if (e instanceof BundleSignatureError) {
+      throw new BundleError(
+        e.code === "bundle_signature_unsupported"
+          ? "bundle_signature_unsupported"
+          : "bundle_signature_invalid",
+        e.message,
+      );
+    }
+    throw e;
+  }
+  return { ...bundle, signature: obj.signature as BundleSignature };
+}
+
 export function validateBundle(raw: unknown): HarnessBundle {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new BundleError("bundle_invalid", "bundle must be an object");
@@ -245,7 +277,8 @@ export function validateBundle(raw: unknown): HarnessBundle {
     if ("resolved" in obj || "resolved_sha256" in obj) {
       throw new BundleError("bundle_invalid", "v0.1 bundle must not include resolved fields");
     }
-    return { format: BUNDLE_FORMAT_V01, name: obj.name, files };
+    const v1: HarnessBundleV1 = { format: BUNDLE_FORMAT_V01, name: obj.name, files };
+    return attachOptionalSignature(v1, obj);
   }
 
   if (typeof obj.resolved_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(obj.resolved_sha256)) {
@@ -262,8 +295,10 @@ export function validateBundle(raw: unknown): HarnessBundle {
     resolved,
     resolved_sha256: obj.resolved_sha256,
   };
-  verifyBundleIntegrity(bundle);
-  return bundle;
+  // Signature first (covers files + resolved); then content integrity pins.
+  const withSig = attachOptionalSignature(bundle, obj) as HarnessBundleV2;
+  verifyBundleIntegrity(withSig);
+  return withSig;
 }
 
 export function loadBundleFile(path: string): HarnessBundle {

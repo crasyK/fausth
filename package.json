@@ -21,7 +21,7 @@
     "ci:conformance": "pnpm -C engines/ts test && pnpm -C engines/ts exec node --import tsx src/cli.ts replay && node scripts/parity.mjs",
     "ci:multi-host": "node scripts/multi-host-smoke.mjs",
     "ci:local-e2e": "node scripts/local-e2e.mjs",
-    "ci:packaging": "pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/coding-counterbalance && pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/support-bot && pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/coding-counterbalance --out ../../live/reports/coding-counterbalance.fausth.json && node scripts/bundle-roundtrip.mjs",
+    "ci:packaging": "pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/coding-counterbalance && pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/support-bot && pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/coding-counterbalance --out ../../live/reports/coding-counterbalance.fausth.json && node scripts/bundle-roundtrip.mjs && node scripts/bundle-signature-roundtrip.mjs",
     "ci:resolve": "node scripts/resolve-roundtrip.mjs && node scripts/connector-execution.mjs",
     "ci:release-check": "node scripts/release-check.mjs"
   }

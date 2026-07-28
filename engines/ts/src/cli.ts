@@ -14,7 +14,8 @@ import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
 import { deploymentUsesLocal } from "./adapters/local.js";
 import { inspectHarness, packHarness, testHarness } from "./packaging.js";
-import { BundleError, unpackBundle, withHarnessRef } from "./bundle.js";
+import { BundleError, loadBundleFile, unpackBundle, withHarnessRef } from "./bundle.js";
+import { BundleSignatureError } from "./bundle-signature.js";
 import {
   ConnectorError,
   resolveHarness,
@@ -777,8 +778,9 @@ Usage:
   fausth test <harness|bundle> [--deployment <yml>] [--skip-fixtures]
   fausth inspect <harness|bundle>
   fausth resolve <harness|bundle> [--out <resolved.json>]
-  fausth pack <harness> [--out <file|dir>]
+  fausth pack <harness> [--out <file|dir>] [--sign-key <seed.hex|pem>]
   fausth unpack <bundle.fausth.json> --out <dir> [--force]
+  fausth verify <bundle.fausth.json>
   fausth run <harness|bundle> [--deployment <yml>] [--model <jsonl>] [--dump <jsonl>]
            [--workspace <linked-worktree>] [--prompt <text>|--task-file <path>]
            [--max-steps <n>] [--report <json>] [--expect-complete]
@@ -789,6 +791,7 @@ Usage:
   fausth review --mode deterministic|advisory ...
 
 Harness refs may be a directory or a .fausth.json bundle (validate/test/inspect/resolve/run unpack to a temp dir).
+Pack signing is opt-in (--sign-key or FAUSTH_SIGN_KEY); unsigned packs stay byte-identical.
 Local real I/O requires an explicit deployment.local-*.yml and --workspace (linked disposable git worktree).
 `);
     process.exit(0);
@@ -888,9 +891,20 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     const target =
       rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
       join(repoRoot(), "examples/coding-counterbalance");
-    const { out, files, format } = packHarness(resolve(target), a.out);
-    console.log(`packed ${files.length} files → ${out} (${format})`);
-    process.exit(0);
+    try {
+      const { out, files, format, signed } = packHarness(resolve(target), a.out, {
+        signKey: a["sign-key"],
+      });
+      console.log(
+        `packed ${files.length} files → ${out} (${format}${signed ? ", signed ed25519" : ""})`,
+      );
+      process.exit(0);
+    } catch (e) {
+      console.error(
+        e instanceof BundleSignatureError || e instanceof Error ? e.message : e,
+      );
+      process.exit(1);
+    }
   }
   if (cmd === "unpack") {
     const a = parseArgs(rest);
@@ -905,6 +919,28 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
         force: a.force === "1" || a.force === "true",
       });
       console.log(`unpacked → ${dest}`);
+      process.exit(0);
+    } catch (e) {
+      console.error(e instanceof BundleError || e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
+  }
+  if (cmd === "verify") {
+    const target =
+      rest.find((x) => !x.startsWith("--")) ?? "";
+    if (!target) {
+      console.error("Usage: fausth verify <bundle.fausth.json>");
+      process.exit(1);
+    }
+    try {
+      const bundle = loadBundleFile(resolve(target));
+      if (bundle.signature) {
+        console.log(
+          `OK signature ed25519 public_key=${bundle.signature.public_key} (${bundle.format})`,
+        );
+      } else {
+        console.log(`OK unsigned bundle (${bundle.format})`);
+      }
       process.exit(0);
     } catch (e) {
       console.error(e instanceof BundleError || e instanceof Error ? e.message : e);

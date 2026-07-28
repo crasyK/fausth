@@ -28,6 +28,7 @@ import {
   resolveHarness,
   resolvedHarnessHash,
 } from "./connectors/resolve.js";
+import { signBundle, loadSignKeyFromPath } from "./bundle-signature.js";
 
 // load.ts may not export loadFixtureAgent — inline
 function loadFixtureAgentLocal(dir: string): AgentIR {
@@ -457,11 +458,13 @@ function collectPackSourceFiles(dir: string): { path: string; content: string }[
  * Pack harness into a portable `.fausth.json` bundle (git/archives before registry).
  * Manifest-less harnesses → byte-identical v0.1.
  * Connector harnesses → v0.2 with verified top-level resolved IR.
+ * Optional Ed25519 signing via `signKey` path or FAUSTH_SIGN_KEY (opt-in; default unsigned).
  */
 export function packHarness(
   harnessDir: string,
   outPath?: string,
-): { out: string; files: string[]; format: string } {
+  opts: { signKey?: string } = {},
+): { out: string; files: string[]; format: string; signed: boolean } {
   const dir = resolve(harnessDir);
   const name = basename(dir);
   const hasConnectors = CONNECTOR_MANIFEST_NAMES.some(
@@ -509,6 +512,13 @@ export function packHarness(
     };
   }
 
+  const signKey = opts.signKey ?? process.env.FAUSTH_SIGN_KEY;
+  let signed = false;
+  if (signKey) {
+    bundle = signBundle(bundle, loadSignKeyFromPath(signKey));
+    signed = true;
+  }
+
   let out: string;
   if (outPath && outPath.endsWith(".fausth.json")) {
     out = resolve(outPath);
@@ -523,5 +533,6 @@ export function packHarness(
     out,
     files: files.map((f) => f.path),
     format: String(bundle.format),
+    signed,
   };
 }

@@ -23,6 +23,7 @@ import {
   validateBundle,
   withHarnessRef,
 } from "./bundle.js";
+import { generateEd25519SeedHex } from "./bundle-signature.js";
 import { resolveHarness, resolvedHarnessHash } from "./connectors/resolve.js";
 import { packHarness, testHarness } from "./packaging.js";
 
@@ -273,6 +274,92 @@ describe("bundle v0.2", () => {
     assert.ok(isHarnessBundleV2(fromBundle));
     assert.equal(resolvedHarnessHash(fromDir), fromBundle.resolved_sha256);
     assert.ok(readdirSync(join(unpackDir, "connectors")).includes("wait.yml"));
+    rmSync(outDir, { recursive: true, force: true });
+  });
+});
+
+describe("bundle signatures", () => {
+  it("unsigned coding pack stays 15650 bytes", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "fausth-unsigned-size-"));
+    const { out, signed } = packHarness(
+      codingHarness,
+      join(outDir, "coding.fausth.json"),
+    );
+    assert.equal(signed, false);
+    assert.equal(readFileSync(out).byteLength, 15650);
+    assert.equal("signature" in JSON.parse(readFileSync(out, "utf8")), false);
+    rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("sign → verify ok; tamper files/sig rejects before write", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "fausth-sig-"));
+    const seedPath = join(outDir, "seed.hex");
+    const { seed_hex } = generateEd25519SeedHex();
+    writeFileSync(seedPath, seed_hex + "\n", "utf8");
+
+    const { out, signed } = packHarness(
+      connectorHarness,
+      join(outDir, "signed.fausth.json"),
+      { signKey: seedPath },
+    );
+    assert.equal(signed, true);
+    const bundle = loadBundleFile(out);
+    assert.ok(bundle.signature);
+    assert.equal(bundle.signature!.alg, "ed25519");
+
+    const unpackDir = join(outDir, "ok");
+    unpackBundle(out, unpackDir);
+    assert.ok(existsSync(join(unpackDir, "agent.yml")));
+
+    const raw = JSON.parse(readFileSync(out, "utf8")) as {
+      files: Record<string, string>;
+      signature: { alg: string; public_key: string; sig: string };
+      [k: string]: unknown;
+    };
+
+    const destFiles = join(outDir, "tamper-files");
+    raw.files["agent.yml"] = raw.files["agent.yml"] + "\n# tampered\n";
+    assert.throws(() => unpackBundle(raw, destFiles), (e: unknown) => {
+      return e instanceof BundleError && e.code === "bundle_signature_invalid";
+    });
+    assert.equal(existsSync(destFiles), false);
+
+    const destSig = join(outDir, "tamper-sig");
+    const raw2 = JSON.parse(readFileSync(out, "utf8")) as {
+      signature: { alg: string; public_key: string; sig: string };
+      [k: string]: unknown;
+    };
+    raw2.signature.sig = "ab".repeat(64);
+    assert.throws(() => unpackBundle(raw2, destSig), (e: unknown) => {
+      return e instanceof BundleError && e.code === "bundle_signature_invalid";
+    });
+    assert.equal(existsSync(destSig), false);
+
+    const destAlg = join(outDir, "tamper-alg");
+    const raw3 = JSON.parse(readFileSync(out, "utf8")) as {
+      signature: { alg: string; public_key: string; sig: string };
+      [k: string]: unknown;
+    };
+    raw3.signature.alg = "rsa-pss";
+    assert.throws(() => unpackBundle(raw3, destAlg), (e: unknown) => {
+      return e instanceof BundleError && e.code === "bundle_signature_unsupported";
+    });
+    assert.equal(existsSync(destAlg), false);
+
+    rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it("signed v0.1 coding pack verifies", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "fausth-sig-v01-"));
+    const seedPath = join(outDir, "seed.hex");
+    writeFileSync(seedPath, generateEd25519SeedHex().seed_hex + "\n", "utf8");
+    const { out } = packHarness(codingHarness, join(outDir, "c.fausth.json"), {
+      signKey: seedPath,
+    });
+    const bundle = loadBundleFile(out);
+    assert.equal(bundle.format, BUNDLE_FORMAT_V01);
+    assert.ok(bundle.signature);
+    unpackBundle(out, join(outDir, "out"));
     rmSync(outDir, { recursive: true, force: true });
   });
 });

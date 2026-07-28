@@ -17,6 +17,7 @@ from fausth.bundle import (
     unpack_bundle,
     validate_bundle,
 )
+from fausth.bundle_signature import generate_ed25519_seed_hex
 from fausth.connectors import resolve_harness, resolved_harness_hash
 from fausth.packaging import pack_harness
 from fausth.packaging import test_harness as run_harness_test
@@ -173,6 +174,57 @@ class BundleV02Tests(unittest.TestCase):
                 self.assertNotEqual(resolved_harness_hash(reresolved), embedded_hash)
             finally:
                 ref.cleanup()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class BundleSignatureTests(unittest.TestCase):
+    def test_unsigned_coding_pack_size(self) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix="fausth-py-unsigned-"))
+        try:
+            r = pack_harness(str(CODING), str(tmp / "coding.fausth.json"))
+            self.assertFalse(r["signed"])
+            data = Path(r["out"]).read_bytes()
+            self.assertEqual(len(data), 15650)
+            self.assertNotIn("signature", json.loads(data.decode("utf-8")))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_sign_verify_and_tamper(self) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix="fausth-py-sig-"))
+        try:
+            seed = tmp / "seed.hex"
+            seed.write_text(generate_ed25519_seed_hex()["seed_hex"] + "\n", encoding="utf-8")
+            r = pack_harness(str(CONNECTORS), str(tmp / "signed.fausth.json"), sign_key=str(seed))
+            self.assertTrue(r["signed"])
+            bundle = load_bundle_file(r["out"])
+            self.assertIn("signature", bundle)
+            self.assertEqual(bundle["signature"]["alg"], "ed25519")
+            unpack_bundle(r["out"], tmp / "ok")
+
+            raw = json.loads(Path(r["out"]).read_text(encoding="utf-8"))
+            raw["files"]["agent.yml"] += "\n# tampered\n"
+            dest = tmp / "tamper-files"
+            with self.assertRaises(BundleError) as ctx:
+                unpack_bundle(raw, dest)
+            self.assertEqual(ctx.exception.code, "bundle_signature_invalid")
+            self.assertFalse(dest.exists())
+
+            raw2 = json.loads(Path(r["out"]).read_text(encoding="utf-8"))
+            raw2["signature"]["sig"] = "ab" * 64
+            dest2 = tmp / "tamper-sig"
+            with self.assertRaises(BundleError) as ctx2:
+                unpack_bundle(raw2, dest2)
+            self.assertEqual(ctx2.exception.code, "bundle_signature_invalid")
+            self.assertFalse(dest2.exists())
+
+            raw3 = json.loads(Path(r["out"]).read_text(encoding="utf-8"))
+            raw3["signature"]["alg"] = "rsa-pss"
+            dest3 = tmp / "tamper-alg"
+            with self.assertRaises(BundleError) as ctx3:
+                unpack_bundle(raw3, dest3)
+            self.assertEqual(ctx3.exception.code, "bundle_signature_unsupported")
+            self.assertFalse(dest3.exists())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

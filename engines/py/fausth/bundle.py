@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .canonical import canonical_json
+from .bundle_signature import BundleSignatureError, verify_bundle_signature
 from .connectors import RESOLVED_HARNESS_FORMAT, resolved_harness_hash
 
 BUNDLE_FORMAT_V01 = "fausth-harness-bundle/v0.1"
@@ -144,6 +145,23 @@ def verify_bundle_integrity(bundle: dict[str, Any]) -> None:
             )
 
 
+def _attach_optional_signature(bundle: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
+    if "signature" not in raw or raw["signature"] is None:
+        return bundle
+    try:
+        verify_bundle_signature(raw)
+    except BundleSignatureError as e:
+        code = (
+            "bundle_signature_unsupported"
+            if e.code == "bundle_signature_unsupported"
+            else "bundle_signature_invalid"
+        )
+        raise BundleError(code, str(e)) from e
+    out = dict(bundle)
+    out["signature"] = raw["signature"]
+    return out
+
+
 def validate_bundle(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise BundleError("bundle_invalid", "bundle must be an object")
@@ -163,7 +181,8 @@ def validate_bundle(raw: Any) -> dict[str, Any]:
     if format_ == BUNDLE_FORMAT_V01:
         if "resolved" in raw or "resolved_sha256" in raw:
             raise BundleError("bundle_invalid", "v0.1 bundle must not include resolved fields")
-        return {"format": BUNDLE_FORMAT_V01, "name": name, "files": files}
+        bundle = {"format": BUNDLE_FORMAT_V01, "name": name, "files": files}
+        return _attach_optional_signature(bundle, raw)
 
     resolved_sha256 = raw.get("resolved_sha256")
     if not isinstance(resolved_sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", resolved_sha256):
@@ -179,8 +198,9 @@ def validate_bundle(raw: Any) -> dict[str, Any]:
         "resolved": resolved,
         "resolved_sha256": resolved_sha256,
     }
-    verify_bundle_integrity(bundle)
-    return bundle
+    with_sig = _attach_optional_signature(bundle, raw)
+    verify_bundle_integrity(with_sig)
+    return with_sig
 
 
 def load_bundle_file(path: str | Path) -> dict[str, Any]:
