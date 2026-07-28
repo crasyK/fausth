@@ -1,125 +1,65 @@
 # Faust Harness (`fausth`)
 
-Portable runtime and standard for **agent harnesses**: give an agent skills, memory, and instincts; define the gates, user checkpoints, and security that keep them true; run the same harness locally, in CI, on a server, or in simulation.
+Portable runtime for **agent harnesses**: declare tools, gates, and verify rules once; run the same contract in simulation, locally, in CI, or against live models.
 
-**Counterbalance:** agent and world counterweight each other across **ability**, **awareness**, and **behaviour**. The model proposes; Fausth governs the exchange. See [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md).
+The model proposes. Fausth governs what may run and how the world must prove it worked.
 
-**Status:** v0.1.3-alpha research alpha — portable connector packs, signatures, and MCP stdio. Normative contract remains `counterbalance-contract/v0.1`. Not production-safe.
+**Status:** [v0.1.3-alpha](https://github.com/crasyK/fausth/releases/tag/v0.1.3-alpha) · contract `counterbalance-contract/v0.1` · **not** production-safe
 
-## Two MVP claims
+## Why it exists
 
-1. **Deterministic (Track A):** The same contract produces **byte-identical** event logs on TypeScript and Python when replaying golden fixtures (including verification verdicts).
-2. **Live (Track B):** Against **OpenRouter free models**, the same gates + verify stages catch unsafe/incorrect tool use — measured by `fausth live` reports.
+| Claim | Meaning |
+|-------|---------|
+| **Track A (deterministic)** | Same harness → **byte-identical** event logs on TypeScript and Python |
+| **Track B (live)** | Same gates against real models — never pollutes goldens |
 
-Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
-
-## What v0.1.3-alpha proves
-
-| Claim | Status |
-|-------|--------|
-| One contract interpreted by two runtimes | Proven (Track A) |
-| Deterministic gates + verify replay | Proven |
-| Tool input/output schema enforcement | Proven |
-| Governed effect observation | Proven |
-| Verified recovery / compensation path | Proven (fixtures) |
-| Tighten-only spawn lattice (tools, fs, limits) | Proven (fixtures) |
-| Model transports swappable independently | Proven (adapters) |
-| Memory freshness / sequence enforcement (Counterbalance slice) | Proven (Track A `cb-*` fixtures) |
-| Multi-host (TS / Python / GHA) same harness + bindings | Proven (`pnpm ci:multi-host`) |
-| Live coding-counterbalance (OpenRouter Track B) | Secrets-gated (`live-openrouter` + CB scenarios) |
-| Nested spawn child log (M6) | Proven (Track A `spawn-nested-*`) |
-| Packaging CLI (`validate`/`test`/`inspect`/`pack`/`unpack`/`run`/`verify`) | Proven (`pnpm ci:packaging`) |
-| Disposable-worktree local FS/process adapter (M8) | Proven (`pnpm ci:local-e2e`) |
-| Bundle TS↔Python byte-identical pack | Proven (`scripts/bundle-roundtrip.mjs`) |
-| Connector resolve + resolved IR execution (M10) | Proven (`pnpm ci:resolve`) |
-| Portable resolved bundles v0.2 / MCP bundles v0.3 | Proven (`scripts/bundle-roundtrip.mjs`) |
-| Optional Ed25519 bundle signatures (M10.4) | Proven (`scripts/bundle-signature-roundtrip.mjs`) |
-| MCP connectors recorded + live stdio (M11) | Proven (`scripts/mcp-execution.mjs`, `live-mcp-stdio.mjs`) |
-| Live model + live MCP (KIT / OpenRouter) | Proven (`scripts/live-mcp-model.mjs`) |
-| Model-adaptive scaffolding | **Not yet** |
-| Production-ready isolation / security | **Not yet** |
-
-## Headline: `verify`
-
-Pre-execution deny gates are table stakes. Faust declares **how the world proves the action worked** (`effect`, `evidence`, `absence`; live-only `judge`), and can run **verified recovery** when the world disagrees.
-
-## Reference surface: CI quality gate
-
-[`examples/slopathon-review/`](examples/slopathon-review/) hosts Faust in GitHub Actions as a layered PR gate. That is a **reference harness / portability proof**, not the definition of Fausth. See [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md).
-
-## Model transport
-
-Primary integration is **OpenAI-compatible Chat Completions** with provider profiles (`openrouter`, `ollama`, `kit-scc`, `generic`). See [`docs/openai-compatible.md`](docs/openai-compatible.md). Secrets use `api_key_env` only — never YAML literals.
+## Quick start
 
 ```bash +code
-# Public free-model demo
-pnpm live -- --deployment examples/greenhouse/deployment.openrouter-free.yml
-
-# Institutional KIT gateway (requires KIT_AI_API_KEY)
-pnpm -C engines/ts exec node --import tsx src/cli.ts provider probe \
-  --deployment ../../examples/greenhouse/deployment.kit.yml
-```
-
-## Quickstart (first harness path)
-
-```bash +code
-corepack enable
-pnpm install
+corepack enable && pnpm install
 pnpm test
-pnpm replay
-pnpm ci:multi-host   # same coding-counterbalance harness: TS ≡ Python ≡ golden
-pnpm ci:packaging    # validate + test + pack + TS↔Py bundle bytes
-pnpm ci:local-e2e    # recorded completion in a disposable linked worktree
 pnpm fausth -- help
 ```
 
-Author / check a harness (see [`docs/authoring.md`](docs/authoring.md)):
+Try a harness:
 
 ```bash +code
-pnpm fausth -- validate examples/coding-counterbalance
-pnpm fausth -- test examples/support-bot
-pnpm fausth -- inspect examples/coding-counterbalance
+pnpm fausth -- test examples/coding-counterbalance
 pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth.json
-pnpm fausth -- unpack live/reports/out.fausth.json --out /tmp/cb --force
-pnpm ci:resolve        # connector + MCP resolve/execution parity
-node scripts/live-mcp-stdio.mjs   # live MCP process (no API key)
-# node scripts/live-mcp-model.mjs # live model + MCP (needs .env keys)
 ```
 
-### Security boundaries (alpha)
+## How-to
 
-- Real I/O only with an explicit `deployment.local-*.yml` and `--workspace` = linked disposable worktree.
-- Not a VM sandbox. Do not use on valuable primary checkouts.
-- Track A goldens never depend on live models or local writes.
+| Task | Guide |
+|------|-------|
+| Author a harness | [`docs/authoring.md`](docs/authoring.md) |
+| Pack, sign, verify, resolve, MCP | [`docs/HOW-TO.md`](docs/HOW-TO.md) |
+| OpenAI-compatible models (KIT / OpenRouter) | [`docs/openai-compatible.md`](docs/openai-compatible.md) |
+| CI quality gate (SLOPATHON-style) | [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md) · [`examples/slopathon-review/`](examples/slopathon-review/) |
+| Packaging roadmap (M4–M11) | [`docs/harness-packaging-roadmap.md`](docs/harness-packaging-roadmap.md) |
 
-Prove the harness with free models (needs `OPENROUTER_API_KEY` — see `.env.example`):
+## What 0.1.3 proves (short)
 
-```bash +code
-cp .env.example .env   # add your key
-pnpm live
-```
+- Dual-runtime Track A + multi-host smoke
+- Packaging: `validate` / `test` / `inspect` / `pack` / `unpack` / `run` / `verify` / `resolve`
+- Bundles `v0.1` · `v0.2` (connectors) · `v0.3` (MCP); optional Ed25519 signatures
+- MCP connectors: recorded CI + live stdio; live model + MCP (KIT / OpenRouter)
+- Local coding in disposable worktrees; CI review example for event repos
 
-Primary OpenAI-compatible integration:
+Still **not** claimed: production isolation, model-adaptive scaffolding, `kind: module` plugins.
 
-```bash +code
-# Public free-model demo
-pnpm live -- --deployment examples/greenhouse/deployment.openrouter-free.yml
+## Security (alpha)
 
-# Institutional KIT gateway (requires KIT_AI_API_KEY)
-pnpm -C engines/ts exec node --import tsx src/cli.ts provider probe \
-  --deployment ../../examples/greenhouse/deployment.kit.yml
-```
+- Real FS/process I/O only with explicit `deployment.local-*.yml` and `--workspace` = linked disposable worktree
+- MCP `stdio` spawns a real process — not a sandbox
+- Bundle signatures are integrity checks, not a trust boundary for untrusted authors
 
-## Spec
+## Spec & theory
 
-Normative prose: [`docs/spec-v0.1.md`](docs/spec-v0.1.md).  
-Architecture: [`docs/architecture.md`](docs/architecture.md) · [`docs/glossary.md`](docs/glossary.md).  
-Counterbalance draft: [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md).
+[`docs/spec-v0.1.md`](docs/spec-v0.1.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md) · [`docs/glossary.md`](docs/glossary.md)
 
 ## License
 
-Apache-2.0 — see `LICENSE` and `NOTICE`.
-
-## Repository
+Apache-2.0 — `LICENSE` · `NOTICE`
 
 https://github.com/crasyK/fausth

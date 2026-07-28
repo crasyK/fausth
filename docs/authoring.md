@@ -1,6 +1,8 @@
 # Authoring a Fausth harness
 
-This guide covers the first portable harness path: author → validate → test → inspect → pack → run (simulation or disposable local worktree).
+This guide covers the first portable harness path: author → validate → test → inspect → pack → run.
+
+For copy-paste recipes (sign, resolve, MCP live, CI gate), see [`HOW-TO.md`](HOW-TO.md).
 
 ## Harness layout
 
