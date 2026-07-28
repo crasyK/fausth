@@ -12,7 +12,7 @@ The **host** is GitHub Actions in the event repo. The **engine** is pinned from 
 | Verification matrix | **PASS** — see [`VERIFICATION.md`](./VERIFICATION.md) |
 | Public SLOPATHON H1 sample (11 PRs) | **6 TP / 0 FP / 5 TN** on hard structural rules |
 | Workflows pinned to Fausth | **`v0.1.3-alpha`** (`d7209b7…`) |
-| Landed in `HACK-OPS-KA/SLOPATHON` workflows | **Not yet** — copy + open PR when organizers want it |
+| Landed in `HACK-OPS-KA/SLOPATHON` workflows | **Yes** — [PR #25](https://github.com/HACK-OPS-KA/SLOPATHON/pull/25) (2026-07-28) |
 
 Design: [`docs/ci-quality-gate.md`](../../docs/ci-quality-gate.md) · recipes: [`docs/HOW-TO.md`](../../docs/HOW-TO.md)
 
