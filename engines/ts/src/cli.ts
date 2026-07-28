@@ -16,6 +16,12 @@ import { deploymentUsesLocal } from "./adapters/local.js";
 import { inspectHarness, packHarness, testHarness } from "./packaging.js";
 import { BundleError, unpackBundle, withHarnessRef } from "./bundle.js";
 import {
+  ConnectorError,
+  resolveHarness,
+  resolvedHarnessCanonicalJson,
+  resolvedHarnessHash,
+} from "./connectors/resolve.js";
+import {
   createAdapterFromDeployment,
   toolsFromAgent,
   probeProvider,
@@ -757,6 +763,7 @@ Usage:
   fausth validate <harness|bundle>
   fausth test <harness|bundle> [--deployment <yml>] [--skip-fixtures]
   fausth inspect <harness|bundle>
+  fausth resolve <harness|bundle> [--out <resolved.json>]
   fausth pack <harness> [--out <file|dir>]
   fausth unpack <bundle.fausth.json> --out <dir> [--force]
   fausth run <harness|bundle> [--deployment <yml>] [--model <jsonl>] [--dump <jsonl>]
@@ -768,7 +775,7 @@ Usage:
   fausth provider probe --deployment <yml>
   fausth review --mode deterministic|advisory ...
 
-Harness refs may be a directory or a .fausth.json bundle (validate/test/inspect/run unpack to a temp dir).
+Harness refs may be a directory or a .fausth.json bundle (validate/test/inspect/resolve/run unpack to a temp dir).
 Local real I/O requires an explicit deployment.local-*.yml and --workspace (linked disposable git worktree).
 `);
     process.exit(0);
@@ -791,6 +798,31 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
         return report.binding_coverage && !report.binding_coverage.ok ? 1 : 0;
       }).catch((e) => {
         console.error(e instanceof Error ? e.message : e);
+        return 1;
+      }),
+    );
+  }
+  if (cmd === "resolve") {
+    const a = parseArgs(rest);
+    const target =
+      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      join(repoRoot(), "examples/coding-counterbalance");
+    process.exit(
+      await withHarnessRef(target, async (dir) => {
+        const resolved = resolveHarness(resolve(dir));
+        const text = resolvedHarnessCanonicalJson(resolved);
+        if (a.out) {
+          mkdirSync(dirname(resolve(a.out)), { recursive: true });
+          writeFileSync(resolve(a.out), text, "utf8");
+          console.log(
+            `resolved ${resolved.resolution.connectors.length} connectors → ${resolve(a.out)} (sha256=${resolvedHarnessHash(resolved)})`,
+          );
+        } else {
+          process.stdout.write(text);
+        }
+        return 0;
+      }).catch((e) => {
+        console.error(e instanceof ConnectorError || e instanceof Error ? e.message : e);
         return 1;
       }),
     );

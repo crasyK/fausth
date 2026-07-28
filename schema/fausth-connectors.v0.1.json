@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/fausth-connectors.v0.1.json",
+  "title": "Fausth connectors source v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "connectors"],
+  "properties": {
+    "format": {
+      "const": "fausth-connectors/v0.1"
+    },
+    "connectors": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/inlineConnector" },
+          { "$ref": "#/$defs/fileConnector" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "provision": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "read_only": { "type": "boolean" },
+        "input": { "type": "object" },
+        "output": { "type": "object" },
+        "verify": { "type": "array" }
+      }
+    },
+    "inlineConnector": {
+      "type": "object",
+      "required": ["id", "kind", "provides"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "inline" },
+        "provides": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/provision" }
+        },
+        "select": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "fileConnector": {
+      "type": "object",
+      "required": ["id", "kind", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "file" },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Harness-relative path to a connector manifest (JSON or YAML)."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "select": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

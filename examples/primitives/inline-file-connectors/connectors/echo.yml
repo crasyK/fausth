@@ -1,0 +1,15 @@
+format: fausth-connector-manifest/v0.1
+provides:
+  - id: echo.ping
+    read_only: true
+    description: Echo ping from a file connector
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }

@@ -57,3 +57,19 @@ Share via git tags / release archives before any registry.
 - Authoring: [`docs/authoring.md`](authoring.md)
 - Recorded e2e: `pnpm ci:local-e2e`
 - Live disposable e2e: `node scripts/live-local-e2e.mjs` (secrets-gated, non-blocking on rate limits)
+
+## M10 — Connector manifest and resolved IR (in progress)
+
+Additive compile/link layer. Normative runtime remains `counterbalance-contract/v0.1`.
+
+```bash +code
+fausth resolve <harness|bundle> [--out <resolved.json>]
+pnpm ci:resolve
+```
+
+- Sidecar [`connectors.yml`](../examples/primitives/inline-file-connectors/connectors.yml) (`inline` + `file` kinds)
+- Canonical `fausth-resolved-harness/v0.1` with integrity lock metadata
+- Identity passthrough for harnesses without connectors
+- Schemas: [`schema/fausth-connectors.v0.1.json`](../schema/fausth-connectors.v0.1.json), [`schema/fausth-resolved-harness.v0.1.json`](../schema/fausth-resolved-harness.v0.1.json)
+
+**Deferred (later PRs):** `module`/`mcp` connectors, runtime consumption of resolved IR, bundle v0.2 lock embedding, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.

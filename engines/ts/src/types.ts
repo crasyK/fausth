@@ -285,5 +285,71 @@ export type RecordedToolCall = {
   result: Record<string, unknown> | ToolResultEnvelope;
 };
 
+/** Connector provision that can be linked into AgentIR.tools. */
+export type ConnectorProvision = {
+  id: string;
+  description?: string;
+  read_only?: boolean;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  verify?: Verify[];
+};
+
+export type InlineConnectorSource = {
+  id: string;
+  kind: "inline";
+  provides: ConnectorProvision[];
+  select?: string[];
+};
+
+export type FileConnectorSource = {
+  id: string;
+  kind: "file";
+  path: string;
+  sha256?: string;
+  select?: string[];
+};
+
+export type ConnectorSource = InlineConnectorSource | FileConnectorSource;
+
+export type ConnectorsFile = {
+  format: "fausth-connectors/v0.1";
+  connectors: ConnectorSource[];
+};
+
+export type ConnectorFileManifest = {
+  format: "fausth-connector-manifest/v0.1";
+  provides: ConnectorProvision[];
+};
+
+export type ResolvedConnectorEntry = {
+  id: string;
+  kind: "inline" | "file";
+  path?: string;
+  sha256: string | null;
+  provides: string[];
+  selected: string[];
+};
+
+export type ResolvedConnectorLockEntry = {
+  connector: string;
+  kind: "inline" | "file";
+  path?: string;
+  sha256: string;
+};
+
+export type HarnessResolution = {
+  connectors: ResolvedConnectorEntry[];
+  selected: string[];
+  lock: ResolvedConnectorLockEntry[];
+};
+
+/** Compile/link output: executable AgentIR plus connector lock metadata. */
+export type ResolvedHarnessIR = {
+  format: "fausth-resolved-harness/v0.1";
+  agent: AgentIR;
+  resolution: HarnessResolution;
+};
+
 export const INT53_MAX = 9007199254740991;
 export const INT53_MIN = -9007199254740991;

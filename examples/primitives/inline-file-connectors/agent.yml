@@ -1,0 +1,27 @@
+spec: counterbalance-contract/v0.1
+name: inline-file-connectors
+
+state:
+  ready: 1
+
+limits:
+  max_steps: 4
+  max_tool_calls: 4
+
+tools:
+  - id: ping.local
+    read_only: true
+    description: Built-in harness tool
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools: [ping.local, greet.say, echo.ping]
