@@ -183,6 +183,68 @@ class FaustRuntime:
                 done.add(str(e["tool"]))
         return done
 
+    def collect_completion_paths(self, p: Any, out: list[str] | None = None) -> list[str]:
+        if out is None:
+            out = []
+        if not isinstance(p, dict):
+            return out
+        path = p.get("path")
+        if isinstance(path, str):
+            out.append(path)
+        all_items = p.get("all")
+        if isinstance(all_items, list):
+            for x in all_items:
+                self.collect_completion_paths(x, out)
+        any_items = p.get("any")
+        if isinstance(any_items, list):
+            for x in any_items:
+                self.collect_completion_paths(x, out)
+        not_item = p.get("not")
+        if isinstance(not_item, dict):
+            self.collect_completion_paths(not_item, out)
+        return out
+
+    def build_orientation_frame(self) -> dict[str, Any]:
+        cb = self.agent.get("counterbalance") or {}
+        mode_id = str(self.agent["state"].get("mode", ""))
+        modes = cb.get("modes") or []
+        mode = next((m for m in modes if m.get("id") == mode_id), None)
+        permitted = sorted(list(mode.get("tools") or [])) if isinstance(mode, dict) else []
+        allowed = (self.agent.get("permissions") or {}).get("tools") or [
+            t.get("id") for t in (self.agent.get("tools") or [])
+        ]
+        blocked = sorted([t for t in allowed if t not in permitted])
+        done = self.successful_executes()
+        sequence_blockers: list[dict[str, Any]] = []
+        for seq in cb.get("sequences") or []:
+            action = seq.get("action")
+            priors = seq.get("require_prior_tools") or []
+            if not action or not priors:
+                continue
+            missing = sorted([t for t in priors if t not in done])
+            if missing:
+                sequence_blockers.append({"action": action, "missing_prior_tools": missing})
+        freshness: dict[str, int] = {}
+        for rule in cb.get("invalidate_after") or []:
+            for key in rule.get("memory_keys") or []:
+                freshness[key] = int(self.agent["state"].get(key, 0))
+        completion = cb.get("completion") or {}
+        completion_paths = sorted(set(self.collect_completion_paths(completion.get("require"))))
+        ctool = completion.get("tool") or "task.complete"
+        ready, _ = self.check_completion(ctool)
+        return {
+            "mode": mode_id,
+            "permitted_tools": permitted,
+            "blocked_tools": blocked,
+            "sequence_blockers": sequence_blockers,
+            "freshness": freshness,
+            "completion": {
+                "tool": ctool,
+                "require_paths": completion_paths,
+                "ready": 1 if ready else 0,
+            },
+        }
+
     def check_mode(self, action_name: str) -> tuple[bool, str | None]:
         modes = (self.agent.get("counterbalance") or {}).get("modes") or []
         if not modes:
@@ -250,6 +312,34 @@ class FaustRuntime:
         if not eval_predicate(req, snap):
             return False, "completion_gate_failed"
         return True, None
+
+    def check_checkpoint_authority(
+        self, action: dict[str, Any], transition: dict[str, Any] | None
+    ) -> tuple[bool, str | None, str | None]:
+        policies = ((self.agent.get("counterbalance") or {}).get("checkpoints")) or []
+        policy = next((p for p in policies if p.get("tool") == action["name"]), None)
+        if not policy:
+            return True, None, None
+        allowed = set(policy.get("allow_set_keys") or [])
+        requested = action.get("args", {}).get("set") or {}
+        if isinstance(requested, dict):
+            for key in requested.keys():
+                if key not in allowed:
+                    return (
+                        False,
+                        "checkpoint_authority_failed",
+                        f"checkpoint args attempted protected key '{key}'",
+                    )
+        actual_set = (transition or {}).get("set") or {}
+        if isinstance(actual_set, dict):
+            for key in actual_set.keys():
+                if key not in allowed:
+                    return (
+                        False,
+                        "checkpoint_authority_failed",
+                        f"checkpoint transition attempted protected key '{key}'",
+                    )
+        return True, None, None
 
     def apply_state_transition(self, transition: dict[str, Any] | None) -> None:
         if not transition:
@@ -565,6 +655,24 @@ class FaustRuntime:
             self.apply_fallback_state()
             self.recovering = False
             return
+        cok, creason, cerr = self.check_checkpoint_authority(
+            action, envelope.get("state_transition")
+        )
+        if not cok:
+            ev: dict[str, Any] = {
+                "stage": "execute",
+                "verdict": "deny",
+                "reason": creason,
+                "tool": action["name"],
+                "args": action["args"],
+            }
+            if cerr:
+                ev["error"] = cerr
+            self.emit(ev)
+            self.emit({"stage": "record", "verdict": "deny", "reason": "terminal_failure"})
+            self.apply_fallback_state()
+            self.recovering = False
+            return
         self.apply_state_transition(envelope.get("state_transition"))
         self.emit(
             {
@@ -589,6 +697,16 @@ class FaustRuntime:
             if not self.check_limits():
                 break
             self.steps += 1
+            if ((self.agent.get("counterbalance") or {}).get("orientation") or {}).get(
+                "emit_each_step"
+            ) is True:
+                self.emit(
+                    {
+                        "stage": "orient",
+                        "verdict": "allow",
+                        "observation": self.build_orientation_frame(),
+                    }
+                )
             if self.pi >= len(self.proposals):
                 self.emit({"stage": "propose", "verdict": "allow"})
                 break
@@ -746,6 +864,21 @@ class FaustRuntime:
                     }
                 )
                 break
+            cok3, creason3, cerr3 = self.check_checkpoint_authority(
+                action, envelope.get("state_transition")
+            )
+            if not cok3:
+                ev3: dict[str, Any] = {
+                    "stage": "execute",
+                    "verdict": "deny",
+                    "reason": creason3,
+                    "tool": action["name"],
+                    "args": action["args"],
+                }
+                if cerr3:
+                    ev3["error"] = cerr3
+                self.emit(ev3)
+                break
             self.apply_state_transition(envelope.get("state_transition"))
             self.emit(
                 {
@@ -838,7 +971,11 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
     def shell(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         cmd = str(args["cmd"])
         if cmd in ("test", "typecheck"):
-            return {"output": {"exit_code": world["last_exit_code"], "cmd": cmd}}
+            code = world["last_exit_code"]
+            result: dict[str, Any] = {"output": {"exit_code": code, "cmd": cmd}}
+            if code == 0:
+                result["state_transition"] = {"set": {"test_evidence_current": 1}}
+            return result
         return {"output": {"exit_code": 1, "cmd": cmd, "error": "not allowlisted"}}
 
     def spawn(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
@@ -852,8 +989,7 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
         return {"output": {"ok": 1}}
 
     def user_correct(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
-        sett = args.get("set") or {}
-        return {"output": {"ok": 1}, "state_transition": {"set": sett}}
+        return {"output": {"ok": 1}}
 
     def kb_lookup(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         q = str(args.get("query", "x"))[:24]

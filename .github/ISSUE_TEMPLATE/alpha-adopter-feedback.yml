@@ -1,0 +1,27 @@
+name: Alpha adopter feedback
+description: Feedback from external harness authors or host repos.
+title: "Alpha feedback: "
+labels: ["alpha-feedback"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Which repo/workflow/harness are you running?
+      placeholder: SLOPATHON fork, L1+L2 host workflows
+    validations:
+      required: true
+  - type: textarea
+    id: pain
+    attributes:
+      label: Biggest pain point
+      description: What blocked adoption or confidence?
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Suggested improvement
+      description: Concrete behavior, docs, or tooling change requested.
+    validations:
+      required: true

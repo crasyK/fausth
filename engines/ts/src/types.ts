@@ -20,6 +20,7 @@ export type ReasonCode =
   | "sequence_requirement_failed"
   | "memory_stale"
   | "completion_gate_failed"
+  | "checkpoint_authority_failed"
   | "user_checkpoint_required";
 
 export type CounterbalanceMode = {
@@ -44,14 +45,29 @@ export type CounterbalanceCompletion = {
   require?: Predicate;
 };
 
+export type CounterbalanceCheckpointPolicy = {
+  /** Tool id that requires adapter-attested state transitions. */
+  tool: string;
+  /** Only these state keys may be set by the checkpoint tool. */
+  allow_set_keys: string[];
+};
+
+export type CounterbalanceOrientation = {
+  /** Emit deterministic orientation snapshots before each proposal. */
+  emit_each_step?: boolean;
+};
+
 /** Executable Counterbalance extensions (v0.1 bridge). */
 export type CounterbalanceExt = {
   modes?: CounterbalanceMode[];
   sequences?: CounterbalanceSequence[];
   invalidate_after?: CounterbalanceInvalidateAfter[];
   completion?: CounterbalanceCompletion;
+  checkpoints?: CounterbalanceCheckpointPolicy[];
+  orientation?: CounterbalanceOrientation;
 };
 export type Stage =
+  | "orient"
   | "propose"
   | "validate"
   | "authorize"

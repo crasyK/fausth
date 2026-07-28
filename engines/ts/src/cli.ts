@@ -250,21 +250,17 @@ async function cmdLive(args: {
         throw e;
       }
 
-      const runtime = new FaustRuntime({
+      let runtime!: FaustRuntime;
+      const propose = createConversationalPropose({
+        adapter,
+        tools: toolsFromAgent(agent.tools),
+        system: `You are ${agent.name}. Prefer tools. Never exceed fan 80. Stay in write scopes.`,
+        user: prompt,
+        getRuntime: () => runtime,
+      });
+      runtime = new FaustRuntime({
         agent,
-        propose: async () =>
-          toRuntimeProposal(
-            await adapter.propose({
-              messages: [
-                {
-                  role: "system",
-                  content: `You are ${agent.name}. Prefer tools. Never exceed fan 80. Stay in write scopes.`,
-                },
-                { role: "user", content: prompt },
-              ],
-              tools: toolsFromAgent(agent.tools),
-            }),
-          ),
+        propose: async () => toRuntimeProposal(await propose()),
         tools,
         allowJudge: true,
         judge: async (rubric, ctx) => {
@@ -453,6 +449,7 @@ async function cmdRun(
   const transport = deployment.model.transport ?? "openai-compatible";
   let propose: () => Promise<ModelProposal>;
   let lastModel: string | undefined;
+  let runtime!: FaustRuntime;
   if (transport === "recorded") {
     const modelPath =
       opts.model ??
@@ -468,25 +465,21 @@ async function cmdRun(
     propose = async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!);
   } else {
     const { adapter } = createAdapterFromDeployment(deployment);
+    const conv = createConversationalPropose({
+      adapter,
+      tools: toolsFromAgent(agent.tools),
+      system: `You are ${agent.name}. Follow Counterbalance modes and scopes. Prefer tools.`,
+      user: userPrompt,
+      getRuntime: () => runtime,
+    });
     propose = async () => {
-      const p = toRuntimeProposal(
-        await adapter.propose({
-          messages: [
-            {
-              role: "system",
-              content: `You are ${agent.name}. Follow Counterbalance modes and scopes. Prefer tools.`,
-            },
-            { role: "user", content: userPrompt },
-          ],
-          tools: toolsFromAgent(agent.tools),
-        }),
-      );
+      const p = toRuntimeProposal(await conv());
       lastModel = adapter.lastModelUsed;
       return p;
     };
   }
 
-  const runtime = new FaustRuntime({
+  runtime = new FaustRuntime({
     agent,
     propose,
     tools,

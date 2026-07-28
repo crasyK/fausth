@@ -78,7 +78,12 @@ tools:
       properties:
         approved: { type: integer }
   - id: user.correct
-    input: { type: object, additionalProperties: true, properties: { set: { type: object } } }
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        request: { type: string }
+        reason: { type: string }
     output:
       type: object
       required: [ok]
@@ -148,3 +153,8 @@ counterbalance:
       all:
         - { path: state.test_evidence_current, eq: 1 }
         - { path: state.open_todos, eq: 0 }
+  checkpoints:
+    - tool: user.correct
+      allow_set_keys: [open_todos]
+  orientation:
+    emit_each_step: true

@@ -173,7 +173,13 @@ def test_harness(
         root = d.parents[1] / "conformance" / "fixtures"
         prefixes: tuple[str, ...] = ()
         if d.name == "coding-counterbalance":
-            prefixes = ("cb-coding-", "cb-write-", "cb-stale-", "cb-completion-")
+            prefixes = (
+                "cb-coding-",
+                "cb-write-",
+                "cb-stale-",
+                "cb-completion-",
+                "cb-user-",
+            )
         elif d.name == "support-bot":
             prefixes = ("cb-support-",)
         if prefixes and root.is_dir():

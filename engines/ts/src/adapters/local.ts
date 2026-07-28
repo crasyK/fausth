@@ -304,9 +304,9 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     state_transition: { set: { plan_approved: 1 } },
   });
 
-  const correctInteractive: ToolHandler = async (args) => {
-    let set = (args.set as Record<string, unknown>) ?? {};
-    if (world.interactive && Object.keys(set).length === 0) {
+  const correctInteractive: ToolHandler = async (_args) => {
+    let set: Record<string, unknown> = {};
+    if (world.interactive) {
       set = await promptJsonObject("user.correct set JSON (empty to skip): ");
     }
     return {
@@ -315,8 +315,8 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     };
   };
 
-  const correctAuto: ToolHandler = (args) => {
-    const set = (args.set as Record<string, unknown>) ?? { open_todos: 0 };
+  const correctAuto: ToolHandler = () => {
+    const set = { open_todos: 0 };
     return {
       output: { ok: 1 },
       state_transition: { set },

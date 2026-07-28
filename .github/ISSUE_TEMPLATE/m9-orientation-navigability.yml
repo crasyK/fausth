@@ -1,0 +1,34 @@
+name: M9 orientation or navigability regression
+description: Report orientation-frame or denial-recovery regressions.
+title: "M9: "
+labels: ["m9", "counterbalance", "navigability"]
+body:
+  - type: textarea
+    id: deployment
+    attributes:
+      label: Deployment and scenario
+      description: Include deployment profile and scenario name.
+      placeholder: deployment.openrouter-free.yml + cb-coding-complete.yml
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What loops, denials, or completion misses occurred?
+    validations:
+      required: true
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Metrics evidence
+      description: Include completion, denial-recovery, or repeated-denial counts if available.
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should orientation have made clear?
+    validations:
+      required: true

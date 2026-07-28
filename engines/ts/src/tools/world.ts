@@ -68,19 +68,17 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
     "shell.run_allowlisted": (args): ToolResultEnvelope => {
       const cmd = String(args.cmd);
       if (cmd === "test" || cmd === "typecheck") {
-        return { output: { exit_code: world.last_exit_code, cmd } };
+        const code = world.last_exit_code;
+        return {
+          output: { exit_code: code, cmd },
+          state_transition: code === 0 ? { set: { test_evidence_current: 1 } } : undefined,
+        };
       }
       return { output: { exit_code: 1, cmd, error: "not allowlisted" } };
     },
     "user.approve": (): ToolResultEnvelope => ({ output: { approved: 0 } }),
     "user.ask": (): ToolResultEnvelope => ({ output: { answer: "" } }),
-    "user.correct": (args): ToolResultEnvelope => {
-      const set = (args.set as Record<string, unknown>) ?? {};
-      return {
-        output: { ok: 1 },
-        state_transition: { set },
-      };
-    },
+    "user.correct": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
     "mode.enter": (args): ToolResultEnvelope => {
       const mode = String(args.mode ?? "");
       return {

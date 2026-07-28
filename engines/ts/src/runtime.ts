@@ -158,6 +158,64 @@ export class FaustRuntime {
     return s;
   }
 
+  private collectCompletionPaths(p: unknown, out: string[] = []): string[] {
+    if (!p || typeof p !== "object") return out;
+    const obj = p as Record<string, unknown>;
+    if (typeof obj.path === "string") out.push(obj.path);
+    if (Array.isArray(obj.all)) {
+      for (const x of obj.all) this.collectCompletionPaths(x, out);
+    }
+    if (Array.isArray(obj.any)) {
+      for (const x of obj.any) this.collectCompletionPaths(x, out);
+    }
+    if (obj.not) this.collectCompletionPaths(obj.not, out);
+    return out;
+  }
+
+  private buildOrientationFrame(): Record<string, unknown> {
+    const cb = this.agent.counterbalance ?? {};
+    const modeId = String(this.agent.state.mode ?? "");
+    const modes = cb.modes ?? [];
+    const mode = modes.find((m) => m.id === modeId);
+    const permitted = [...(mode?.tools ?? [])].sort();
+    const allowed = this.agent.permissions?.tools ?? this.agent.tools.map((t) => t.id);
+    const blocked = [...allowed].filter((t) => !permitted.includes(t)).sort();
+    const done = this.successfulExecutes();
+    const sequence_blockers = (cb.sequences ?? [])
+      .filter((s) => s.action && (s.require_prior_tools?.length ?? 0) > 0)
+      .map((s) => ({
+        action: s.action,
+        missing_prior_tools: (s.require_prior_tools ?? []).filter((t) => !done.has(t)).sort(),
+      }))
+      .filter((x) => x.missing_prior_tools.length > 0);
+    const freshness: Record<string, number> = {};
+    for (const rule of cb.invalidate_after ?? []) {
+      for (const key of rule.memory_keys ?? []) {
+        freshness[key] = Number(this.agent.state[key] ?? 0);
+      }
+    }
+    const completion = cb.completion;
+    const completion_paths = completion?.require
+      ? Array.from(new Set(this.collectCompletionPaths(completion.require))).sort()
+      : [];
+    const completion_ready =
+      completion && completion.tool
+        ? this.checkCompletion(completion.tool).ok
+        : true;
+    return {
+      mode: modeId,
+      permitted_tools: permitted,
+      blocked_tools: blocked,
+      sequence_blockers,
+      freshness,
+      completion: {
+        tool: completion?.tool ?? "task.complete",
+        require_paths: completion_paths,
+        ready: completion_ready ? 1 : 0,
+      },
+    };
+  }
+
   private checkMode(actionName: string): { ok: true } | { ok: false; reason: ReasonCode } {
     const modes = this.agent.counterbalance?.modes;
     if (!modes || modes.length === 0) return { ok: true };
@@ -228,6 +286,37 @@ export class FaustRuntime {
     };
     if (!evalPredicate(completion.require, snap)) {
       return { ok: false, reason: "completion_gate_failed" };
+    }
+    return { ok: true };
+  }
+
+  private checkCheckpointAuthority(
+    action: { name: string; args: Record<string, unknown> },
+    transition: StateTransition | undefined,
+  ): { ok: true } | { ok: false; reason: ReasonCode; error: string } {
+    const policies = this.agent.counterbalance?.checkpoints ?? [];
+    const policy = policies.find((p) => p.tool === action.name);
+    if (!policy) return { ok: true };
+    const allowed = new Set(policy.allow_set_keys);
+    const requested = (action.args.set as Record<string, unknown>) ?? {};
+    for (const key of Object.keys(requested)) {
+      if (!allowed.has(key)) {
+        return {
+          ok: false,
+          reason: "checkpoint_authority_failed",
+          error: `checkpoint args attempted protected key '${key}'`,
+        };
+      }
+    }
+    const actualSet = transition?.set ?? {};
+    for (const key of Object.keys(actualSet)) {
+      if (!allowed.has(key)) {
+        return {
+          ok: false,
+          reason: "checkpoint_authority_failed",
+          error: `checkpoint transition attempted protected key '${key}'`,
+        };
+      }
     }
     return { ok: true };
   }
@@ -734,6 +823,14 @@ export class FaustRuntime {
       if (!this.checkLimits()) break;
       this.steps += 1;
 
+      if (this.agent.counterbalance?.orientation?.emit_each_step === true) {
+        this.emit({
+          stage: "orient",
+          verdict: "allow",
+          observation: this.buildOrientationFrame(),
+        });
+      }
+
       const proposal = await this.propose();
       if (!proposal || proposal.type === "stop") {
         this.emit({
@@ -882,6 +979,19 @@ export class FaustRuntime {
           tool: action.name,
           args: action.args,
           error: "output schema validation failed",
+        });
+        break;
+      }
+
+      const checkpoint = this.checkCheckpointAuthority(action, envelope.state_transition);
+      if (!checkpoint.ok) {
+        this.emit({
+          stage: "execute",
+          verdict: "deny",
+          reason: checkpoint.reason,
+          tool: action.name,
+          args: action.args,
+          error: checkpoint.error,
         });
         break;
       }
