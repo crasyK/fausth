@@ -15,6 +15,8 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts resolve ../../examples/prim
 pnpm -C engines/ts exec node --import tsx src/cli.ts inspect ../../examples/primitives/inline-file-connectors
 pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/primitives/inline-file-connectors
 pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/primitives/inline-file-connectors --out /tmp/connectors.fausth.json
+pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/primitives/inline-file-connectors --out /tmp/connectors.signed.fausth.json --sign-key /tmp/seed.hex
+pnpm -C engines/ts exec node --import tsx src/cli.ts verify /tmp/connectors.signed.fausth.json
 pnpm -C engines/ts exec node --import tsx src/cli.ts run /tmp/connectors.fausth.json --dump /tmp/events.jsonl
 python -m fausth test examples/primitives/inline-file-connectors
 pnpm ci:resolve
