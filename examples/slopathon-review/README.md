@@ -4,6 +4,18 @@ Case study for hosting a **two-layer submission review** in a hackathon repo (e.
 
 The **host** is GitHub Actions in the event repo. The **engine** is pinned from `crasyK/fausth` (`engines/ts`). This folder is the portable example — copy the workflows, tweak rules/label/deployment, keep human merge authority.
 
+## Status (2026-07-28)
+
+| Item | State |
+|------|-------|
+| L1 deterministic + L2 advisory example | **Ready** in this repo |
+| Verification matrix | **PASS** — see [`VERIFICATION.md`](./VERIFICATION.md) |
+| Public SLOPATHON H1 sample (11 PRs) | **6 TP / 0 FP / 5 TN** on hard structural rules |
+| Workflows pinned to Fausth | **`v0.1.3-alpha`** (`d7209b7…`) |
+| Landed in `HACK-OPS-KA/SLOPATHON` workflows | **Not yet** — copy + open PR when organizers want it |
+
+Design: [`docs/ci-quality-gate.md`](../../docs/ci-quality-gate.md) · recipes: [`docs/HOW-TO.md`](../../docs/HOW-TO.md)
+
 ## Layers
 
 | Layer | Trigger | Secrets | Role |
@@ -26,11 +38,9 @@ Example workflows pin `crasyK/fausth` to a **commit SHA** (never floating `main`
 | `workflows/submission-faust-review.yml` | L2 host workflow |
 | `testdata/*` | Local CLI fixtures |
 
-Design: [`docs/ci-quality-gate.md`](../../docs/ci-quality-gate.md) · matrix: [`VERIFICATION.md`](./VERIFICATION.md)
-
 ## Local
 
-```bash
+```bash +code
 pnpm -C engines/ts exec node --import tsx src/cli.ts validate ../../examples/slopathon-review
 
 pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
@@ -43,7 +53,7 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode advisory \
 
 Against a real PR (`gh` auth):
 
-```bash
+```bash +code
 pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic \
   --repo HACK-OPS-KA/SLOPATHON --pr N --out review-out.json --post 1
 ```
@@ -53,7 +63,7 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic
 ## Land on a HACK//OPS event repo
 
 1. Copy both `workflows/*.yml` into `.github/workflows/`.
-2. Pin `ref:` to a `crasyK/fausth` commit SHA.
+2. Pin `ref:` to a `crasyK/fausth` commit SHA (start from tag `v0.1.3-alpha`).
 3. Add label `faust-review` and the advisory secret(s).
 4. Adjust paths/rules in the engine contract / checker if the event layout differs from SLOPATHON `projects/`.
 
