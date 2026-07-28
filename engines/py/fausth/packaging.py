@@ -54,7 +54,36 @@ def pick_test_deployment(harness_dir: Path, explicit: str | None = None) -> Path
 
 def inspect_harness(harness_dir: str) -> dict[str, Any]:
     d = Path(harness_dir).resolve()
-    agent = load_agent_dir(str(d))
+    source_agent = load_agent_dir(str(d))
+    agent = source_agent
+    connectors_present = any(
+        (d / name).is_file() for name in ("connectors.yml", "connectors.yaml", "connectors.json")
+    )
+    try:
+        resolved = resolve_harness(d)
+        agent = resolved["agent"]
+        resolution = {
+            "connectors_file": connectors_present,
+            "connector_count": len(resolved["resolution"]["connectors"]),
+            "kinds": sorted(
+                {c["kind"] for c in resolved["resolution"]["connectors"]}
+            ),
+            "selected_count": len(resolved["resolution"]["selected"]),
+            "lock_count": len(resolved["resolution"]["lock"]),
+            "resolved_sha256": resolved_harness_hash(resolved),
+            "ok": True,
+        }
+    except ConnectorError as e:
+        resolution = {
+            "connectors_file": connectors_present,
+            "connector_count": 0,
+            "kinds": [],
+            "selected_count": 0,
+            "lock_count": 0,
+            "resolved_sha256": "",
+            "ok": False,
+            "error": str(e),
+        }
     deployments = []
     seen: set[str] = set()
     for p in list_deployments(d):
@@ -98,6 +127,7 @@ def inspect_harness(harness_dir: str) -> dict[str, Any]:
             "model": (d / "smoke.model.jsonl").is_file(),
             "expected": (d / "smoke.expected.jsonl").is_file(),
         },
+        "resolution": resolution,
     }
     dep_path = pick_test_deployment(d)
     if dep_path:
@@ -116,34 +146,6 @@ def inspect_harness(harness_dir: str) -> dict[str, Any]:
                 "error": str(e),
             }
 
-    connectors_present = any(
-        (d / name).is_file() for name in ("connectors.yml", "connectors.yaml", "connectors.json")
-    )
-    try:
-        resolved = resolve_harness(d)
-        report["resolution"] = {
-            "connectors_file": connectors_present,
-            "connector_count": len(resolved["resolution"]["connectors"]),
-            "kinds": sorted(
-                {c["kind"] for c in resolved["resolution"]["connectors"]}
-            ),
-            "selected_count": len(resolved["resolution"]["selected"]),
-            "lock_count": len(resolved["resolution"]["lock"]),
-            "resolved_sha256": resolved_harness_hash(resolved),
-            "ok": True,
-        }
-    except ConnectorError as e:
-        report["resolution"] = {
-            "connectors_file": connectors_present,
-            "connector_count": 0,
-            "kinds": [],
-            "selected_count": 0,
-            "lock_count": 0,
-            "resolved_sha256": "",
-            "ok": False,
-            "error": str(e),
-        }
-
     return report
 
 
@@ -156,8 +158,21 @@ def test_harness(
     d = Path(harness_dir).resolve()
     errors: list[str] = []
     details: list[str] = []
-    agent = load_agent_dir(str(d))
-    details.append("load OK")
+    try:
+        resolved = resolve_harness(d)
+        agent = resolved["agent"]
+        details.append(
+            f"resolve OK ({len(resolved['resolution']['connectors'])} connectors)"
+        )
+    except ConnectorError as e:
+        return {
+            "ok": False,
+            "bindings_ok": False,
+            "smoke_ok": None,
+            "fixtures_ok": None,
+            "errors": [str(e)],
+            "details": details,
+        }
     dep_path = pick_test_deployment(d, deployment)
     if not dep_path:
         return {

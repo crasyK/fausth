@@ -421,7 +421,17 @@ async function cmdRun(
   } = {},
 ): Promise<number> {
   const dir = resolve(agentDir);
-  const agent = loadAgentDir(dir).agent;
+  let resolvedHarness: ReturnType<typeof resolveHarness>;
+  try {
+    resolvedHarness = resolveHarness(dir);
+  } catch (e) {
+    if (e instanceof ConnectorError) {
+      console.error(e.message);
+      return 2;
+    }
+    throw e;
+  }
+  const agent = resolvedHarness.agent;
   const depFile =
     opts.deployment ??
     (existsSync(join(dir, "deployment.fixture.yml"))
@@ -509,6 +519,8 @@ async function cmdRun(
     deployment: basename(depFile),
     workspace: opts.workspace ?? null,
     model: lastModel ?? null,
+    connector_count: resolvedHarness.resolution.connectors.length,
+    resolved_sha256: resolvedHarnessHash(resolvedHarness),
     completion_reached: completed,
     expect_complete: Boolean(opts.expectComplete),
     final_state: finalState,

@@ -17,7 +17,7 @@ import {
   resolvedHarnessCanonicalJson,
   resolvedHarnessHash,
 } from "./resolve.js";
-import { inspectHarness } from "../packaging.js";
+import { inspectHarness, testHarness } from "../packaging.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const example = join(root, "examples/primitives/inline-file-connectors");
@@ -42,17 +42,21 @@ describe("connector resolve", () => {
   it("resolves inline + file connectors for the reference harness", () => {
     const resolved = resolveHarness(example);
     assert.equal(resolved.resolution.connectors.length, 2);
-    assert.deepEqual(resolved.resolution.selected, ["echo.ping", "greet.say"]);
+    assert.deepEqual(resolved.resolution.selected, ["sensor.temperature.read", "system.wait"]);
     const toolIds = resolved.agent.tools.map((t) => t.id).sort();
-    assert.deepEqual(toolIds, ["echo.ping", "greet.say", "ping.local"]);
+    assert.deepEqual(toolIds, [
+      "sensor.fan.read_percent",
+      "sensor.temperature.read",
+      "system.wait",
+    ]);
     assert.equal(resolved.resolution.lock.length, 2);
     for (const entry of resolved.resolution.lock) {
       assert.match(entry.sha256, /^[a-f0-9]{64}$/);
     }
     const fileLock = resolved.resolution.lock.find((l) => l.kind === "file");
     assert.ok(fileLock);
-    assert.equal(fileLock!.path, "connectors/echo.yml");
-    const text = readFileSync(join(example, "connectors/echo.yml"), "utf8");
+    assert.equal(fileLock!.path, "connectors/wait.yml");
+    const text = readFileSync(join(example, "connectors/wait.yml"), "utf8");
     assert.equal(fileLock!.sha256, sha256(text));
   });
 
@@ -157,10 +161,55 @@ describe("connector resolve", () => {
     assert.deepEqual(report.resolution?.kinds, ["file", "inline"]);
     assert.equal(report.resolution?.selected_count, 2);
     assert.match(report.resolution?.resolved_sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.ok(report.tools.includes("sensor.temperature.read"));
+    assert.ok(report.tools.includes("system.wait"));
+    assert.equal(report.binding_coverage?.ok, true);
 
     const legacy = inspectHarness(coding);
     assert.equal(legacy.resolution?.ok, true);
     assert.equal(legacy.resolution?.connectors_file, false);
     assert.equal(legacy.resolution?.connector_count, 0);
+  });
+
+  it("test executes connector-provided tools through resolved bindings", async () => {
+    const result = await testHarness(example, { skipFixtures: true });
+    assert.equal(result.validate_ok, true);
+    assert.equal(result.bindings_ok, true);
+    assert.equal(result.smoke_ok, true);
+    assert.equal(result.ok, true);
+  });
+
+  it("missing connector binding fails before smoke execution", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "fausth-conn-binding-"));
+    try {
+      for (const name of ["agent.yml", "connectors.yml", "smoke.model.jsonl"]) {
+        writeFileSync(join(dir, name), readFileSync(join(example, name), "utf8"), "utf8");
+      }
+      mkdirSync(join(dir, "connectors"));
+      writeFileSync(
+        join(dir, "connectors/wait.yml"),
+        readFileSync(join(example, "connectors/wait.yml"), "utf8"),
+        "utf8",
+      );
+      writeFileSync(
+        join(dir, "deployment.fixture.yml"),
+        `platform: fixture
+model:
+  transport: recorded
+bindings:
+  sensor.fan.read_percent:
+    native: stub.fan_read
+  sensor.temperature.read:
+    native: stub.temperature
+`,
+        "utf8",
+      );
+      const result = await testHarness(dir, { skipFixtures: true });
+      assert.equal(result.bindings_ok, false);
+      assert.equal(result.smoke_ok, null);
+      assert.match(result.errors.join("\n"), /system\.wait.*binding_missing/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

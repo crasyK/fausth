@@ -1,0 +1,10 @@
+platform: fixture
+model:
+  transport: recorded
+bindings:
+  sensor.fan.read_percent:
+    native: stub.fan_read
+  sensor.temperature.read:
+    native: stub.temperature
+  system.wait:
+    native: stub.wait
