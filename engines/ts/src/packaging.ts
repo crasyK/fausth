@@ -97,10 +97,18 @@ export type InspectReport = {
     resolved_sha256: string;
     ok: boolean;
     error?: string;
+    bundle_format?: string;
+    embedded?: boolean;
   };
 };
 
-export function inspectHarness(harnessDir: string): InspectReport {
+export function inspectHarness(
+  harnessDir: string,
+  opts: {
+    embeddedResolved?: import("./types.js").ResolvedHarnessIR;
+    bundleFormat?: string;
+  } = {},
+): InspectReport {
   const dir = resolve(harnessDir);
   const { agent: sourceAgent } = loadAgentDir(dir);
   const connectorsPresent =
@@ -110,10 +118,10 @@ export function inspectHarness(harnessDir: string): InspectReport {
   let agent = sourceAgent;
   let resolution: InspectReport["resolution"];
   try {
-    const resolved = resolveHarness(dir);
+    const resolved = opts.embeddedResolved ?? resolveHarness(dir);
     agent = resolved.agent;
     resolution = {
-      connectors_file: connectorsPresent,
+      connectors_file: connectorsPresent || Boolean(opts.embeddedResolved),
       connector_count: resolved.resolution.connectors.length,
       kinds: Array.from(
         new Set(resolved.resolution.connectors.map((c) => c.kind)),
@@ -122,6 +130,8 @@ export function inspectHarness(harnessDir: string): InspectReport {
       lock_count: resolved.resolution.lock.length,
       resolved_sha256: resolvedHarnessHash(resolved),
       ok: true,
+      ...(opts.bundleFormat ? { bundle_format: opts.bundleFormat } : {}),
+      ...(opts.embeddedResolved ? { embedded: true } : {}),
     };
   } catch (e) {
     resolution = {
@@ -133,6 +143,7 @@ export function inspectHarness(harnessDir: string): InspectReport {
       resolved_sha256: "",
       ok: false,
       error: e instanceof ConnectorError || e instanceof Error ? e.message : String(e),
+      ...(opts.bundleFormat ? { bundle_format: opts.bundleFormat } : {}),
     };
   }
   const auto = listHarnessDeployments(dir);
@@ -289,7 +300,13 @@ function fixturePrefixesForHarness(harnessName: string): string[] {
 
 export async function testHarness(
   harnessDir: string,
-  opts: { deployment?: string; fixturesRoot?: string; skipFixtures?: boolean } = {},
+  opts: {
+    deployment?: string;
+    fixturesRoot?: string;
+    skipFixtures?: boolean;
+    embeddedResolved?: import("./types.js").ResolvedHarnessIR;
+    bundleFormat?: string;
+  } = {},
 ): Promise<TestHarnessResult> {
   const dir = resolve(harnessDir);
   const errors: string[] = [];
@@ -297,7 +314,7 @@ export async function testHarness(
 
   let resolved;
   try {
-    resolved = resolveHarness(dir);
+    resolved = opts.embeddedResolved ?? resolveHarness(dir);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return {
@@ -310,7 +327,14 @@ export async function testHarness(
       details: [],
     };
   }
-  details.push(`resolve OK (${resolved.resolution.connectors.length} connectors)`);
+  if (opts.bundleFormat) details.push(`bundle ${opts.bundleFormat}`);
+  if (opts.embeddedResolved) {
+    details.push(
+      `embedded resolved OK (sha256=${resolvedHarnessHash(resolved)}, ${resolved.resolution.connectors.length} connectors)`,
+    );
+  } else {
+    details.push(`resolve OK (${resolved.resolution.connectors.length} connectors)`);
+  }
   const v = validateAgent(resolved.agent);
   const validate_ok = v.ok;
   if (!v.ok) {
@@ -409,15 +433,9 @@ const PACK_INCLUDE = [
   ...DEPLOYMENT_CANDIDATES,
 ];
 
-/**
- * Pack harness into a portable `.fausth.json` bundle (git/archives before registry).
- */
-export function packHarness(
-  harnessDir: string,
-  outPath?: string,
-): { out: string; files: string[] } {
-  const dir = resolve(harnessDir);
-  const name = basename(dir);
+const CONNECTOR_MANIFEST_NAMES = ["connectors.yml", "connectors.yaml", "connectors.json"];
+
+function collectPackSourceFiles(dir: string): { path: string; content: string }[] {
   const files: { path: string; content: string }[] = [];
   const seen = new Set<string>();
   for (const n of PACK_INCLUDE) {
@@ -432,15 +450,64 @@ export function packHarness(
       files.push({ path: ent, content: readFileSync(join(dir, ent), "utf8") });
     }
   }
+  return files;
+}
 
-  // Stable key order for byte-identical TS↔Python packs
-  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+/**
+ * Pack harness into a portable `.fausth.json` bundle (git/archives before registry).
+ * Manifest-less harnesses → byte-identical v0.1.
+ * Connector harnesses → v0.2 with verified top-level resolved IR.
+ */
+export function packHarness(
+  harnessDir: string,
+  outPath?: string,
+): { out: string; files: string[]; format: string } {
+  const dir = resolve(harnessDir);
+  const name = basename(dir);
+  const hasConnectors = CONNECTOR_MANIFEST_NAMES.some(
+    (n) => existsSync(join(dir, n)) && statSync(join(dir, n)).isFile(),
+  );
 
-  const bundle = {
-    format: "fausth-harness-bundle/v0.1",
-    name,
-    files: Object.fromEntries(files.map((f) => [f.path, f.content])),
-  };
+  const files = collectPackSourceFiles(dir);
+
+  let bundle: Record<string, unknown>;
+  if (hasConnectors) {
+    const resolved = resolveHarness(dir);
+    for (const n of CONNECTOR_MANIFEST_NAMES) {
+      const p = join(dir, n);
+      if (existsSync(p) && statSync(p).isFile()) {
+        files.push({ path: n, content: readFileSync(p, "utf8") });
+      }
+    }
+    for (const lock of resolved.resolution.lock) {
+      if (lock.kind !== "file" || !lock.path) continue;
+      const p = join(dir, lock.path);
+      if (!existsSync(p) || !statSync(p).isFile()) {
+        throw new ConnectorError(
+          "connector_import_not_found",
+          `pack: lock path missing on disk: ${lock.path}`,
+        );
+      }
+      if (!files.some((f) => f.path === lock.path)) {
+        files.push({ path: lock.path, content: readFileSync(p, "utf8") });
+      }
+    }
+    files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    bundle = {
+      format: "fausth-harness-bundle/v0.2",
+      name,
+      files: Object.fromEntries(files.map((f) => [f.path, f.content])),
+      resolved,
+      resolved_sha256: resolvedHarnessHash(resolved),
+    };
+  } else {
+    files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    bundle = {
+      format: "fausth-harness-bundle/v0.1",
+      name,
+      files: Object.fromEntries(files.map((f) => [f.path, f.content])),
+    };
+  }
 
   let out: string;
   if (outPath && outPath.endsWith(".fausth.json")) {
@@ -452,5 +519,9 @@ export function packHarness(
     out = join(outDir, `${name}.fausth.json`);
   }
   writeFileSync(out, canonicalJson(bundle) + "\n", "utf8");
-  return { out, files: files.map((f) => f.path) };
+  return {
+    out,
+    files: files.map((f) => f.path),
+    format: String(bundle.format),
+  };
 }

@@ -7,6 +7,8 @@ This guide covers the first portable harness path: author → validate → test 
 ```bash +code
 examples/my-harness/
   agent.yml                 # Counterbalance agent IR (required)
+  connectors.yml            # optional M10 connector manifest (inline + file)
+  connectors/               # optional file-connector imports referenced by the lock
   deployment.fixture.yml    # recorded / Track A bindings (preferred for test)
   deployment.simulation.yml # optional sim.* natives
   deployment.kit.yml        # live model (optional)
@@ -16,7 +18,14 @@ examples/my-harness/
   README.md
 ```
 
-Bundles use format `fausth-harness-bundle/v0.1` (schema: [`schema/fausth-harness-bundle.v0.1.json`](../schema/fausth-harness-bundle.v0.1.json)).
+### Bundle formats
+
+| Format | When | Schema |
+|--------|------|--------|
+| `fausth-harness-bundle/v0.1` | Manifest-less harnesses | [`schema/fausth-harness-bundle.v0.1.json`](../schema/fausth-harness-bundle.v0.1.json) |
+| `fausth-harness-bundle/v0.2` | Harnesses with `connectors.yml` | [`schema/fausth-harness-bundle.v0.2.json`](../schema/fausth-harness-bundle.v0.2.json) |
+
+v0.2 embeds top-level `resolved` (`fausth-resolved-harness/v0.1`) and `resolved_sha256`. `unpack` restores source files only; bundle execution uses the verified embedded IR. See [`harness-packaging-roadmap.md`](harness-packaging-roadmap.md) §M10.3.
 
 ## Agent IR essentials
 
@@ -75,6 +84,8 @@ pnpm fausth -- test examples/coding-counterbalance
 pnpm fausth -- inspect examples/coding-counterbalance
 pnpm fausth -- pack examples/coding-counterbalance --out dist/coding.fausth.json
 pnpm fausth -- unpack dist/coding.fausth.json --out /tmp/harness --force
+pnpm fausth -- pack examples/primitives/inline-file-connectors --out dist/connectors.fausth.json
+pnpm fausth -- run dist/connectors.fausth.json --dump /tmp/events.jsonl
 pnpm fausth -- run examples/coding-counterbalance \
   --deployment examples/coding-counterbalance/deployment.local-fixture.yml \
   --workspace <linked-worktree> \
@@ -83,7 +94,7 @@ pnpm fausth -- run examples/coding-counterbalance \
   --report live/reports/run.json
 ```
 
-`validate` / `test` / `inspect` / `run` accept either a harness directory or a `.fausth.json` bundle (unpacked to a temp dir).
+`validate` / `test` / `inspect` / `resolve` / `run` accept either a harness directory or a `.fausth.json` bundle (unpacked to a temp dir). For v0.2 bundles, the verified embedded resolved IR is authoritative.
 
 ## Security limitations (honest alpha)
 

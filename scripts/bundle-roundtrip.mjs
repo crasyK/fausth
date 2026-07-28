@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Prove TS pack ≡ Python pack for coding-counterbalance (byte-identical).
+ * Prove TS pack ≡ Python pack for:
+ * - coding-counterbalance (v0.1, legacy byte-identical)
+ * - inline-file-connectors (v0.2, byte-identical with embedded resolved IR)
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -9,11 +11,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const harness = join(root, "examples/coding-counterbalance");
 const tmp = mkdtempSync(join(tmpdir(), "fausth-roundtrip-"));
 
-try {
-  const tsOut = join(tmp, "ts.fausth.json");
+function packBoth(harness, label) {
+  const tsOut = join(tmp, `${label}.ts.fausth.json`);
   execFileSync(
     process.execPath,
     ["--import", "tsx", "src/cli.ts", "pack", harness, "--out", tsOut],
@@ -21,7 +22,7 @@ try {
   );
   const tsBytes = readFileSync(tsOut);
 
-  const pyOut = join(tmp, "py.fausth.json");
+  const pyOut = join(tmp, `${label}.py.fausth.json`);
   execFileSync("python", ["-m", "fausth", "pack", harness, "--out", pyOut], {
     cwd: join(root, "engines/py"),
     env: {
@@ -35,11 +36,10 @@ try {
   const pyBytes = readFileSync(pyOut);
 
   if (!tsBytes.equals(pyBytes)) {
-    writeFileSync(join(tmp, "ts.txt"), tsBytes);
-    writeFileSync(join(tmp, "py.txt"), pyBytes);
-    console.error("TS and Python packs differ");
+    writeFileSync(join(tmp, `${label}.ts.txt`), tsBytes);
+    writeFileSync(join(tmp, `${label}.py.txt`), pyBytes);
+    console.error(`${label}: TS and Python packs differ`);
     console.error(`TS bytes=${tsBytes.length} Py bytes=${pyBytes.length}`);
-    // show first mismatch
     const n = Math.min(tsBytes.length, pyBytes.length);
     for (let i = 0; i < n; i++) {
       if (tsBytes[i] !== pyBytes[i]) {
@@ -49,10 +49,27 @@ try {
         break;
       }
     }
-    console.error(`diff artifacts kept in ${tmp}`);
-    process.exit(1);
+    throw new Error(`${label} pack mismatch (artifacts in ${tmp})`);
   }
-  console.log(`OK byte-identical pack (${tsBytes.length} bytes)`);
+  const parsed = JSON.parse(tsBytes.toString("utf8"));
+  console.log(`OK ${label} byte-identical pack (${tsBytes.length} bytes, ${parsed.format})`);
+  return { bytes: tsBytes, format: parsed.format };
+}
+
+try {
+  const coding = packBoth(join(root, "examples/coding-counterbalance"), "coding");
+  if (coding.format !== "fausth-harness-bundle/v0.1") {
+    throw new Error(`expected coding pack v0.1, got ${coding.format}`);
+  }
+
+  const connectors = packBoth(
+    join(root, "examples/primitives/inline-file-connectors"),
+    "connectors",
+  );
+  if (connectors.format !== "fausth-harness-bundle/v0.2") {
+    throw new Error(`expected connector pack v0.2, got ${connectors.format}`);
+  }
+
   rmSync(tmp, { recursive: true, force: true });
 } catch (e) {
   console.error(e);
