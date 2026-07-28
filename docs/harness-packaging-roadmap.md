@@ -38,8 +38,9 @@ Nested reaction when spawn args include `proposals`. Child events use `depth` / 
 fausth validate <harness|bundle>
 fausth test <harness|bundle> [--deployment <file>] [--skip-fixtures]
 fausth inspect <harness|bundle>
-fausth pack <harness> [--out <path|dir>]
+fausth pack <harness> [--out <path|dir>] [--sign-key <seed.hex|pem>]
 fausth unpack <bundle.fausth.json> --out <dir> [--force]
+fausth verify <bundle.fausth.json>
 fausth run <harness|bundle> --deployment <deployment>
 ```
 
@@ -91,4 +92,26 @@ v0.2 integrity (validated **before** any filesystem write):
 
 `pack` chooses the format automatically. `unpack` writes **source files only** (not the compiled IR). Bundle `validate` / `resolve` / `inspect` / `test` / `run` use the verified embedded resolved object as authoritative executable IR; an explicitly unpacked directory re-resolves from restored source.
 
-**Deferred (later PRs):** `module`/`mcp` connectors, signatures, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.
+### Bundle signatures (M10.4)
+
+Optional Ed25519 detached signatures (opt-in; default pack remains unsigned so coding v0.1 packs stay **byte-identical**).
+
+| Field | Value |
+|-------|--------|
+| `signature.alg` | `ed25519` only (unknown alg → hard fail) |
+| `signature.public_key` | 32-byte raw public key, lowercase hex |
+| `signature.sig` | 64-byte detached signature, lowercase hex |
+| Covered bytes | UTF-8 of `canonicalJson` of the bundle **without** `signature` (v0.2: `format`/`name`/`files`/`resolved`/`resolved_sha256`; v0.1: `format`/`name`/`files`) |
+
+```bash +code
+# 32-byte seed as hex (or PKCS8 PEM)
+node -e "const {generateKeyPairSync}=require('crypto'); const k=generateKeyPairSync('ed25519').privateKey; process.stdout.write(k.export({type:'pkcs8',format:'der'}).subarray(-32).toString('hex'))" > seed.hex
+
+fausth pack examples/primitives/inline-file-connectors --out dist/c.fausth.json --sign-key seed.hex
+# or: FAUSTH_SIGN_KEY=seed.hex fausth pack ...
+fausth verify dist/c.fausth.json
+```
+
+`unpack` / `loadBundle` / `validateBundle` verify the signature when present and reject **before** filesystem writes. Missing signature remains allowed.
+
+**Deferred (later PRs):** `module`/`mcp` connectors, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.

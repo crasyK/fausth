@@ -29,6 +29,26 @@
         "type": "string",
         "maxLength": 1048576
       }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "public_key", "sig"],
+      "properties": {
+        "alg": {
+          "const": "ed25519"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Raw 32-byte Ed25519 public key as lowercase hex"
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{128}$",
+          "description": "Detached Ed25519 signature over canonical JSON of the bundle without this field"
+        }
+      }
     }
   }
 }

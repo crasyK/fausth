@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from .canonical import canonical_json
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
 from .connectors import ConnectorError, resolve_harness, resolved_harness_hash
+from .bundle_signature import load_sign_key_from_path, sign_bundle
 
 DEPLOYMENT_CANDIDATES = [
     "deployment.fixture.yml",
@@ -271,7 +273,12 @@ def test_harness(
     }
 
 
-def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
+def pack_harness(
+    harness_dir: str,
+    out: str | None = None,
+    *,
+    sign_key: str | None = None,
+) -> dict[str, Any]:
     d = Path(harness_dir).resolve()
     files: dict[str, str] = {}
     for n in PACK_INCLUDE:
@@ -309,7 +316,7 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
             if path not in files:
                 files[path] = p.read_text(encoding="utf-8")
         ordered = {k: files[k] for k in sorted(files.keys())}
-        bundle = {
+        bundle: dict[str, Any] = {
             "format": "fausth-harness-bundle/v0.2",
             "name": d.name,
             "files": ordered,
@@ -324,6 +331,12 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
             "files": ordered,
         }
 
+    key_path = sign_key if sign_key is not None else os.environ.get("FAUSTH_SIGN_KEY")
+    signed = False
+    if key_path:
+        bundle = sign_bundle(bundle, load_sign_key_from_path(key_path))
+        signed = True
+
     if out and out.endswith(".fausth.json"):
         out_path = Path(out).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -336,4 +349,5 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
         "out": str(out_path),
         "files": sorted(ordered.keys()),
         "format": bundle["format"],
+        "signed": signed,
     }

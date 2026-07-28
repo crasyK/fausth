@@ -27,6 +27,8 @@ examples/my-harness/
 
 v0.2 embeds top-level `resolved` (`fausth-resolved-harness/v0.1`) and `resolved_sha256`. `unpack` restores source files only; bundle execution uses the verified embedded IR. See [`harness-packaging-roadmap.md`](harness-packaging-roadmap.md) §M10.3.
 
+Optional Ed25519 signatures (`signature.alg` / `public_key` / `sig`) are opt-in at pack time (`--sign-key` or `FAUSTH_SIGN_KEY`). Unsigned packs stay byte-identical. When present, `unpack` / `validate` / `fausth verify` check the signature before any filesystem write. See §M10.4 in the packaging roadmap.
+
 ## Agent IR essentials
 
 - **Tools** — each tool has `input` / `output` JSON Schema and optional `verify` (`evidence`, `absence`, `effect`, live-only `judge`).
@@ -85,6 +87,8 @@ pnpm fausth -- inspect examples/coding-counterbalance
 pnpm fausth -- pack examples/coding-counterbalance --out dist/coding.fausth.json
 pnpm fausth -- unpack dist/coding.fausth.json --out /tmp/harness --force
 pnpm fausth -- pack examples/primitives/inline-file-connectors --out dist/connectors.fausth.json
+pnpm fausth -- pack examples/primitives/inline-file-connectors --out dist/connectors.signed.fausth.json --sign-key seed.hex
+pnpm fausth -- verify dist/connectors.signed.fausth.json
 pnpm fausth -- run dist/connectors.fausth.json --dump /tmp/events.jsonl
 pnpm fausth -- run examples/coding-counterbalance \
   --deployment examples/coding-counterbalance/deployment.local-fixture.yml \
