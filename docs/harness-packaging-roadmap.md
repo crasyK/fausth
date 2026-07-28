@@ -53,7 +53,7 @@ Share via git tags / release archives before any registry.
 ## M8 — Usable local coding harness (shipped in `0.1.2-alpha`)
 
 - Linked disposable worktree adapter: [`engines/ts/src/adapters/local.ts`](../engines/ts/src/adapters/local.ts)
-- Bundle schema + round-trip: [`schema/fausth-harness-bundle.v0.1.json`](../schema/fausth-harness-bundle.v0.1.json)
+- Bundle schema + round-trip: [`schema/fausth-harness-bundle.v0.1.json`](../schema/fausth-harness-bundle.v0.1.json) (legacy) and [`schema/fausth-harness-bundle.v0.2.json`](../schema/fausth-harness-bundle.v0.2.json) (connector harnesses)
 - Authoring: [`docs/authoring.md`](authoring.md)
 - Recorded e2e: `pnpm ci:local-e2e`
 - Live disposable e2e: `node scripts/live-local-e2e.mjs` (secrets-gated, non-blocking on rate limits)
@@ -65,13 +65,30 @@ Additive compile/link layer. Normative runtime remains `counterbalance-contract/
 ```bash +code
 fausth resolve <harness|bundle> [--out <resolved.json>]
 pnpm ci:resolve
+pnpm ci:packaging
 ```
 
 - Sidecar [`connectors.yml`](../examples/primitives/inline-file-connectors/connectors.yml) (`inline` + `file` kinds)
 - Canonical `fausth-resolved-harness/v0.1` with integrity lock metadata
 - Identity passthrough for harnesses without connectors
 - `run`, `test`, smoke execution, and binding coverage consume `ResolvedHarnessIR.agent`
-- Connector execution parity: TS ↔ Python ↔ recorded expected log
+- Connector execution parity: TS ↔ Python ↔ recorded expected log (directory **and** packed v0.2 bundle)
 - Schemas: [`schema/fausth-connectors.v0.1.json`](../schema/fausth-connectors.v0.1.json), [`schema/fausth-resolved-harness.v0.1.json`](../schema/fausth-resolved-harness.v0.1.json)
 
-**Deferred (later PRs):** `module`/`mcp` connectors, bundle v0.2 lock embedding, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.
+### Bundle format policy (M10.3)
+
+| Harness | Bundle format | Notes |
+|---------|---------------|-------|
+| No `connectors.yml` | `fausth-harness-bundle/v0.1` | Flat allowlist; **byte-identical** to pre-M10.3 packs |
+| Has connector manifest | `fausth-harness-bundle/v0.2` | Source files + top-level `resolved` + `resolved_sha256` |
+
+v0.2 integrity (validated **before** any filesystem write):
+
+- `resolved` must be `fausth-resolved-harness/v0.1`; `resolved_sha256` must match canonical hash
+- Each file-connector lock path/hash must match the embedded `connectors/...` artifact
+- Nested entries limited to `connectors.yml|yaml|json` and `connectors/<safe>.yml|yaml|json`
+- Reject absolute/drive paths, backslashes, NULs, `..` / `.git`, unknown prefixes/extensions, oversized files
+
+`pack` chooses the format automatically. `unpack` writes **source files only** (not the compiled IR). Bundle `validate` / `resolve` / `inspect` / `test` / `run` use the verified embedded resolved object as authoritative executable IR; an explicitly unpacked directory re-resolves from restored source.
+
+**Deferred (later PRs):** `module`/`mcp` connectors, signatures, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.

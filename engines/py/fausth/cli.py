@@ -51,10 +51,12 @@ def cmd_run(
     model_path: str | None,
     dump_path: str | None,
     max_steps: int | None,
+    *,
+    embedded_resolved: dict | None = None,
 ) -> int:
     agent_path = Path(agent_dir).resolve()
     try:
-        resolved_harness = resolve_harness(agent_path)
+        resolved_harness = embedded_resolved if embedded_resolved is not None else resolve_harness(agent_path)
     except ConnectorError as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -157,14 +159,25 @@ def main(argv: list[str] | None = None) -> None:
         resolved = resolve_harness_ref(agent)
         try:
             raise SystemExit(
-                cmd_run(str(resolved.harness_dir), args.deployment, args.model, args.dump, args.max_steps)
+                cmd_run(
+                    str(resolved.harness_dir),
+                    args.deployment,
+                    args.model,
+                    args.dump,
+                    args.max_steps,
+                    embedded_resolved=resolved.embedded_resolved,
+                )
             )
         finally:
             resolved.cleanup()
     if args.cmd == "inspect":
         resolved = resolve_harness_ref(args.agent or default_agent)
         try:
-            report = inspect_harness(str(resolved.harness_dir))
+            report = inspect_harness(
+                str(resolved.harness_dir),
+                embedded_resolved=resolved.embedded_resolved,
+                bundle_format=resolved.bundle_format,
+            )
             print(json.dumps(report, indent=2, sort_keys=True))
             cov = report.get("binding_coverage") or {}
             raise SystemExit(0 if cov.get("ok", True) else 1)
@@ -173,7 +186,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "resolve":
         resolved_ref = resolve_harness_ref(args.agent or default_agent)
         try:
-            resolved = resolve_harness(resolved_ref.harness_dir)
+            resolved = (
+                resolved_ref.embedded_resolved
+                if resolved_ref.embedded_resolved is not None
+                else resolve_harness(resolved_ref.harness_dir)
+            )
             text = resolved_harness_canonical_json(resolved)
             if args.out:
                 out_path = Path(args.out).resolve()
@@ -198,6 +215,8 @@ def main(argv: list[str] | None = None) -> None:
                 str(resolved.harness_dir),
                 deployment=args.deployment,
                 skip_fixtures=args.skip_fixtures,
+                embedded_resolved=resolved.embedded_resolved,
+                bundle_format=resolved.bundle_format,
             )
             for d in result.get("details") or []:
                 print(d)
@@ -211,7 +230,7 @@ def main(argv: list[str] | None = None) -> None:
             resolved.cleanup()
     if args.cmd == "pack":
         r = pack_harness(args.agent or default_agent, args.out)
-        print(f"packed {len(r['files'])} files -> {r['out']}")
+        print(f"packed {len(r['files'])} files -> {r['out']} ({r['format']})")
         raise SystemExit(0)
     if args.cmd == "unpack":
         try:

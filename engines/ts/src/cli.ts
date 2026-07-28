@@ -29,7 +29,7 @@ import {
 } from "./model/index.js";
 import type { ModelProposal as PortProposal } from "./model/port.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
-import { validateAgentPath } from "./validate.js";
+import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
 import type { AgentIR, Deployment, Event, ModelProposal, RecordedToolCall } from "./types.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
@@ -418,12 +418,13 @@ async function cmdRun(
     taskFile?: string;
     report?: string;
     expectComplete?: boolean;
+    embeddedResolved?: import("./types.js").ResolvedHarnessIR;
   } = {},
 ): Promise<number> {
   const dir = resolve(agentDir);
   let resolvedHarness: ReturnType<typeof resolveHarness>;
   try {
-    resolvedHarness = resolveHarness(dir);
+    resolvedHarness = opts.embeddedResolved ?? resolveHarness(dir);
   } catch (e) {
     if (e instanceof ConnectorError) {
       console.error(e.message);
@@ -795,7 +796,21 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
   if (cmd === "validate") {
     const target = rest[0] ?? join(repoRoot(), "examples/greenhouse");
     process.exit(
-      await withHarnessRef(target, async (dir) => cmdValidate(dir)).catch((e) => {
+      await withHarnessRef(target, async (dir, ref) => {
+        if (ref.embeddedResolved) {
+          const agent = ref.embeddedResolved.agent;
+          const r = validateAgent(agent);
+          if (!r.ok) {
+            console.error(r.errors.join("\n"));
+            return 1;
+          }
+          for (const w of r.warnings) console.warn(`WARN ${w}`);
+          console.log(`OK ${agent.name}`);
+          console.log(toCanonicalIrJson(agent).trim());
+          return 0;
+        }
+        return cmdValidate(dir);
+      }).catch((e) => {
         console.error(e instanceof Error ? e.message : e);
         return 1;
       }),
@@ -804,8 +819,11 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
   if (cmd === "inspect") {
     const target = rest.find((x) => !x.startsWith("--")) ?? join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
-      await withHarnessRef(target, async (dir) => {
-        const report = inspectHarness(resolve(dir));
+      await withHarnessRef(target, async (dir, ref) => {
+        const report = inspectHarness(resolve(dir), {
+          embeddedResolved: ref.embeddedResolved,
+          bundleFormat: ref.bundleFormat,
+        });
         console.log(JSON.stringify(report, null, 2));
         return report.binding_coverage && !report.binding_coverage.ok ? 1 : 0;
       }).catch((e) => {
@@ -820,8 +838,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
       rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
       join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
-      await withHarnessRef(target, async (dir) => {
-        const resolved = resolveHarness(resolve(dir));
+      await withHarnessRef(target, async (dir, ref) => {
+        const resolved = ref.embeddedResolved ?? resolveHarness(resolve(dir));
         const text = resolvedHarnessCanonicalJson(resolved);
         if (a.out) {
           mkdirSync(dirname(resolve(a.out)), { recursive: true });
@@ -845,10 +863,12 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
       rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
       join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
-      await withHarnessRef(target, async (dir) => {
+      await withHarnessRef(target, async (dir, ref) => {
         const result = await testHarness(resolve(dir), {
           deployment: a.deployment,
           skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+          embeddedResolved: ref.embeddedResolved,
+          bundleFormat: ref.bundleFormat,
         });
         for (const d of result.details) console.log(d);
         if (!result.ok) {
@@ -868,8 +888,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     const target =
       rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
       join(repoRoot(), "examples/coding-counterbalance");
-    const { out, files } = packHarness(resolve(target), a.out);
-    console.log(`packed ${files.length} files → ${out}`);
+    const { out, files, format } = packHarness(resolve(target), a.out);
+    console.log(`packed ${files.length} files → ${out} (${format})`);
     process.exit(0);
   }
   if (cmd === "unpack") {
@@ -916,7 +936,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     const a = parseArgs(rest);
     const target = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
     process.exit(
-      await withHarnessRef(target ?? join(repoRoot(), "examples/greenhouse"), async (dir) =>
+      await withHarnessRef(target ?? join(repoRoot(), "examples/greenhouse"), async (dir, ref) =>
         cmdRun(dir, {
           deployment: a.deployment,
           model: a.model,
@@ -927,6 +947,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
           taskFile: a["task-file"],
           report: a.report,
           expectComplete: a["expect-complete"] === "1" || a["expect-complete"] === "true",
+          embeddedResolved: ref.embeddedResolved,
         }),
       ).catch((e) => {
         console.error(e instanceof Error ? e.message : e);

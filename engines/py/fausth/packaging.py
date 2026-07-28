@@ -30,6 +30,8 @@ PACK_INCLUDE = [
     *DEPLOYMENT_CANDIDATES,
 ]
 
+CONNECTOR_MANIFEST_NAMES = ("connectors.yml", "connectors.yaml", "connectors.json")
+
 
 def is_local_only_deployment_file(name: str) -> bool:
     return name.startswith(LOCAL_DEPLOYMENT_PREFIX)
@@ -52,7 +54,12 @@ def pick_test_deployment(harness_dir: Path, explicit: str | None = None) -> Path
     return None
 
 
-def inspect_harness(harness_dir: str) -> dict[str, Any]:
+def inspect_harness(
+    harness_dir: str,
+    *,
+    embedded_resolved: dict[str, Any] | None = None,
+    bundle_format: str | None = None,
+) -> dict[str, Any]:
     d = Path(harness_dir).resolve()
     source_agent = load_agent_dir(str(d))
     agent = source_agent
@@ -60,10 +67,10 @@ def inspect_harness(harness_dir: str) -> dict[str, Any]:
         (d / name).is_file() for name in ("connectors.yml", "connectors.yaml", "connectors.json")
     )
     try:
-        resolved = resolve_harness(d)
+        resolved = embedded_resolved if embedded_resolved is not None else resolve_harness(d)
         agent = resolved["agent"]
         resolution = {
-            "connectors_file": connectors_present,
+            "connectors_file": connectors_present or embedded_resolved is not None,
             "connector_count": len(resolved["resolution"]["connectors"]),
             "kinds": sorted(
                 {c["kind"] for c in resolved["resolution"]["connectors"]}
@@ -73,6 +80,10 @@ def inspect_harness(harness_dir: str) -> dict[str, Any]:
             "resolved_sha256": resolved_harness_hash(resolved),
             "ok": True,
         }
+        if bundle_format:
+            resolution["bundle_format"] = bundle_format
+        if embedded_resolved is not None:
+            resolution["embedded"] = True
     except ConnectorError as e:
         resolution = {
             "connectors_file": connectors_present,
@@ -84,6 +95,8 @@ def inspect_harness(harness_dir: str) -> dict[str, Any]:
             "ok": False,
             "error": str(e),
         }
+        if bundle_format:
+            resolution["bundle_format"] = bundle_format
     deployments = []
     seen: set[str] = set()
     for p in list_deployments(d):
@@ -154,16 +167,26 @@ def test_harness(
     *,
     deployment: str | None = None,
     skip_fixtures: bool = False,
+    embedded_resolved: dict[str, Any] | None = None,
+    bundle_format: str | None = None,
 ) -> dict[str, Any]:
     d = Path(harness_dir).resolve()
     errors: list[str] = []
     details: list[str] = []
     try:
-        resolved = resolve_harness(d)
+        resolved = embedded_resolved if embedded_resolved is not None else resolve_harness(d)
         agent = resolved["agent"]
-        details.append(
-            f"resolve OK ({len(resolved['resolution']['connectors'])} connectors)"
-        )
+        if bundle_format:
+            details.append(f"bundle {bundle_format}")
+        if embedded_resolved is not None:
+            details.append(
+                f"embedded resolved OK (sha256={resolved_harness_hash(resolved)}, "
+                f"{len(resolved['resolution']['connectors'])} connectors)"
+            )
+        else:
+            details.append(
+                f"resolve OK ({len(resolved['resolution']['connectors'])} connectors)"
+            )
     except ConnectorError as e:
         return {
             "ok": False,
@@ -263,12 +286,44 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
             and p.name not in files
         ):
             files[p.name] = p.read_text(encoding="utf-8")
-    ordered = {k: files[k] for k in sorted(files.keys())}
-    bundle = {
-        "format": "fausth-harness-bundle/v0.1",
-        "name": d.name,
-        "files": ordered,
-    }
+
+    has_connectors = any((d / name).is_file() for name in CONNECTOR_MANIFEST_NAMES)
+    if has_connectors:
+        resolved = resolve_harness(d)
+        for name in CONNECTOR_MANIFEST_NAMES:
+            p = d / name
+            if p.is_file():
+                files[name] = p.read_text(encoding="utf-8")
+        for lock in resolved["resolution"]["lock"]:
+            if lock.get("kind") != "file":
+                continue
+            path = lock.get("path")
+            if not path:
+                continue
+            p = d / path
+            if not p.is_file():
+                raise ConnectorError(
+                    "connector_import_not_found",
+                    f"pack: lock path missing on disk: {path}",
+                )
+            if path not in files:
+                files[path] = p.read_text(encoding="utf-8")
+        ordered = {k: files[k] for k in sorted(files.keys())}
+        bundle = {
+            "format": "fausth-harness-bundle/v0.2",
+            "name": d.name,
+            "files": ordered,
+            "resolved": resolved,
+            "resolved_sha256": resolved_harness_hash(resolved),
+        }
+    else:
+        ordered = {k: files[k] for k in sorted(files.keys())}
+        bundle = {
+            "format": "fausth-harness-bundle/v0.1",
+            "name": d.name,
+            "files": ordered,
+        }
+
     if out and out.endswith(".fausth.json"):
         out_path = Path(out).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -277,4 +332,8 @@ def pack_harness(harness_dir: str, out: str | None = None) -> dict[str, Any]:
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{d.name}.fausth.json"
     out_path.write_text(canonical_json(bundle) + "\n", encoding="utf-8", newline="\n")
-    return {"out": str(out_path), "files": sorted(ordered.keys())}
+    return {
+        "out": str(out_path),
+        "files": sorted(ordered.keys()),
+        "format": bundle["format"],
+    }
