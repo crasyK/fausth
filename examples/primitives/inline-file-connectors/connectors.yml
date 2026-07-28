@@ -1,0 +1,25 @@
+format: fausth-connectors/v0.1
+connectors:
+  - id: greet
+    kind: inline
+    provides:
+      - id: greet.say
+        read_only: true
+        description: Greet by name
+        input:
+          type: object
+          required: [name]
+          additionalProperties: false
+          properties:
+            name: { type: string }
+        output:
+          type: object
+          required: [message]
+          additionalProperties: false
+          properties:
+            message: { type: string }
+    select: [greet.say]
+  - id: echo
+    kind: file
+    path: connectors/echo.yml
+    select: [echo.ping]

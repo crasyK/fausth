@@ -9,6 +9,12 @@ from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_fro
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
 from .packaging import inspect_harness, pack_harness, test_harness
 from .bundle import BundleError, resolve_harness_ref, unpack_bundle
+from .connectors import (
+    ConnectorError,
+    resolve_harness,
+    resolved_harness_canonical_json,
+    resolved_harness_hash,
+)
 
 
 def repo_root() -> Path:
@@ -123,6 +129,9 @@ def main(argv: list[str] | None = None) -> None:
     p_run.add_argument("--max-steps", type=int, default=None)
     p_inspect = sub.add_parser("inspect")
     p_inspect.add_argument("agent", nargs="?", default=None)
+    p_resolve = sub.add_parser("resolve")
+    p_resolve.add_argument("agent", nargs="?", default=None)
+    p_resolve.add_argument("--out", default=None)
     p_test = sub.add_parser("test")
     p_test.add_argument("agent", nargs="?", default=None)
     p_test.add_argument("--deployment", default=None)
@@ -156,6 +165,27 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(0 if cov.get("ok", True) else 1)
         finally:
             resolved.cleanup()
+    if args.cmd == "resolve":
+        resolved_ref = resolve_harness_ref(args.agent or default_agent)
+        try:
+            resolved = resolve_harness(resolved_ref.harness_dir)
+            text = resolved_harness_canonical_json(resolved)
+            if args.out:
+                out_path = Path(args.out).resolve()
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(text, encoding="utf-8", newline="\n")
+                print(
+                    f"resolved {len(resolved['resolution']['connectors'])} connectors -> "
+                    f"{out_path} (sha256={resolved_harness_hash(resolved)})"
+                )
+            else:
+                sys.stdout.write(text)
+            raise SystemExit(0)
+        except ConnectorError as e:
+            print(str(e), file=sys.stderr)
+            raise SystemExit(1)
+        finally:
+            resolved_ref.cleanup()
     if args.cmd == "test":
         resolved = resolve_harness_ref(args.agent or default_agent)
         try:

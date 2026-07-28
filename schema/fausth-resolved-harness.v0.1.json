@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/fausth-resolved-harness.v0.1.json",
+  "title": "Fausth resolved harness IR v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "agent", "resolution"],
+  "properties": {
+    "format": {
+      "const": "fausth-resolved-harness/v0.1"
+    },
+    "agent": {
+      "type": "object",
+      "description": "Normalized counterbalance-contract/v0.1 AgentIR"
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectors", "lock", "selected"],
+      "properties": {
+        "connectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "provides", "selected"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "kind": { "type": "string", "enum": ["inline", "file"] },
+              "path": { "type": "string" },
+              "sha256": { "type": ["string", "null"] },
+              "provides": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "selected": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "selected": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "lock": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["connector", "kind", "sha256"],
+            "properties": {
+              "connector": { "type": "string", "minLength": 1 },
+              "kind": { "type": "string", "enum": ["inline", "file"] },
+              "path": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

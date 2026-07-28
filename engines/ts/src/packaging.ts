@@ -23,6 +23,11 @@ import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
 import type { AgentIR, Deployment, ModelProposal, RecordedToolCall } from "./types.js";
 import { canonicalJson } from "./canonical.js";
+import {
+  ConnectorError,
+  resolveHarness,
+  resolvedHarnessHash,
+} from "./connectors/resolve.js";
 
 // load.ts may not export loadFixtureAgent — inline
 function loadFixtureAgentLocal(dir: string): AgentIR {
@@ -80,6 +85,16 @@ export type InspectReport = {
   binding_coverage?: {
     deployment: string;
     missing: string[];
+    ok: boolean;
+    error?: string;
+  };
+  resolution?: {
+    connectors_file: boolean;
+    connector_count: number;
+    kinds: string[];
+    selected_count: number;
+    lock_count: number;
+    resolved_sha256: string;
     ok: boolean;
     error?: string;
   };
@@ -142,6 +157,36 @@ export function inspectHarness(harnessDir: string): InspectReport {
         error: e instanceof Error ? e.message : String(e),
       };
     }
+  }
+
+  const connectorsPresent =
+    existsSync(join(dir, "connectors.yml")) ||
+    existsSync(join(dir, "connectors.yaml")) ||
+    existsSync(join(dir, "connectors.json"));
+  try {
+    const resolved = resolveHarness(dir);
+    report.resolution = {
+      connectors_file: connectorsPresent,
+      connector_count: resolved.resolution.connectors.length,
+      kinds: Array.from(
+        new Set(resolved.resolution.connectors.map((c) => c.kind)),
+      ).sort(),
+      selected_count: resolved.resolution.selected.length,
+      lock_count: resolved.resolution.lock.length,
+      resolved_sha256: resolvedHarnessHash(resolved),
+      ok: true,
+    };
+  } catch (e) {
+    report.resolution = {
+      connectors_file: connectorsPresent,
+      connector_count: 0,
+      kinds: [],
+      selected_count: 0,
+      lock_count: 0,
+      resolved_sha256: "",
+      ok: false,
+      error: e instanceof ConnectorError || e instanceof Error ? e.message : String(e),
+    };
   }
 
   return report;

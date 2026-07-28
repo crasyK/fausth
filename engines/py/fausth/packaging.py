@@ -8,6 +8,7 @@ from typing import Any
 from .canonical import canonical_json
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
+from .connectors import ConnectorError, resolve_harness, resolved_harness_hash
 
 DEPLOYMENT_CANDIDATES = [
     "deployment.fixture.yml",
@@ -114,6 +115,35 @@ def inspect_harness(harness_dir: str) -> dict[str, Any]:
                 "ok": False,
                 "error": str(e),
             }
+
+    connectors_present = any(
+        (d / name).is_file() for name in ("connectors.yml", "connectors.yaml", "connectors.json")
+    )
+    try:
+        resolved = resolve_harness(d)
+        report["resolution"] = {
+            "connectors_file": connectors_present,
+            "connector_count": len(resolved["resolution"]["connectors"]),
+            "kinds": sorted(
+                {c["kind"] for c in resolved["resolution"]["connectors"]}
+            ),
+            "selected_count": len(resolved["resolution"]["selected"]),
+            "lock_count": len(resolved["resolution"]["lock"]),
+            "resolved_sha256": resolved_harness_hash(resolved),
+            "ok": True,
+        }
+    except ConnectorError as e:
+        report["resolution"] = {
+            "connectors_file": connectors_present,
+            "connector_count": 0,
+            "kinds": [],
+            "selected_count": 0,
+            "lock_count": 0,
+            "resolved_sha256": "",
+            "ok": False,
+            "error": str(e),
+        }
+
     return report
 
 
