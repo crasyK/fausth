@@ -4,7 +4,7 @@ Portable runtime and standard for **agent harnesses**: give an agent skills, mem
 
 **Counterbalance:** agent and world counterweight each other across **ability**, **awareness**, and **behaviour**. The model proposes; Fausth governs the exchange. See [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md).
 
-**Status:** v0.1.2-alpha research alpha — usable local coding harness. Normative contract remains `counterbalance-contract/v0.1`. Not production-safe.
+**Status:** v0.1.3-alpha research alpha — portable connector packs, signatures, and MCP stdio. Normative contract remains `counterbalance-contract/v0.1`. Not production-safe.
 
 ## Two MVP claims
 
@@ -13,7 +13,7 @@ Portable runtime and standard for **agent harnesses**: give an agent skills, mem
 
 Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 
-## What v0.1.2-alpha proves
+## What v0.1.3-alpha proves
 
 | Claim | Status |
 |-------|--------|
@@ -28,9 +28,14 @@ Claim 1 never depends on live models. Claim 2 never pollutes claim 1.
 | Multi-host (TS / Python / GHA) same harness + bindings | Proven (`pnpm ci:multi-host`) |
 | Live coding-counterbalance (OpenRouter Track B) | Secrets-gated (`live-openrouter` + CB scenarios) |
 | Nested spawn child log (M6) | Proven (Track A `spawn-nested-*`) |
-| Packaging CLI (`validate`/`test`/`inspect`/`pack`/`unpack`/`run`) | Proven (`pnpm ci:packaging`) |
+| Packaging CLI (`validate`/`test`/`inspect`/`pack`/`unpack`/`run`/`verify`) | Proven (`pnpm ci:packaging`) |
 | Disposable-worktree local FS/process adapter (M8) | Proven (`pnpm ci:local-e2e`) |
 | Bundle TS↔Python byte-identical pack | Proven (`scripts/bundle-roundtrip.mjs`) |
+| Connector resolve + resolved IR execution (M10) | Proven (`pnpm ci:resolve`) |
+| Portable resolved bundles v0.2 / MCP bundles v0.3 | Proven (`scripts/bundle-roundtrip.mjs`) |
+| Optional Ed25519 bundle signatures (M10.4) | Proven (`scripts/bundle-signature-roundtrip.mjs`) |
+| MCP connectors recorded + live stdio (M11) | Proven (`scripts/mcp-execution.mjs`, `live-mcp-stdio.mjs`) |
+| Live model + live MCP (KIT / OpenRouter) | Proven (`scripts/live-mcp-model.mjs`) |
 | Model-adaptive scaffolding | **Not yet** |
 | Production-ready isolation / security | **Not yet** |
 
@@ -76,6 +81,9 @@ pnpm fausth -- test examples/support-bot
 pnpm fausth -- inspect examples/coding-counterbalance
 pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth.json
 pnpm fausth -- unpack live/reports/out.fausth.json --out /tmp/cb --force
+pnpm ci:resolve        # connector + MCP resolve/execution parity
+node scripts/live-mcp-stdio.mjs   # live MCP process (no API key)
+# node scripts/live-mcp-model.mjs # live model + MCP (needs .env keys)
 ```
 
 ### Security boundaries (alpha)

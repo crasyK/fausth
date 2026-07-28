@@ -114,6 +114,7 @@ class _StdioMcpSession:
         args: list[str],
         env: dict[str, str] | None,
         timeout_ms: int,
+        cwd: str | None = None,
     ) -> None:
         self.timeout_s = timeout_ms / 1000.0
         self._next_id = 1
@@ -126,6 +127,7 @@ class _StdioMcpSession:
             stderr=subprocess.PIPE,
             text=True,
             env=merged_env,
+            cwd=cwd,
             bufsize=1,
         )
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
@@ -171,7 +173,7 @@ class _StdioMcpSession:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "fausth", "version": "0.1.2-alpha"},
+                "clientInfo": {"name": "fausth", "version": "0.1.3-alpha"},
             },
         )
         assert self.proc.stdin is not None
@@ -303,7 +305,7 @@ def create_mcp_handlers(
                 def handler(call_args: dict[str, Any], _ctx: dict[str, Any]) -> dict[str, Any]:
                     session = sessions.get(sid)
                     if session is None:
-                        session = _StdioMcpSession(cmd, cmd_args, env_map, timeout)
+                        session = _StdioMcpSession(cmd, cmd_args, env_map, timeout, cwd=str(root))
                         sessions[sid] = session
                         try:
                             session.initialize()

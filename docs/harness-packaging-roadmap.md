@@ -134,5 +134,7 @@ pnpm ci:resolve
 - `kind: module` is schema-recognized but resolve fails closed (`connectors_unsupported`)
 - Schema: [`schema/fausth-mcp-descriptor.v0.1.json`](../schema/fausth-mcp-descriptor.v0.1.json)
 - Example: [`examples/primitives/mcp-connectors/`](../examples/primitives/mcp-connectors/)
+- Live stdio proof (toy server, recorded model): `node scripts/live-mcp-stdio.mjs`
+- Live model + MCP: `node scripts/live-mcp-model.mjs` (`deployment.stdio-kit.yml` / `deployment.stdio-openrouter.yml`)
 
 **Deferred (later PRs):** real `module` plugins, HTTP MCP, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.

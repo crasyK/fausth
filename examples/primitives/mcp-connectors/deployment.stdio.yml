@@ -1,0 +1,14 @@
+platform: fixture
+model:
+  transport: recorded
+bindings:
+  sensor.fan.read_percent:
+    native: stub.fan_read
+  get_forecast:
+    native: mcp.weather.get_forecast
+mcp:
+  weather:
+    transport: stdio
+    command: node
+    args: [servers/weather-stdio.mjs]
+    timeout_ms: 15000

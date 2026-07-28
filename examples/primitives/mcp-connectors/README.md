@@ -17,4 +17,14 @@ python -m fausth test examples/primitives/mcp-connectors
 pnpm ci:resolve
 ```
 
-Live stdio MCP is opt-in via `deployment.mcp.<server>.transport: stdio` with `command`/`args` (not a sandbox).
+Live stdio MCP is opt-in via `deployment.mcp.<server>.transport: stdio` with `command`/`args` (not a sandbox). Relative `args` resolve from the harness directory.
+
+```bash +code
+# Live process proof (toy weather MCP server; recorded model)
+node scripts/live-mcp-stdio.mjs
+
+# Live model + live MCP (requires KIT_AI_API_KEY or OPENROUTER_API_KEY in .env)
+node scripts/live-mcp-model.mjs          # prefer KIT, else OpenRouter
+node scripts/live-mcp-model.mjs kit
+node scripts/live-mcp-model.mjs openrouter
+```
