@@ -23,9 +23,10 @@ examples/my-harness/
 | Format | When | Schema |
 |--------|------|--------|
 | `fausth-harness-bundle/v0.1` | Manifest-less harnesses | [`schema/fausth-harness-bundle.v0.1.json`](../schema/fausth-harness-bundle.v0.1.json) |
-| `fausth-harness-bundle/v0.2` | Harnesses with `connectors.yml` | [`schema/fausth-harness-bundle.v0.2.json`](../schema/fausth-harness-bundle.v0.2.json) |
+| `fausth-harness-bundle/v0.2` | Harnesses with `connectors.yml` (no mcp) | [`schema/fausth-harness-bundle.v0.2.json`](../schema/fausth-harness-bundle.v0.2.json) |
+| `fausth-harness-bundle/v0.3` | Harnesses with `kind: mcp` connectors | [`schema/fausth-harness-bundle.v0.3.json`](../schema/fausth-harness-bundle.v0.3.json) |
 
-v0.2 embeds top-level `resolved` (`fausth-resolved-harness/v0.1`) and `resolved_sha256`. `unpack` restores source files only; bundle execution uses the verified embedded IR. See [`harness-packaging-roadmap.md`](harness-packaging-roadmap.md) §M10.3.
+v0.2/v0.3 embed top-level `resolved` (`fausth-resolved-harness/v0.1`) and `resolved_sha256`. `unpack` restores source files only; bundle execution uses the verified embedded IR. See [`harness-packaging-roadmap.md`](harness-packaging-roadmap.md) §M10.3 / §M11.
 
 Optional Ed25519 signatures (`signature.alg` / `public_key` / `sig`) are opt-in at pack time (`--sign-key` or `FAUSTH_SIGN_KEY`). Unsigned packs stay byte-identical. When present, `unpack` / `validate` / `fausth verify` check the signature before any filesystem write. See §M10.4 in the packaging roadmap.
 

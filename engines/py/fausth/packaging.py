@@ -68,6 +68,7 @@ def inspect_harness(
     connectors_present = any(
         (d / name).is_file() for name in ("connectors.yml", "connectors.yaml", "connectors.json")
     )
+    resolved: dict[str, Any] | None = None
     try:
         resolved = embedded_resolved if embedded_resolved is not None else resolve_harness(d)
         agent = resolved["agent"]
@@ -99,6 +100,7 @@ def inspect_harness(
         }
         if bundle_format:
             resolution["bundle_format"] = bundle_format
+        resolved = None
     deployments = []
     seen: set[str] = set()
     for p in list_deployments(d):
@@ -147,7 +149,12 @@ def inspect_harness(
     dep_path = pick_test_deployment(d)
     if dep_path:
         try:
-            resolve_tools_from_deployment(agent, load_yaml(str(dep_path)))
+            resolve_tools_from_deployment(
+                agent,
+                load_yaml(str(dep_path)),
+                harness_dir=str(d),
+                resolved=resolved,
+            )
             report["binding_coverage"] = {
                 "deployment": dep_path.name,
                 "missing": [],
@@ -206,7 +213,12 @@ def test_harness(
             "details": details,
         }
     try:
-        tools = resolve_tools_from_deployment(agent, load_yaml(str(dep_path)))
+        tools = resolve_tools_from_deployment(
+            agent,
+            load_yaml(str(dep_path)),
+            harness_dir=str(d),
+            resolved=resolved,
+        )
         details.append(f"bindings OK ({dep_path.name})")
         bindings_ok = True
     except AdapterError as e:
@@ -295,14 +307,19 @@ def pack_harness(
             files[p.name] = p.read_text(encoding="utf-8")
 
     has_connectors = any((d / name).is_file() for name in CONNECTOR_MANIFEST_NAMES)
+    recorded = d / "mcp.recorded.jsonl"
+    if recorded.is_file():
+        files["mcp.recorded.jsonl"] = recorded.read_text(encoding="utf-8")
+
     if has_connectors:
         resolved = resolve_harness(d)
+        has_mcp = any(lock.get("kind") == "mcp" for lock in resolved["resolution"]["lock"])
         for name in CONNECTOR_MANIFEST_NAMES:
             p = d / name
             if p.is_file():
                 files[name] = p.read_text(encoding="utf-8")
         for lock in resolved["resolution"]["lock"]:
-            if lock.get("kind") != "file":
+            if lock.get("kind") not in ("file", "mcp"):
                 continue
             path = lock.get("path")
             if not path:
@@ -317,7 +334,9 @@ def pack_harness(
                 files[path] = p.read_text(encoding="utf-8")
         ordered = {k: files[k] for k in sorted(files.keys())}
         bundle: dict[str, Any] = {
-            "format": "fausth-harness-bundle/v0.2",
+            "format": (
+                "fausth-harness-bundle/v0.3" if has_mcp else "fausth-harness-bundle/v0.2"
+            ),
             "name": d.name,
             "files": ordered,
             "resolved": resolved,

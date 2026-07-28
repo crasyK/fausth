@@ -1,0 +1,6 @@
+{"args":{"city":"Berlin"},"seq":1,"stage":"propose","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"get_forecast","ts_logical":1}
+{"args":{"city":"Berlin"},"seq":2,"stage":"validate","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"get_forecast","ts_logical":2,"verdict":"allow"}
+{"args":{"city":"Berlin"},"seq":3,"stage":"authorize","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"get_forecast","ts_logical":3,"verdict":"allow"}
+{"args":{"city":"Berlin"},"result":{"summary":"sunny","temp_c":22},"seq":4,"stage":"execute","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"get_forecast","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","ts_logical":5,"verdict":"allow"}
+{"seq":6,"stage":"propose","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","ts_logical":6,"verdict":"allow"}

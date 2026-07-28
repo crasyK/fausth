@@ -1,0 +1,2 @@
+{"type":"tool","name":"get_forecast","args":{"city":"Berlin"}}
+{"type":"stop","message":"done"}

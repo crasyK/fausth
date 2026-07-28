@@ -233,6 +233,18 @@ export type DeploymentWorld = {
   };
 };
 
+export type DeploymentMcpServer = {
+  transport: "recorded" | "stdio";
+  /** Harness-relative path to recorded MCP responses (jsonl). Required for recorded. */
+  recorded?: string;
+  /** Executable for stdio MCP server. Required for stdio. */
+  command?: string;
+  args?: string[];
+  /** Optional env overlay (no secret-like keys). */
+  env?: Record<string, string>;
+  timeout_ms?: number;
+};
+
 export type Deployment = {
   platform?: string;
   model: DeploymentModel;
@@ -246,6 +258,8 @@ export type Deployment = {
   permissions?: Record<string, unknown>;
   /** Real local I/O settings for `local.*` bindings. */
   world?: DeploymentWorld;
+  /** Host-side MCP server configs keyed by connector/server id. */
+  mcp?: Record<string, DeploymentMcpServer>;
 };
 
 export type Event = {
@@ -293,6 +307,8 @@ export type ConnectorProvision = {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   verify?: Verify[];
+  /** Remote MCP tool name (mcp connectors); defaults to id. */
+  mcp_tool?: string;
 };
 
 export type InlineConnectorSource = {
@@ -310,7 +326,26 @@ export type FileConnectorSource = {
   select?: string[];
 };
 
-export type ConnectorSource = InlineConnectorSource | FileConnectorSource;
+export type McpConnectorSource = {
+  id: string;
+  kind: "mcp";
+  descriptor: string;
+  sha256?: string;
+  select?: string[];
+};
+
+export type ModuleConnectorSource = {
+  id: string;
+  kind: "module";
+  path?: string;
+  select?: string[];
+};
+
+export type ConnectorSource =
+  | InlineConnectorSource
+  | FileConnectorSource
+  | McpConnectorSource
+  | ModuleConnectorSource;
 
 export type ConnectorsFile = {
   format: "fausth-connectors/v0.1";
@@ -322,18 +357,25 @@ export type ConnectorFileManifest = {
   provides: ConnectorProvision[];
 };
 
+export type McpDescriptor = {
+  format: "fausth-mcp-descriptor/v0.1";
+  provides: ConnectorProvision[];
+};
+
 export type ResolvedConnectorEntry = {
   id: string;
-  kind: "inline" | "file";
+  kind: "inline" | "file" | "mcp";
   path?: string;
   sha256: string | null;
   provides: string[];
   selected: string[];
+  /** For mcp connectors: harness tool id → remote MCP tool name. */
+  mcp_tools?: Record<string, string>;
 };
 
 export type ResolvedConnectorLockEntry = {
   connector: string;
-  kind: "inline" | "file";
+  kind: "inline" | "file" | "mcp";
   path?: string;
   sha256: string;
 };

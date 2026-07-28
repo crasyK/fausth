@@ -212,4 +212,45 @@ bindings:
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("resolves mcp descriptors and rejects module kind", async () => {
+    const mcpExample = join(root, "examples/primitives/mcp-connectors");
+    const resolved = resolveHarness(mcpExample);
+    assert.equal(resolved.resolution.connectors.length, 1);
+    assert.equal(resolved.resolution.connectors[0]!.kind, "mcp");
+    assert.deepEqual(resolved.resolution.selected, ["get_forecast"]);
+    assert.ok(resolved.agent.tools.some((t) => t.id === "get_forecast"));
+    assert.equal(
+      resolved.resolution.connectors[0]!.mcp_tools?.get_forecast,
+      "get_forecast",
+    );
+
+    const dir = mkdtempSync(join(tmpdir(), "fausth-module-"));
+    try {
+      writeFileSync(
+        join(dir, "agent.yml"),
+        readFileSync(join(mcpExample, "agent.yml"), "utf8"),
+        "utf8",
+      );
+      writeFileSync(
+        join(dir, "connectors.yml"),
+        `format: fausth-connectors/v0.1
+connectors:
+  - id: plugin
+    kind: module
+    path: connectors/plugin.js
+`,
+        "utf8",
+      );
+      assert.throws(() => resolveHarness(dir), (e: unknown) => {
+        return e instanceof ConnectorError && e.code === "connectors_unsupported";
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    const result = await testHarness(mcpExample, { skipFixtures: true });
+    assert.equal(result.ok, true);
+    assert.equal(result.smoke_ok, true);
+  });
 });

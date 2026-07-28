@@ -21,6 +21,7 @@ import type {
 
 export const CONNECTORS_FORMAT = "fausth-connectors/v0.1";
 export const CONNECTOR_MANIFEST_FORMAT = "fausth-connector-manifest/v0.1";
+export const MCP_DESCRIPTOR_FORMAT = "fausth-mcp-descriptor/v0.1";
 export const RESOLVED_HARNESS_FORMAT = "fausth-resolved-harness/v0.1";
 
 export type ConnectorErrorCode =
@@ -124,6 +125,12 @@ function asProvision(raw: unknown, path: string): ConnectorProvision {
   if (obj.input !== undefined) p.input = obj.input as Record<string, unknown>;
   if (obj.output !== undefined) p.output = obj.output as Record<string, unknown>;
   if (obj.verify !== undefined) p.verify = obj.verify as ConnectorProvision["verify"];
+  if (obj.mcp_tool !== undefined) {
+    if (typeof obj.mcp_tool !== "string" || !obj.mcp_tool) {
+      throw new ConnectorError("connectors_invalid", `${path}.mcp_tool must be a non-empty string`);
+    }
+    p.mcp_tool = obj.mcp_tool;
+  }
   return p;
 }
 
@@ -134,7 +141,55 @@ function provisionToTool(p: ConnectorProvision): ToolDef {
   if (p.input !== undefined) t.input = p.input;
   if (p.output !== undefined) t.output = p.output;
   if (p.verify !== undefined) t.verify = p.verify;
+  // mcp_tool is link metadata only — not part of AgentIR ToolDef
   return t;
+}
+
+function loadMcpDescriptor(
+  harnessDir: string,
+  connector: Extract<ConnectorSource, { kind: "mcp" }>,
+): { provides: ConnectorProvision[]; sha256: string; path: string } {
+  const { abs, rel } = resolveUnderHarness(harnessDir, connector.descriptor);
+  if (!abs.endsWith(".json")) {
+    throw new ConnectorError(
+      "connectors_invalid",
+      `mcp descriptor must be JSON (.json): ${rel}`,
+    );
+  }
+  const content = readFileSync(abs, "utf8");
+  const digest = sha256Hex(content);
+  if (connector.sha256 !== undefined) {
+    const expected = String(connector.sha256);
+    if (!/^[a-f0-9]{64}$/.test(expected)) {
+      throw new ConnectorError(
+        "connectors_invalid",
+        `connector '${connector.id}' sha256 must be a 64-char lowercase hex string`,
+      );
+    }
+    if (expected !== digest) {
+      throw new ConnectorError(
+        "connectors_hash_mismatch",
+        `sha256 mismatch for connector '${connector.id}' at ${rel}: expected ${expected}, got ${digest}`,
+      );
+    }
+  }
+  const raw = JSON.parse(content);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ConnectorError("connectors_invalid", `mcp descriptor at ${rel} must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.format !== MCP_DESCRIPTOR_FORMAT) {
+    throw new ConnectorError(
+      "connectors_unsupported",
+      `unsupported mcp descriptor format at ${rel}: ${String(obj.format)}`,
+    );
+  }
+  assertNoSecrets(obj, `mcp:${rel}`);
+  if (!Array.isArray(obj.provides) || obj.provides.length === 0) {
+    throw new ConnectorError("connectors_invalid", `mcp descriptor at ${rel} requires provides[]`);
+  }
+  const provides = obj.provides.map((p, i) => asProvision(p, `mcp:${rel}.provides[${i}]`));
+  return { provides, sha256: digest, path: rel };
 }
 
 function loadFileManifest(
@@ -363,9 +418,65 @@ export function resolveHarness(harnessDir: string): ResolvedHarnessIR {
       continue;
     }
 
+    if (c.kind === "mcp") {
+      assertNoSecrets(c, `connector:${c.id}`);
+      if (typeof c.descriptor !== "string" || !c.descriptor) {
+        throw new ConnectorError(
+          "connectors_invalid",
+          `mcp connector '${c.id}' requires descriptor`,
+        );
+      }
+      const loaded = loadMcpDescriptor(dir, c);
+      const selected = selectProvides(c.id, loaded.provides, c.select);
+      const mcp_tools: Record<string, string> = {};
+      for (const p of loaded.provides) {
+        mcp_tools[p.id] = p.mcp_tool ?? p.id;
+      }
+      // Stable key order for canonical JSON
+      const orderedMcpTools = Object.fromEntries(
+        Object.keys(mcp_tools)
+          .sort()
+          .map((k) => [k, mcp_tools[k]!]),
+      );
+      entries.push({
+        id: c.id,
+        kind: "mcp",
+        path: loaded.path,
+        sha256: loaded.sha256,
+        provides: loaded.provides.map((p) => p.id).sort(),
+        selected: selected.map((p) => p.id).sort(),
+        mcp_tools: orderedMcpTools,
+      });
+      lock.push({
+        connector: c.id,
+        kind: "mcp",
+        path: loaded.path,
+        sha256: loaded.sha256,
+      });
+      for (const p of selected) {
+        if (selectedSeen.has(p.id)) {
+          throw new ConnectorError(
+            "connectors_duplicate",
+            `selected provision '${p.id}' provided by multiple connectors`,
+          );
+        }
+        selectedSeen.add(p.id);
+        selectedProvisions.push(p);
+        selectedIds.push(p.id);
+      }
+      continue;
+    }
+
+    if (c.kind === "module") {
+      throw new ConnectorError(
+        "connectors_unsupported",
+        `unsupported connector kind 'module' (deferred; use mcp|inline|file)`,
+      );
+    }
+
     throw new ConnectorError(
       "connectors_unsupported",
-      `unsupported connector kind '${String((c as { kind?: string }).kind)}' (M10 supports inline|file only)`,
+      `unsupported connector kind '${String((c as { kind?: string }).kind)}' (supports inline|file|mcp)`,
     );
   }
 

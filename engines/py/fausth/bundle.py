@@ -15,6 +15,7 @@ from .connectors import RESOLVED_HARNESS_FORMAT, resolved_harness_hash
 
 BUNDLE_FORMAT_V01 = "fausth-harness-bundle/v0.1"
 BUNDLE_FORMAT_V02 = "fausth-harness-bundle/v0.2"
+BUNDLE_FORMAT_V03 = "fausth-harness-bundle/v0.3"
 BUNDLE_FORMAT = BUNDLE_FORMAT_V01
 BUNDLE_MAX_FILES = 96
 BUNDLE_MAX_FILE_BYTES = 1_048_576
@@ -26,6 +27,11 @@ ALLOWED_FILE_RE_V01 = re.compile(
 ALLOWED_FILE_RE_V02 = re.compile(
     r"^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|"
     r"connectors\.(yml|yaml|json)|connectors/[A-Za-z0-9._-]+\.(yml|yaml|json))$"
+)
+ALLOWED_FILE_RE_V03 = re.compile(
+    r"^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|mcp\.recorded\.jsonl|"
+    r"deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|"
+    r"connectors/[A-Za-z0-9._-]+\.(yml|yaml|json)|connectors/mcp/[A-Za-z0-9._-]+\.json)$"
 )
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -41,7 +47,7 @@ def is_bundle_path(path: str | Path) -> bool:
 
 
 def is_harness_bundle_v2(bundle: dict[str, Any]) -> bool:
-    return bundle.get("format") == BUNDLE_FORMAT_V02
+    return bundle.get("format") in (BUNDLE_FORMAT_V02, BUNDLE_FORMAT_V03)
 
 
 def assert_safe_bundle_entry_name(name: str, format: str = BUNDLE_FORMAT_V01) -> None:
@@ -62,8 +68,15 @@ def assert_safe_bundle_entry_name(name: str, format: str = BUNDLE_FORMAT_V01) ->
         if not ALLOWED_FILE_RE_V01.match(name):
             raise BundleError("bundle_unknown_entry", f"unknown or disallowed bundle entry: {name}")
         return
-    if not ALLOWED_FILE_RE_V02.match(name):
-        raise BundleError("bundle_unknown_entry", f"unknown or disallowed bundle entry: {name}")
+    if format == BUNDLE_FORMAT_V02:
+        if not ALLOWED_FILE_RE_V02.match(name):
+            raise BundleError("bundle_unknown_entry", f"unknown or disallowed bundle entry: {name}")
+        return
+    if format == BUNDLE_FORMAT_V03:
+        if not ALLOWED_FILE_RE_V03.match(name):
+            raise BundleError("bundle_unknown_entry", f"unknown or disallowed bundle entry: {name}")
+        return
+    raise BundleError("bundle_invalid", f"unknown bundle format for path check: {format}")
 
 
 def _validate_files_map(files: Any, format: str) -> dict[str, str]:
@@ -122,7 +135,7 @@ def verify_bundle_integrity(bundle: dict[str, Any]) -> None:
         kind = lock.get("kind")
         if kind == "inline":
             continue
-        if kind != "file":
+        if kind not in ("file", "mcp"):
             raise BundleError(
                 "bundle_invalid",
                 f"unsupported connector kind in resolved lock: {kind!r}",
@@ -130,7 +143,7 @@ def verify_bundle_integrity(bundle: dict[str, Any]) -> None:
         path = lock.get("path")
         if not path:
             raise BundleError("bundle_lock_file_missing", "file lock entry missing path")
-        assert_safe_bundle_entry_name(path, BUNDLE_FORMAT_V02)
+        assert_safe_bundle_entry_name(path, bundle["format"])
         content = bundle["files"].get(path)
         if content is None:
             raise BundleError(
@@ -166,10 +179,11 @@ def validate_bundle(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise BundleError("bundle_invalid", "bundle must be an object")
     format_ = raw.get("format")
-    if format_ not in (BUNDLE_FORMAT_V01, BUNDLE_FORMAT_V02):
+    if format_ not in (BUNDLE_FORMAT_V01, BUNDLE_FORMAT_V02, BUNDLE_FORMAT_V03):
         raise BundleError(
             "bundle_invalid",
-            f"expected format {BUNDLE_FORMAT_V01} or {BUNDLE_FORMAT_V02}, got {format_!r}",
+            f"expected format {BUNDLE_FORMAT_V01}, {BUNDLE_FORMAT_V02}, or {BUNDLE_FORMAT_V03}, "
+            f"got {format_!r}",
         )
     name = raw.get("name")
     if not isinstance(name, str) or not name:
@@ -192,7 +206,7 @@ def validate_bundle(raw: Any) -> dict[str, Any]:
         )
     resolved = _validate_resolved_object(raw.get("resolved"))
     bundle = {
-        "format": BUNDLE_FORMAT_V02,
+        "format": format_,
         "name": name,
         "files": files,
         "resolved": resolved,

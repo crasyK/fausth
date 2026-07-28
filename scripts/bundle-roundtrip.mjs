@@ -3,6 +3,7 @@
  * Prove TS pack ≡ Python pack for:
  * - coding-counterbalance (v0.1, legacy byte-identical)
  * - inline-file-connectors (v0.2, byte-identical with embedded resolved IR)
+ * - mcp-connectors (v0.3, MCP descriptors)
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -68,6 +69,11 @@ try {
   );
   if (connectors.format !== "fausth-harness-bundle/v0.2") {
     throw new Error(`expected connector pack v0.2, got ${connectors.format}`);
+  }
+
+  const mcp = packBoth(join(root, "examples/primitives/mcp-connectors"), "mcp");
+  if (mcp.format !== "fausth-harness-bundle/v0.3") {
+    throw new Error(`expected mcp pack v0.3, got ${mcp.format}`);
   }
 
   rmSync(tmp, { recursive: true, force: true });
