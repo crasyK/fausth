@@ -14,7 +14,9 @@
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/inlineConnector" },
-          { "$ref": "#/$defs/fileConnector" }
+          { "$ref": "#/$defs/fileConnector" },
+          { "$ref": "#/$defs/mcpConnector" },
+          { "$ref": "#/$defs/moduleConnector" }
         ]
       }
     }
@@ -30,7 +32,8 @@
         "read_only": { "type": "boolean" },
         "input": { "type": "object" },
         "output": { "type": "object" },
-        "verify": { "type": "array" }
+        "verify": { "type": "array" },
+        "mcp_tool": { "type": "string", "minLength": 1 }
       }
     },
     "inlineConnector": {
@@ -67,6 +70,42 @@
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         },
+        "select": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "mcpConnector": {
+      "type": "object",
+      "required": ["id", "kind", "descriptor"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "mcp" },
+        "descriptor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Harness-relative path to an MCP descriptor (JSON)."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "select": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "moduleConnector": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "module" },
+        "path": { "type": "string", "minLength": 1 },
         "select": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }

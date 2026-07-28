@@ -1,0 +1,27 @@
+spec: counterbalance-contract/v0.1
+name: mcp-connectors
+
+state:
+  ready: 1
+
+limits:
+  max_steps: 4
+  max_tool_calls: 4
+
+tools:
+  - id: sensor.fan.read_percent
+    read_only: true
+    description: Source-declared fan sensor
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      required: [percent]
+      additionalProperties: false
+      properties:
+        percent: { type: integer }
+
+permissions:
+  tools: [sensor.fan.read_percent, get_forecast]

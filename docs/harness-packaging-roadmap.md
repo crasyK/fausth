@@ -81,7 +81,8 @@ pnpm ci:packaging
 | Harness | Bundle format | Notes |
 |---------|---------------|-------|
 | No `connectors.yml` | `fausth-harness-bundle/v0.1` | Flat allowlist; **byte-identical** to pre-M10.3 packs |
-| Has connector manifest | `fausth-harness-bundle/v0.2` | Source files + top-level `resolved` + `resolved_sha256` |
+| Connectors without `mcp` | `fausth-harness-bundle/v0.2` | Source files + top-level `resolved` + `resolved_sha256` |
+| Any `kind: mcp` connector | `fausth-harness-bundle/v0.3` | v0.2 plus `connectors/mcp/*.json` and optional `mcp.recorded.jsonl` |
 
 v0.2 integrity (validated **before** any filesystem write):
 
@@ -89,6 +90,8 @@ v0.2 integrity (validated **before** any filesystem write):
 - Each file-connector lock path/hash must match the embedded `connectors/...` artifact
 - Nested entries limited to `connectors.yml|yaml|json` and `connectors/<safe>.yml|yaml|json`
 - Reject absolute/drive paths, backslashes, NULs, `..` / `.git`, unknown prefixes/extensions, oversized files
+
+v0.3 additionally allows `connectors/mcp/<safe>.json` and top-level `mcp.recorded.jsonl`, and verifies `kind: mcp` lock pins the same way as file connectors.
 
 `pack` chooses the format automatically. `unpack` writes **source files only** (not the compiled IR). Bundle `validate` / `resolve` / `inspect` / `test` / `run` use the verified embedded resolved object as authoritative executable IR; an explicitly unpacked directory re-resolves from restored source.
 
@@ -114,4 +117,22 @@ fausth verify dist/c.fausth.json
 
 `unpack` / `loadBundle` / `validateBundle` verify the signature when present and reject **before** filesystem writes. Missing signature remains allowed.
 
-**Deferred (later PRs):** `module`/`mcp` connectors, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.
+## M11 — MCP connectors (module stubbed)
+
+```bash +code
+fausth resolve examples/primitives/mcp-connectors
+fausth test examples/primitives/mcp-connectors
+fausth pack examples/primitives/mcp-connectors --out dist/mcp.fausth.json
+pnpm ci:resolve
+```
+
+- `kind: mcp` connectors declare tool contracts via locked `connectors/mcp/*.json` descriptors (`fausth-mcp-descriptor/v0.1`)
+- Resolve stays **offline / non-executing**; deployment owns transport:
+  - `recorded` — Track A / CI via `mcp.recorded.jsonl`
+  - `stdio` — live MCP server process (`command` + `args`; not a sandbox)
+- Natives: `mcp.<serverId>.<toolId>` (toolId must match harness tool id)
+- `kind: module` is schema-recognized but resolve fails closed (`connectors_unsupported`)
+- Schema: [`schema/fausth-mcp-descriptor.v0.1.json`](../schema/fausth-mcp-descriptor.v0.1.json)
+- Example: [`examples/primitives/mcp-connectors/`](../examples/primitives/mcp-connectors/)
+
+**Deferred (later PRs):** real `module` plugins, HTTP MCP, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.

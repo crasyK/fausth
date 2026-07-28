@@ -78,7 +78,12 @@ def cmd_run(
         return 1
     deployment = load_yaml(dep_file)
     try:
-        tools = resolve_tools_from_deployment(agent, deployment)
+        tools = resolve_tools_from_deployment(
+            agent,
+            deployment,
+            harness_dir=str(agent_path),
+            resolved=resolved_harness,
+        )
     except AdapterError as e:
         print(str(e), file=sys.stderr)
         return 2

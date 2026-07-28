@@ -31,11 +31,16 @@ import type { ResolvedHarnessIR } from "./types.js";
 
 export const BUNDLE_FORMAT_V01 = "fausth-harness-bundle/v0.1" as const;
 export const BUNDLE_FORMAT_V02 = "fausth-harness-bundle/v0.2" as const;
+export const BUNDLE_FORMAT_V03 = "fausth-harness-bundle/v0.3" as const;
 /** @deprecated Prefer BUNDLE_FORMAT_V01 — kept for existing callers. */
 export const BUNDLE_FORMAT = BUNDLE_FORMAT_V01;
 export const BUNDLE_MAX_FILES = 96;
 export const BUNDLE_MAX_FILE_BYTES = 1_048_576;
 export const BUNDLE_MAX_TOTAL_BYTES = 8_388_608;
+
+export type BundleFormatResolved =
+  | typeof BUNDLE_FORMAT_V02
+  | typeof BUNDLE_FORMAT_V03;
 
 export type HarnessBundleV1 = {
   format: typeof BUNDLE_FORMAT_V01;
@@ -45,7 +50,7 @@ export type HarnessBundleV1 = {
 };
 
 export type HarnessBundleV2 = {
-  format: typeof BUNDLE_FORMAT_V02;
+  format: BundleFormatResolved;
   name: string;
   files: Record<string, string>;
   resolved: ResolvedHarnessIR;
@@ -80,6 +85,9 @@ const ALLOWED_FILE_RE_V01 =
 const ALLOWED_FILE_RE_V02 =
   /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors\/[A-Za-z0-9._-]+\.(yml|yaml|json))$/;
 
+const ALLOWED_FILE_RE_V03 =
+  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|mcp\.recorded\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors\/[A-Za-z0-9._-]+\.(yml|yaml|json)|connectors\/mcp\/[A-Za-z0-9._-]+\.json)$/;
+
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 function sha256Hex(content: string): string {
@@ -91,13 +99,18 @@ export function isBundlePath(path: string): boolean {
 }
 
 export function isHarnessBundleV2(bundle: HarnessBundle): bundle is HarnessBundleV2 {
-  return bundle.format === BUNDLE_FORMAT_V02;
+  return bundle.format === BUNDLE_FORMAT_V02 || bundle.format === BUNDLE_FORMAT_V03;
 }
+
+type AnyBundleFormat =
+  | typeof BUNDLE_FORMAT_V01
+  | typeof BUNDLE_FORMAT_V02
+  | typeof BUNDLE_FORMAT_V03;
 
 /** Reject traversal, absolute/drive paths, NULs; enforce version-specific allowlist. */
 export function assertSafeBundleEntryName(
   name: string,
-  format: typeof BUNDLE_FORMAT_V01 | typeof BUNDLE_FORMAT_V02 = BUNDLE_FORMAT_V01,
+  format: AnyBundleFormat = BUNDLE_FORMAT_V01,
 ): void {
   if (!name || typeof name !== "string") {
     throw new BundleError("bundle_path", "empty bundle entry name");
@@ -124,14 +137,20 @@ export function assertSafeBundleEntryName(
     }
     return;
   }
-  if (!ALLOWED_FILE_RE_V02.test(name)) {
+  if (format === BUNDLE_FORMAT_V02) {
+    if (!ALLOWED_FILE_RE_V02.test(name)) {
+      throw new BundleError("bundle_unknown_entry", `unknown or disallowed bundle entry: ${name}`);
+    }
+    return;
+  }
+  if (!ALLOWED_FILE_RE_V03.test(name)) {
     throw new BundleError("bundle_unknown_entry", `unknown or disallowed bundle entry: ${name}`);
   }
 }
 
 function validateFilesMap(
   filesRaw: unknown,
-  format: typeof BUNDLE_FORMAT_V01 | typeof BUNDLE_FORMAT_V02,
+  format: AnyBundleFormat,
 ): Record<string, string> {
   if (!filesRaw || typeof filesRaw !== "object" || Array.isArray(filesRaw)) {
     throw new BundleError("bundle_invalid", "bundle.files must be an object");
@@ -192,7 +211,7 @@ function validateResolvedObject(raw: unknown): ResolvedHarnessIR {
   return raw as ResolvedHarnessIR;
 }
 
-/** Verify v0.2 resolved hash and file-connector lock pins against embedded files. */
+/** Verify resolved hash and file/mcp lock pins against embedded files. */
 export function verifyBundleIntegrity(bundle: HarnessBundleV2): void {
   const expected = resolvedHarnessHash(bundle.resolved);
   if (bundle.resolved_sha256 !== expected) {
@@ -203,7 +222,7 @@ export function verifyBundleIntegrity(bundle: HarnessBundleV2): void {
   }
   for (const lock of bundle.resolved.resolution.lock) {
     if (lock.kind === "inline") continue;
-    if (lock.kind !== "file") {
+    if (lock.kind !== "file" && lock.kind !== "mcp") {
       throw new BundleError(
         "bundle_invalid",
         `unsupported connector kind in resolved lock: ${String(lock.kind)}`,
@@ -212,7 +231,7 @@ export function verifyBundleIntegrity(bundle: HarnessBundleV2): void {
     if (!lock.path) {
       throw new BundleError("bundle_lock_file_missing", "file lock entry missing path");
     }
-    assertSafeBundleEntryName(lock.path, BUNDLE_FORMAT_V02);
+    assertSafeBundleEntryName(lock.path, bundle.format);
     const content = bundle.files[lock.path];
     if (content === undefined) {
       throw new BundleError(
@@ -259,10 +278,14 @@ export function validateBundle(raw: unknown): HarnessBundle {
   }
   const obj = raw as Record<string, unknown>;
   const format = obj.format;
-  if (format !== BUNDLE_FORMAT_V01 && format !== BUNDLE_FORMAT_V02) {
+  if (
+    format !== BUNDLE_FORMAT_V01 &&
+    format !== BUNDLE_FORMAT_V02 &&
+    format !== BUNDLE_FORMAT_V03
+  ) {
     throw new BundleError(
       "bundle_invalid",
-      `expected format ${BUNDLE_FORMAT_V01} or ${BUNDLE_FORMAT_V02}, got ${String(format)}`,
+      `expected format ${BUNDLE_FORMAT_V01}, ${BUNDLE_FORMAT_V02}, or ${BUNDLE_FORMAT_V03}, got ${String(format)}`,
     );
   }
   if (typeof obj.name !== "string" || !obj.name) {
@@ -289,7 +312,7 @@ export function validateBundle(raw: unknown): HarnessBundle {
   }
   const resolved = validateResolvedObject(obj.resolved);
   const bundle: HarnessBundleV2 = {
-    format: BUNDLE_FORMAT_V02,
+    format,
     name: obj.name,
     files,
     resolved,
@@ -353,7 +376,7 @@ export type ResolvedHarness = {
   cleanup: () => void;
   source: string;
   /** Bundle format when kind=bundle. */
-  bundleFormat?: typeof BUNDLE_FORMAT_V01 | typeof BUNDLE_FORMAT_V02;
+  bundleFormat?: typeof BUNDLE_FORMAT_V01 | typeof BUNDLE_FORMAT_V02 | typeof BUNDLE_FORMAT_V03;
   /**
    * Verified embedded resolved IR from a v0.2 bundle.
    * Authoritative for bundle execution; not written into the unpacked source tree.

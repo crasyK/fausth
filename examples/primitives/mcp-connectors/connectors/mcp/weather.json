@@ -1,0 +1,27 @@
+{
+  "format": "fausth-mcp-descriptor/v0.1",
+  "provides": [
+    {
+      "id": "get_forecast",
+      "mcp_tool": "get_forecast",
+      "read_only": true,
+      "description": "MCP-provided weather forecast",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "city": { "type": "string" }
+        }
+      },
+      "output": {
+        "type": "object",
+        "required": ["summary", "temp_c"],
+        "additionalProperties": false,
+        "properties": {
+          "summary": { "type": "string" },
+          "temp_c": { "type": "integer" }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/fausth-harness-bundle.v0.3.json",
+  "title": "Fausth harness bundle v0.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "name", "files", "resolved", "resolved_sha256"],
+  "properties": {
+    "format": {
+      "const": "fausth-harness-bundle/v0.3"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 96,
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "pattern": "^(agent\\.(yml|yaml|json)|README\\.md|smoke\\.(model|expected)\\.jsonl|mcp\\.recorded\\.jsonl|deployment\\.[A-Za-z0-9._-]+\\.ya?ml|connectors\\.(yml|yaml|json)|connectors/[A-Za-z0-9._-]+\\.(yml|yaml|json)|connectors/mcp/[A-Za-z0-9._-]+\\.json)$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 1048576
+      }
+    },
+    "resolved": {
+      "$ref": "https://fausth.dev/schema/fausth-resolved-harness.v0.1.json"
+    },
+    "resolved_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "public_key", "sig"],
+      "properties": {
+        "alg": {
+          "const": "ed25519"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{128}$"
+        }
+      }
+    }
+  }
+}

@@ -7,6 +7,13 @@ import type { AgentIR, Deployment } from "../types.js";
 import { createGreenhouseTools } from "../tools/world.js";
 import { createSpawnTool } from "../tools/world.js";
 import { createSimulationCodingAdapter } from "./simulation.js";
+import { AdapterError } from "./error.js";
+import {
+  createMcpHandlers,
+  deploymentUsesMcp,
+  mcpToolMapFromResolved,
+  parseMcpNative,
+} from "./mcp.js";
 import {
   assertBindingFamilyConsistency,
   createLocalCodingTools,
@@ -14,17 +21,10 @@ import {
   deploymentUsesLocal,
   pickLocalHandler,
 } from "./local.js";
+import type { ResolvedHarnessIR } from "../types.js";
 
-export type AdapterErrorCode = "binding_missing" | "adapter_unresolved";
-
-export class AdapterError extends Error {
-  readonly code: AdapterErrorCode;
-  constructor(code: AdapterErrorCode, message: string) {
-    super(message);
-    this.name = "AdapterError";
-    this.code = code;
-  }
-}
+export { AdapterError } from "./error.js";
+export type { AdapterErrorCode } from "./error.js";
 
 /** Map deployment `native:` id → harness tool id. */
 export const NATIVE_TO_TOOL: Record<string, string> = {
@@ -91,6 +91,10 @@ export type ResolveToolsOptions = {
   workspace?: string;
   /** Force interactive checkpoints off (non-TTY). */
   interactive?: boolean;
+  /** Required when deployment uses mcp.* recorded paths. */
+  harnessDir?: string;
+  /** Resolved IR for mcp_tool name maps (optional). */
+  resolved?: ResolvedHarnessIR;
 };
 
 function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Record<string, ToolHandler> {
@@ -130,8 +134,15 @@ export function resolveToolsFromDeployment(
   opts: ResolveToolsOptions = {},
 ): Record<string, ToolHandler> {
   assertBindingFamilyConsistency(deployment);
+  if (deploymentUsesLocal(deployment) && deploymentUsesMcp(deployment)) {
+    throw new AdapterError(
+      "adapter_unresolved",
+      "deployment mixes local.* bindings with mcp.* — use a single binding family",
+    );
+  }
 
   let pool: Record<string, ToolHandler>;
+  let mcpNativeToTool: Record<string, string> = {};
   if (deploymentUsesLocal(deployment)) {
     if (!opts.workspace) {
       throw new AdapterError(
@@ -155,6 +166,20 @@ export function resolveToolsFromDeployment(
     pool = { ...greenhouse, ...localTools, ...spawn };
   } else {
     pool = buildHandlerPool(agent, opts);
+    if (deploymentUsesMcp(deployment)) {
+      if (!opts.harnessDir) {
+        throw new AdapterError(
+          "adapter_unresolved",
+          "adapter failure: mcp.* bindings require harness directory context",
+        );
+      }
+      const mcp = createMcpHandlers(deployment, {
+        harnessDir: opts.harnessDir,
+        mcpToolMap: mcpToolMapFromResolved(opts.resolved),
+      });
+      pool = { ...pool, ...mcp.handlers };
+      mcpNativeToTool = mcp.nativeToTool;
+    }
   }
 
   const bindings = deployment.bindings ?? {};
@@ -169,22 +194,27 @@ export function resolveToolsFromDeployment(
         `adapter failure: no deployment binding for tool '${id}' (binding_missing)`,
       );
     }
-    const mapped = NATIVE_TO_TOOL[binding.native];
+    const native = binding.native;
+    let mapped = NATIVE_TO_TOOL[native] ?? mcpNativeToTool[native];
+    if (!mapped && native.startsWith("mcp.")) {
+      const parsed = parseMcpNative(native);
+      if (parsed && parsed.toolId === id) mapped = id;
+    }
     if (!mapped) {
       throw new AdapterError(
         "adapter_unresolved",
-        `adapter failure: unknown native '${binding.native}' for tool '${id}' (adapter_unresolved)`,
+        `adapter failure: unknown native '${native}' for tool '${id}' (adapter_unresolved)`,
       );
     }
     if (mapped !== id) {
       throw new AdapterError(
         "adapter_unresolved",
-        `adapter failure: native '${binding.native}' maps to '${mapped}', not '${id}' (adapter_unresolved)`,
+        `adapter failure: native '${native}' maps to '${mapped}', not '${id}' (adapter_unresolved)`,
       );
     }
     const handler =
       deploymentUsesLocal(deployment)
-        ? pickLocalHandler(pool, id, binding.native)
+        ? pickLocalHandler(pool, id, native)
         : pool[id];
     if (!handler) {
       throw new AdapterError(

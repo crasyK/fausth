@@ -450,6 +450,8 @@ async function cmdRun(
     tools = resolveToolsFromDeployment(agent, deployment, {
       workspace: opts.workspace,
       interactive: Boolean(process.stdin.isTTY) && !String(depFile).includes("local-fixture"),
+      harnessDir: dir,
+      resolved: resolvedHarness,
     });
   } catch (e) {
     if (e instanceof AdapterError) {

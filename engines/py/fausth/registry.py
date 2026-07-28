@@ -5,16 +5,10 @@ from typing import Any
 
 import yaml
 
+from .adapter_error import AdapterError
 from .runtime import ToolHandler, default_tools
 
-AdapterErrorCode = str  # binding_missing | adapter_unresolved
-
-
-class AdapterError(Exception):
-    def __init__(self, code: AdapterErrorCode, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-
+__all__ = ["AdapterError", "NATIVE_TO_TOOL", "load_yaml", "load_agent_dir", "resolve_tools_from_deployment"]
 
 NATIVE_TO_TOOL: dict[str, str] = {
     "stub.fs_read": "fs.read",
@@ -93,7 +87,11 @@ def resolve_tools_from_deployment(
     deployment: dict[str, Any],
     *,
     test_exit: int | None = None,
+    harness_dir: str | None = None,
+    resolved: dict[str, Any] | None = None,
 ) -> dict[str, ToolHandler]:
+    from .mcp import create_mcp_handlers, deployment_uses_mcp, parse_mcp_native, mcp_tool_map_from_resolved
+
     pool = default_tools(agent)
     if test_exit is not None:
         def shell(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
@@ -103,7 +101,21 @@ def resolve_tools_from_deployment(
             return {"output": {"exit_code": 1, "cmd": cmd, "error": "not allowlisted"}}
 
         pool["shell.run_allowlisted"] = shell
-        # also align world last_exit for any other use
+
+    mcp_native_to_tool: dict[str, str] = {}
+    if deployment_uses_mcp(deployment):
+        if not harness_dir:
+            raise AdapterError(
+                "adapter_unresolved",
+                "adapter failure: mcp.* bindings require harness directory context",
+            )
+        handlers, mcp_native_to_tool, _cleanup = create_mcp_handlers(
+            deployment,
+            harness_dir=harness_dir,
+            mcp_tool_map=mcp_tool_map_from_resolved(resolved),
+        )
+        pool = {**pool, **handlers}
+
     bindings = deployment.get("bindings") or {}
     out: dict[str, ToolHandler] = {}
     for tool in agent.get("tools") or []:
@@ -115,7 +127,11 @@ def resolve_tools_from_deployment(
                 f"adapter failure: no deployment binding for tool '{tid}' (binding_missing)",
             )
         native = binding["native"]
-        mapped = NATIVE_TO_TOOL.get(native)
+        mapped = NATIVE_TO_TOOL.get(native) or mcp_native_to_tool.get(native)
+        if mapped is None and native.startswith("mcp."):
+            parsed = parse_mcp_native(native)
+            if parsed and parsed[1] == tid:
+                mapped = tid
         if not mapped:
             raise AdapterError(
                 "adapter_unresolved",

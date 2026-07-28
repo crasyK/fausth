@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const harnesses = [
   join(root, "examples/primitives/inline-file-connectors"),
+  join(root, "examples/primitives/mcp-connectors"),
   join(root, "examples/coding-counterbalance"),
 ];
 const tmp = mkdtempSync(join(tmpdir(), "fausth-resolve-"));

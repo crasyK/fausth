@@ -26,7 +26,7 @@
             "required": ["id", "kind", "provides", "selected"],
             "properties": {
               "id": { "type": "string", "minLength": 1 },
-              "kind": { "type": "string", "enum": ["inline", "file"] },
+              "kind": { "type": "string", "enum": ["inline", "file", "mcp"] },
               "path": { "type": "string" },
               "sha256": { "type": ["string", "null"] },
               "provides": {
@@ -36,6 +36,10 @@
               "selected": {
                 "type": "array",
                 "items": { "type": "string", "minLength": 1 }
+              },
+              "mcp_tools": {
+                "type": "object",
+                "additionalProperties": { "type": "string", "minLength": 1 }
               }
             }
           }
@@ -52,7 +56,7 @@
             "required": ["connector", "kind", "sha256"],
             "properties": {
               "connector": { "type": "string", "minLength": 1 },
-              "kind": { "type": "string", "enum": ["inline", "file"] },
+              "kind": { "type": "string", "enum": ["inline", "file", "mcp"] },
               "path": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
             }

@@ -118,18 +118,19 @@ export function inspectHarness(
     existsSync(join(dir, "connectors.json"));
   let agent = sourceAgent;
   let resolution: InspectReport["resolution"];
+  let resolvedIr: import("./types.js").ResolvedHarnessIR | undefined;
   try {
-    const resolved = opts.embeddedResolved ?? resolveHarness(dir);
-    agent = resolved.agent;
+    resolvedIr = opts.embeddedResolved ?? resolveHarness(dir);
+    agent = resolvedIr.agent;
     resolution = {
       connectors_file: connectorsPresent || Boolean(opts.embeddedResolved),
-      connector_count: resolved.resolution.connectors.length,
+      connector_count: resolvedIr.resolution.connectors.length,
       kinds: Array.from(
-        new Set(resolved.resolution.connectors.map((c) => c.kind)),
+        new Set(resolvedIr.resolution.connectors.map((c) => c.kind)),
       ).sort(),
-      selected_count: resolved.resolution.selected.length,
-      lock_count: resolved.resolution.lock.length,
-      resolved_sha256: resolvedHarnessHash(resolved),
+      selected_count: resolvedIr.resolution.selected.length,
+      lock_count: resolvedIr.resolution.lock.length,
+      resolved_sha256: resolvedHarnessHash(resolvedIr),
       ok: true,
       ...(opts.bundleFormat ? { bundle_format: opts.bundleFormat } : {}),
       ...(opts.embeddedResolved ? { embedded: true } : {}),
@@ -183,7 +184,10 @@ export function inspectHarness(
   if (depPath) {
     try {
       const dep = loadDeployment(depPath) as Deployment;
-      resolveToolsFromDeployment(agent, dep);
+      resolveToolsFromDeployment(agent, dep, {
+        harnessDir: dir,
+        resolved: resolvedIr,
+      });
       report.binding_coverage = {
         deployment: basename(depPath),
         missing: [],
@@ -261,13 +265,17 @@ async function runSmoke(
   agent: AgentIR,
   deployment: Deployment,
   harnessDir: string,
+  resolved?: import("./types.js").ResolvedHarnessIR,
 ): Promise<{ ok: boolean; detail: string }> {
   const modelPath = join(harnessDir, "smoke.model.jsonl");
   const expectedPath = join(harnessDir, "smoke.expected.jsonl");
   if (!existsSync(modelPath)) {
     return { ok: true, detail: "no smoke.model.jsonl (skipped)" };
   }
-  const tools = resolveToolsFromDeployment(agent, deployment);
+  const tools = resolveToolsFromDeployment(agent, deployment, {
+    harnessDir,
+    resolved,
+  });
   const proposals: ModelProposal[] = readJsonl(modelPath).map(parseRecordedModelLine);
   let pi = 0;
   const rt = new FaustRuntime({
@@ -370,7 +378,10 @@ export async function testHarness(
   const deployment = loadDeployment(depPath) as Deployment;
   let bindings_ok = true;
   try {
-    resolveToolsFromDeployment(agent, deployment);
+    resolveToolsFromDeployment(agent, deployment, {
+      harnessDir: dir,
+      resolved,
+    });
     details.push(`bindings OK (${basename(depPath)})`);
   } catch (e) {
     bindings_ok = false;
@@ -380,7 +391,7 @@ export async function testHarness(
   let smoke_ok: boolean | null = null;
   if (bindings_ok) {
     try {
-      const smoke = await runSmoke(agent, deployment, dir);
+      const smoke = await runSmoke(agent, deployment, dir, resolved);
       smoke_ok = smoke.ok;
       details.push(smoke.detail);
       if (!smoke.ok) errors.push(smoke.detail);
@@ -457,7 +468,8 @@ function collectPackSourceFiles(dir: string): { path: string; content: string }[
 /**
  * Pack harness into a portable `.fausth.json` bundle (git/archives before registry).
  * Manifest-less harnesses → byte-identical v0.1.
- * Connector harnesses → v0.2 with verified top-level resolved IR.
+ * Connector harnesses without mcp → v0.2.
+ * MCP connector harnesses → v0.3.
  * Optional Ed25519 signing via `signKey` path or FAUSTH_SIGN_KEY (opt-in; default unsigned).
  */
 export function packHarness(
@@ -472,10 +484,18 @@ export function packHarness(
   );
 
   const files = collectPackSourceFiles(dir);
+  // Optional MCP recorded fixture for Track A packs
+  for (const extra of ["mcp.recorded.jsonl"]) {
+    const p = join(dir, extra);
+    if (existsSync(p) && statSync(p).isFile() && !files.some((f) => f.path === extra)) {
+      files.push({ path: extra, content: readFileSync(p, "utf8") });
+    }
+  }
 
   let bundle: Record<string, unknown>;
   if (hasConnectors) {
     const resolved = resolveHarness(dir);
+    const hasMcp = resolved.resolution.lock.some((l) => l.kind === "mcp");
     for (const n of CONNECTOR_MANIFEST_NAMES) {
       const p = join(dir, n);
       if (existsSync(p) && statSync(p).isFile()) {
@@ -483,7 +503,7 @@ export function packHarness(
       }
     }
     for (const lock of resolved.resolution.lock) {
-      if (lock.kind !== "file" || !lock.path) continue;
+      if ((lock.kind !== "file" && lock.kind !== "mcp") || !lock.path) continue;
       const p = join(dir, lock.path);
       if (!existsSync(p) || !statSync(p).isFile()) {
         throw new ConnectorError(
@@ -497,7 +517,7 @@ export function packHarness(
     }
     files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     bundle = {
-      format: "fausth-harness-bundle/v0.2",
+      format: hasMcp ? "fausth-harness-bundle/v0.3" : "fausth-harness-bundle/v0.2",
       name,
       files: Object.fromEntries(files.map((f) => [f.path, f.content])),
       resolved,

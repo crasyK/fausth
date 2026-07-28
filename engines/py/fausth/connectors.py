@@ -18,6 +18,7 @@ from .registry import load_agent_dir
 
 CONNECTORS_FORMAT = "fausth-connectors/v0.1"
 CONNECTOR_MANIFEST_FORMAT = "fausth-connector-manifest/v0.1"
+MCP_DESCRIPTOR_FORMAT = "fausth-mcp-descriptor/v0.1"
 RESOLVED_HARNESS_FORMAT = "fausth-resolved-harness/v0.1"
 
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|secret|password|token|credential|authorization)", re.I)
@@ -103,6 +104,14 @@ def as_provision(raw: Any, path: str) -> dict[str, Any]:
         out["output"] = raw["output"]
     if "verify" in raw:
         out["verify"] = raw["verify"]
+    if "mcp_tool" in raw:
+        mt = raw["mcp_tool"]
+        if not isinstance(mt, str) or not mt:
+            raise ConnectorError(
+                "connectors_invalid",
+                f"{path}.mcp_tool must be a non-empty string",
+            )
+        out["mcp_tool"] = mt
     return out
 
 
@@ -112,6 +121,44 @@ def provision_to_tool(p: dict[str, Any]) -> dict[str, Any]:
         if key in p:
             t[key] = p[key]
     return t
+
+
+def load_mcp_descriptor(harness_dir: Path, connector: dict[str, Any]) -> dict[str, Any]:
+    abs_path, rel = resolve_under_harness(harness_dir, connector["descriptor"])
+    if abs_path.suffix.lower() != ".json":
+        raise ConnectorError(
+            "connectors_invalid",
+            f"mcp descriptor must be JSON (.json): {rel}",
+        )
+    content = abs_path.read_text(encoding="utf-8")
+    digest = sha256_hex(content)
+    if "sha256" in connector and connector["sha256"] is not None:
+        expected = str(connector["sha256"])
+        if not re.fullmatch(r"[a-f0-9]{64}", expected):
+            raise ConnectorError(
+                "connectors_invalid",
+                f"connector '{connector['id']}' sha256 must be a 64-char lowercase hex string",
+            )
+        if expected != digest:
+            raise ConnectorError(
+                "connectors_hash_mismatch",
+                f"sha256 mismatch for connector '{connector['id']}' at {rel}: "
+                f"expected {expected}, got {digest}",
+            )
+    raw = json.loads(content)
+    if not isinstance(raw, dict):
+        raise ConnectorError("connectors_invalid", f"mcp descriptor at {rel} must be an object")
+    if raw.get("format") != MCP_DESCRIPTOR_FORMAT:
+        raise ConnectorError(
+            "connectors_unsupported",
+            f"unsupported mcp descriptor format at {rel}: {raw.get('format')!r}",
+        )
+    assert_no_secrets(raw, f"mcp:{rel}")
+    provides_raw = raw.get("provides")
+    if not isinstance(provides_raw, list) or not provides_raw:
+        raise ConnectorError("connectors_invalid", f"mcp descriptor at {rel} requires provides[]")
+    provides = [as_provision(p, f"mcp:{rel}.provides[{i}]") for i, p in enumerate(provides_raw)]
+    return {"provides": provides, "sha256": digest, "path": rel}
 
 
 def load_file_manifest(harness_dir: Path, connector: dict[str, Any]) -> dict[str, Any]:
@@ -320,9 +367,58 @@ def resolve_harness(harness_dir: str | Path) -> dict[str, Any]:
                 selected_ids.append(p["id"])
             continue
 
+        if kind == "mcp":
+            assert_no_secrets(raw, f"connector:{cid}")
+            if not isinstance(raw.get("descriptor"), str) or not raw.get("descriptor"):
+                raise ConnectorError(
+                    "connectors_invalid",
+                    f"mcp connector '{cid}' requires descriptor",
+                )
+            loaded = load_mcp_descriptor(d, raw)
+            selected = select_provides(cid, loaded["provides"], raw.get("select"))
+            mcp_tools = {
+                p["id"]: p.get("mcp_tool") or p["id"] for p in loaded["provides"]
+            }
+            ordered_mcp_tools = {k: mcp_tools[k] for k in sorted(mcp_tools.keys())}
+            entries.append(
+                {
+                    "id": cid,
+                    "kind": "mcp",
+                    "path": loaded["path"],
+                    "sha256": loaded["sha256"],
+                    "provides": sorted(p["id"] for p in loaded["provides"]),
+                    "selected": sorted(p["id"] for p in selected),
+                    "mcp_tools": ordered_mcp_tools,
+                }
+            )
+            lock.append(
+                {
+                    "connector": cid,
+                    "kind": "mcp",
+                    "path": loaded["path"],
+                    "sha256": loaded["sha256"],
+                }
+            )
+            for p in selected:
+                if p["id"] in selected_seen:
+                    raise ConnectorError(
+                        "connectors_duplicate",
+                        f"selected provision '{p['id']}' provided by multiple connectors",
+                    )
+                selected_seen.add(p["id"])
+                selected_provisions.append(p)
+                selected_ids.append(p["id"])
+            continue
+
+        if kind == "module":
+            raise ConnectorError(
+                "connectors_unsupported",
+                "unsupported connector kind 'module' (deferred; use mcp|inline|file)",
+            )
+
         raise ConnectorError(
             "connectors_unsupported",
-            f"unsupported connector kind '{kind}' (M10 supports inline|file only)",
+            f"unsupported connector kind '{kind}' (supports inline|file|mcp)",
         )
 
     entries.sort(key=lambda e: e["id"])
