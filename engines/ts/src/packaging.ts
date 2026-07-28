@@ -16,7 +16,7 @@ import {
   listFixtureDirs,
   readJsonl,
 } from "./load.js";
-import { validateAgentPath } from "./validate.js";
+import { validateAgent } from "./validate.js";
 import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
@@ -102,7 +102,39 @@ export type InspectReport = {
 
 export function inspectHarness(harnessDir: string): InspectReport {
   const dir = resolve(harnessDir);
-  const { agent } = loadAgentDir(dir);
+  const { agent: sourceAgent } = loadAgentDir(dir);
+  const connectorsPresent =
+    existsSync(join(dir, "connectors.yml")) ||
+    existsSync(join(dir, "connectors.yaml")) ||
+    existsSync(join(dir, "connectors.json"));
+  let agent = sourceAgent;
+  let resolution: InspectReport["resolution"];
+  try {
+    const resolved = resolveHarness(dir);
+    agent = resolved.agent;
+    resolution = {
+      connectors_file: connectorsPresent,
+      connector_count: resolved.resolution.connectors.length,
+      kinds: Array.from(
+        new Set(resolved.resolution.connectors.map((c) => c.kind)),
+      ).sort(),
+      selected_count: resolved.resolution.selected.length,
+      lock_count: resolved.resolution.lock.length,
+      resolved_sha256: resolvedHarnessHash(resolved),
+      ok: true,
+    };
+  } catch (e) {
+    resolution = {
+      connectors_file: connectorsPresent,
+      connector_count: 0,
+      kinds: [],
+      selected_count: 0,
+      lock_count: 0,
+      resolved_sha256: "",
+      ok: false,
+      error: e instanceof ConnectorError || e instanceof Error ? e.message : String(e),
+    };
+  }
   const auto = listHarnessDeployments(dir);
   const localExtras = readdirSync(dir)
     .filter((n) => isLocalOnlyDeploymentFile(n) && /\.ya?ml$/i.test(n))
@@ -132,6 +164,7 @@ export function inspectHarness(harnessDir: string): InspectReport {
       model: existsSync(join(dir, "smoke.model.jsonl")),
       expected: existsSync(join(dir, "smoke.expected.jsonl")),
     },
+    resolution,
   };
 
   const depPath = pickTestDeployment(dir);
@@ -157,36 +190,6 @@ export function inspectHarness(harnessDir: string): InspectReport {
         error: e instanceof Error ? e.message : String(e),
       };
     }
-  }
-
-  const connectorsPresent =
-    existsSync(join(dir, "connectors.yml")) ||
-    existsSync(join(dir, "connectors.yaml")) ||
-    existsSync(join(dir, "connectors.json"));
-  try {
-    const resolved = resolveHarness(dir);
-    report.resolution = {
-      connectors_file: connectorsPresent,
-      connector_count: resolved.resolution.connectors.length,
-      kinds: Array.from(
-        new Set(resolved.resolution.connectors.map((c) => c.kind)),
-      ).sort(),
-      selected_count: resolved.resolution.selected.length,
-      lock_count: resolved.resolution.lock.length,
-      resolved_sha256: resolvedHarnessHash(resolved),
-      ok: true,
-    };
-  } catch (e) {
-    report.resolution = {
-      connectors_file: connectorsPresent,
-      connector_count: 0,
-      kinds: [],
-      selected_count: 0,
-      lock_count: 0,
-      resolved_sha256: "",
-      ok: false,
-      error: e instanceof ConnectorError || e instanceof Error ? e.message : String(e),
-    };
   }
 
   return report;
@@ -292,7 +295,23 @@ export async function testHarness(
   const errors: string[] = [];
   const details: string[] = [];
 
-  const v = validateAgentPath(dir);
+  let resolved;
+  try {
+    resolved = resolveHarness(dir);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      validate_ok: false,
+      bindings_ok: false,
+      smoke_ok: null,
+      fixtures_ok: null,
+      errors: [message],
+      details: [],
+    };
+  }
+  details.push(`resolve OK (${resolved.resolution.connectors.length} connectors)`);
+  const v = validateAgent(resolved.agent);
   const validate_ok = v.ok;
   if (!v.ok) {
     errors.push(...v.errors);
@@ -309,7 +328,7 @@ export async function testHarness(
   details.push("validate OK");
   for (const w of v.warnings) details.push(`warn: ${w}`);
 
-  const agent = v.agent;
+  const agent = resolved.agent;
   const depPath = pickTestDeployment(dir, opts.deployment);
   if (!depPath) {
     errors.push("no deployment found for harness test (need fixture/simulation or --deployment)");

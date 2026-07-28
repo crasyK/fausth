@@ -9,19 +9,19 @@ limits:
   max_tool_calls: 4
 
 tools:
-  - id: ping.local
+  - id: sensor.fan.read_percent
     read_only: true
-    description: Built-in harness tool
+    description: Source-declared fan sensor
     input:
       type: object
       additionalProperties: false
       properties: {}
     output:
       type: object
-      required: [ok]
+      required: [percent]
       additionalProperties: false
       properties:
-        ok: { type: integer }
+        percent: { type: integer }
 
 permissions:
-  tools: [ping.local, greet.say, echo.ping]
+  tools: [sensor.fan.read_percent, sensor.temperature.read, system.wait]

@@ -1,0 +1,11 @@
+{"args":{},"seq":1,"stage":"propose","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"sensor.temperature.read","ts_logical":1}
+{"args":{},"seq":2,"stage":"validate","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"sensor.temperature.read","ts_logical":2,"verdict":"allow"}
+{"args":{},"seq":3,"stage":"authorize","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"sensor.temperature.read","ts_logical":3,"verdict":"allow"}
+{"args":{},"result":{"celsius_decidegrees":250},"seq":4,"stage":"execute","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"sensor.temperature.read","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","ts_logical":5,"verdict":"allow"}
+{"args":{"ms":25},"seq":6,"stage":"propose","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"system.wait","ts_logical":6}
+{"args":{"ms":25},"seq":7,"stage":"validate","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"system.wait","ts_logical":7,"verdict":"allow"}
+{"args":{"ms":25},"seq":8,"stage":"authorize","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"system.wait","ts_logical":8,"verdict":"allow"}
+{"args":{"ms":25},"result":{"waited_ms":25},"seq":9,"stage":"execute","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","tool":"system.wait","ts_logical":9,"verdict":"allow"}
+{"seq":10,"stage":"verify","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","ts_logical":10,"verdict":"allow"}
+{"seq":11,"stage":"propose","state_hash":"33ced5d9fc71cbd6cd062d4bcab13519d1078bfea33e04819733c4179c1c38f5","ts_logical":11,"verdict":"allow"}

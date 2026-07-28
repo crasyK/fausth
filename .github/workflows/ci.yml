@@ -24,6 +24,8 @@ jobs:
         run: |
           pip install -e "engines/py"
           node scripts/bundle-roundtrip.mjs
+      - name: Resolved connector execution parity
+        run: pnpm ci:resolve
 
   py:
     runs-on: ubuntu-latest

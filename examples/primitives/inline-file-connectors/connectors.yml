@@ -1,25 +1,23 @@
 format: fausth-connectors/v0.1
 connectors:
-  - id: greet
+  - id: temperature
     kind: inline
     provides:
-      - id: greet.say
+      - id: sensor.temperature.read
         read_only: true
-        description: Greet by name
+        description: Connector-provided temperature sensor
         input:
           type: object
-          required: [name]
           additionalProperties: false
-          properties:
-            name: { type: string }
+          properties: {}
         output:
           type: object
-          required: [message]
+          required: [celsius_decidegrees]
           additionalProperties: false
           properties:
-            message: { type: string }
-    select: [greet.say]
-  - id: echo
+            celsius_decidegrees: { type: integer }
+    select: [sensor.temperature.read]
+  - id: wait
     kind: file
-    path: connectors/echo.yml
-    select: [echo.ping]
+    path: connectors/wait.yml
+    select: [system.wait]

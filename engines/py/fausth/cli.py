@@ -53,7 +53,12 @@ def cmd_run(
     max_steps: int | None,
 ) -> int:
     agent_path = Path(agent_dir).resolve()
-    agent = load_agent_dir(str(agent_path))
+    try:
+        resolved_harness = resolve_harness(agent_path)
+    except ConnectorError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    agent = resolved_harness["agent"]
     dep_file = deployment_path
     if not dep_file:
         for name in (
