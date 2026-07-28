@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.3-alpha — Portable connectors, signatures, MCP (M10–M11)
+
+### Added
+
+- Connector manifest + resolved harness IR (`fausth resolve`, `pnpm ci:resolve`).
+- Portable resolved bundles: `fausth-harness-bundle/v0.2` (connectors) and `v0.3` (MCP descriptors).
+- Optional Ed25519 detached bundle signatures (`fausth pack --sign-key`, `fausth verify`).
+- MCP connectors (`kind: mcp`) with offline resolve and host transports `recorded` / `stdio`.
+- Live proofs: `scripts/live-mcp-stdio.mjs` (process) and `scripts/live-mcp-model.mjs` (KIT/OpenRouter + MCP).
+- Example harness: [`examples/primitives/mcp-connectors/`](examples/primitives/mcp-connectors/).
+
+### Notes
+
+- Legacy coding packs without connectors remain **byte-identical** `v0.1` (15650 bytes unsigned).
+- `kind: module` is schema-recognized but fails closed until a later milestone.
+- Normative contract remains **`counterbalance-contract/v0.1`**.
+
 ## 0.1.2-alpha — Usable local coding harness (M8)
 
 ### Added

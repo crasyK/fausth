@@ -145,10 +145,12 @@ class StdioMcpSession {
     args: string[],
     env: Record<string, string> | undefined,
     private timeoutMs: number,
+    cwd?: string,
   ) {
     this.proc = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
+      cwd,
       windowsHide: true,
     });
     this.rl = createInterface({ input: this.proc.stdout! });
@@ -215,7 +217,7 @@ class StdioMcpSession {
     await this.request("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "fausth", version: "0.1.2-alpha" },
+      clientInfo: { name: "fausth", version: "0.1.3-alpha" },
     });
     // notifications/initialized (no id)
     this.proc.stdin!.write(
@@ -342,7 +344,13 @@ export function createMcpHandlers(
       handlers[toolId] = async (callArgs) => {
         let session = sessions.get(parsed.serverId);
         if (!session) {
-          session = new StdioMcpSession(command, args, server.env, timeout);
+          session = new StdioMcpSession(
+            command,
+            args,
+            server.env,
+            timeout,
+            opts.harnessDir,
+          );
           sessions.set(parsed.serverId, session);
           try {
             await session.initialize();

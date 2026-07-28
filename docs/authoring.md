@@ -7,12 +7,16 @@ This guide covers the first portable harness path: author → validate → test 
 ```bash +code
 examples/my-harness/
   agent.yml                 # Counterbalance agent IR (required)
-  connectors.yml            # optional M10 connector manifest (inline + file)
+  connectors.yml            # optional M10 connector manifest (inline + file + mcp)
   connectors/               # optional file-connector imports referenced by the lock
+  connectors/mcp/           # optional MCP descriptors (kind: mcp)
+  servers/                  # optional local MCP stdio servers for live demos
   deployment.fixture.yml    # recorded / Track A bindings (preferred for test)
+  deployment.stdio*.yml     # optional live MCP stdio (+ optional live model)
   deployment.simulation.yml # optional sim.* natives
   deployment.kit.yml        # live model (optional)
   deployment.local-*.yml    # real FS/process — explicit-only, never auto-picked
+  mcp.recorded.jsonl        # optional recorded MCP tool responses
   smoke.model.jsonl         # optional recorded proposals
   smoke.expected.jsonl      # optional golden events for smoke
   README.md

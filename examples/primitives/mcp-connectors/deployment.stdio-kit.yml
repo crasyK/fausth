@@ -1,0 +1,28 @@
+# Live KIT model + live MCP stdio (toy weather server).
+# Requires: KIT_AI_API_KEY in .env (never put secrets here).
+platform: kit-scc-mcp-connectors
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.mistral-small-4-119b-a8b
+    - kit.gemma4-31b-it
+  temperature: 0
+  max_tokens: 512
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+bindings:
+  sensor.fan.read_percent:
+    native: stub.fan_read
+  get_forecast:
+    native: mcp.weather.get_forecast
+mcp:
+  weather:
+    transport: stdio
+    command: node
+    args: [servers/weather-stdio.mjs]
+    timeout_ms: 15000
