@@ -68,7 +68,14 @@ const toolDefs = [
   },
   {
     id: "user.correct",
-    input: { type: "object", additionalProperties: true, properties: { set: { type: "object" } } },
+    input: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        request: { type: "string" },
+        reason: { type: "string" },
+      },
+    },
     output: {
       type: "object",
       required: ["ok"],
@@ -164,6 +171,15 @@ function baseAgent(over: Partial<AgentIR> & { counterbalance?: AgentIR["counterb
           ],
         },
       },
+      checkpoints: [
+        {
+          tool: "user.correct",
+          allow_set_keys: ["open_todos"],
+        },
+      ],
+      orientation: {
+        emit_each_step: true,
+      },
     },
     ...over,
   };
@@ -228,15 +244,17 @@ async function main(): Promise<void> {
     "cb-stale-test-success",
     baseAgent({
       state: {
-        mode: "implementation",
+        mode: "plan",
         researched: 1,
-        plan_approved: 1,
+        plan_approved: 0,
         test_evidence_current: 0,
         open_todos: 0,
         out_of_scope_writes: 0,
       },
     }),
     [
+      { type: "tool", name: "user.approve", args: {} },
+      { type: "tool", name: "mode.enter", args: { mode: "implementation" } },
       { type: "tool", name: "shell.run_allowlisted", args: { cmd: "test" } },
       { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "export const x=1" } },
       { type: "tool", name: "task.complete", args: {} },
@@ -244,6 +262,24 @@ async function main(): Promise<void> {
     [
       {
         call_seq: 1,
+        tool: "user.approve",
+        args: {},
+        result: {
+          output: { approved: 1 },
+          state_transition: { set: { plan_approved: 1 } },
+        },
+      },
+      {
+        call_seq: 2,
+        tool: "mode.enter",
+        args: { mode: "implementation" },
+        result: {
+          output: { ok: 1, mode: "implementation" },
+          state_transition: { set: { mode: "implementation" } },
+        },
+      },
+      {
+        call_seq: 3,
         tool: "shell.run_allowlisted",
         args: { cmd: "test" },
         result: {
@@ -252,12 +288,35 @@ async function main(): Promise<void> {
         },
       },
       {
-        call_seq: 2,
+        call_seq: 4,
         tool: "fs.write_scoped",
         args: { path: "src/app.ts", content: "export const x=1" },
         result: { output: { ok: 1, out_of_scope: 0, path: "src/app.ts" } },
       },
     ],
+  );
+
+  // Checkpoint integrity: model cannot self-author protected state via user.correct.
+  await materialize(
+    "cb-user-correction-cannot-be-self-authored",
+    baseAgent({
+      state: {
+        mode: "implementation",
+        researched: 1,
+        plan_approved: 0,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [
+      {
+        type: "tool",
+        name: "user.correct",
+        args: { set: { plan_approved: 1, test_evidence_current: 1, open_todos: 0 } },
+      },
+    ],
+    [],
   );
 
   // Behaviour: open todos block completion (ability+fresh evidence ok)
@@ -288,7 +347,7 @@ async function main(): Promise<void> {
       { type: "tool", name: "mode.enter", args: { mode: "implementation" } },
       { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "export const ok=1" } },
       { type: "tool", name: "shell.run_allowlisted", args: { cmd: "test" } },
-      { type: "tool", name: "user.correct", args: { set: { open_todos: 0 } } },
+      { type: "tool", name: "user.correct", args: { request: "mark todos resolved" } },
       { type: "tool", name: "task.complete", args: {} },
     ],
     [
@@ -343,7 +402,7 @@ async function main(): Promise<void> {
       {
         call_seq: 7,
         tool: "user.correct",
-        args: { set: { open_todos: 0 } },
+        args: { request: "mark todos resolved" },
         result: { output: { ok: 1 }, state_transition: { set: { open_todos: 0 } } },
       },
       {

@@ -57,4 +57,6 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts review --mode deterministic
 3. Add label `faust-review` and the advisory secret(s).
 4. Adjust paths/rules in the engine contract / checker if the event layout differs from SLOPATHON `projects/`.
 
+After bumping the pinned `ref` SHA, run `pnpm ci:release-check` in the Fausth repo to confirm both L1 and L2 workflows are aligned to the same commit.
+
 Never use `pull_request_target` with checkout/execution of contributor code while secrets are present.

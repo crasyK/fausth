@@ -1,0 +1,32 @@
+name: M9 checkpoint authority gap
+description: Report user-checkpoint authority or state-ownership issues.
+title: "M9: "
+labels: ["m9", "counterbalance", "integrity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe any case where agent-authored data appears to impersonate user/world authority.
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario
+      description: Which harness/scenario triggered the problem?
+      placeholder: examples/coding-counterbalance + cb-user-correction-cannot-be-self-authored
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include event snippets or report paths.
+      placeholder: live/reports/*.json or fixture events.jsonl excerpts
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have been denied/attested?
+    validations:
+      required: true

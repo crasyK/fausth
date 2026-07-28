@@ -21,6 +21,7 @@ export function createConversationalPropose(opts: {
   let eventMark = 0;
 
   function toolResultContent(events: Event[]): string {
+    const orient = [...events].reverse().find((e) => e.stage === "orient");
     const exec = [...events].reverse().find((e) => e.stage === "execute");
     if (exec?.result !== undefined) {
       const verifyFail = events.find(
@@ -31,9 +32,13 @@ export function createConversationalPropose(opts: {
           ...(exec.result as object),
           verify_verdict: verifyFail.verdict,
           verify_reason: verifyFail.reason ?? null,
+          orientation: orient?.observation ?? null,
         });
       }
-      return JSON.stringify(exec.result);
+      return JSON.stringify({
+        ...(exec.result as object),
+        orientation: orient?.observation ?? null,
+      });
     }
     const denied = [...events]
       .reverse()
@@ -47,9 +52,10 @@ export function createConversationalPropose(opts: {
       return JSON.stringify({
         error: denied.reason ?? denied.error ?? "denied",
         verdict: denied.verdict,
+        orientation: orient?.observation ?? null,
       });
     }
-    return JSON.stringify({ error: "no_tool_result" });
+    return JSON.stringify({ error: "no_tool_result", orientation: orient?.observation ?? null });
   }
 
   return async () => {

@@ -228,7 +228,9 @@ async function runSmoke(
 }
 
 function fixturePrefixesForHarness(harnessName: string): string[] {
-  if (harnessName === "coding-counterbalance") return ["cb-coding-", "cb-write-", "cb-stale-", "cb-completion-"];
+  if (harnessName === "coding-counterbalance") {
+    return ["cb-coding-", "cb-write-", "cb-stale-", "cb-completion-", "cb-user-"];
+  }
   if (harnessName === "support-bot") return ["cb-support-"];
   if (harnessName === "coding") return ["code-", "spawn-"];
   if (harnessName === "greenhouse") {
