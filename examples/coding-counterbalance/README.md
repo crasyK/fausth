@@ -1,70 +1,38 @@
-# Coding agent — Counterbalance vertical slice (v0.1 + counterbalance bridge)
+# Coding agent — Counterbalance vertical slice
 
-Demonstrates ability (scoped write + test evidence), awareness (invalidate test evidence on write),
-and behaviour (modes + plan-before-write sequence + todo completion gate).
+Demonstrates **subagent capability provisioning**:
 
-Instincts (disposition; world enforces via `counterbalance`):
-- research before plan
-- plan approval before write
-- re-test after edit before claiming completion
+| Agent | Tools (only these) |
+|-------|--------------------|
+| [`agents/research`](agents/research) | `fs.read`, `user.correct`, `phase.yield` |
+| [`agents/plan`](agents/plan) | `fs.read`, `user.approve`, `user.correct`, `phase.yield` |
+| [`agents/implementation`](agents/implementation) | read/write/shell/`task.complete` + evidence gates |
+
+The host launches each agent; Faust only enforces the active YAML.
+There is no in-YAML `modes` register anywhere — capability provisioning is the only scoping mechanism.
+
+Instincts (enforced by structure + gates):
+- research before plan (separate harness)
+- plan approval before implementation (host check + no write tool earlier)
+- re-test after edit before claiming completion (`invalidate_after` + completion require)
 
 Track A fixtures: `cb-coding-happy-path`, `cb-write-before-plan-denied`,
-`cb-stale-test-success`, `cb-completion-open-todos-denied`, `cb-write-in-research-mode-denied`.
+`cb-stale-test-success`, `cb-completion-open-todos-denied`, `cb-write-not-provisioned`.
 
 ## Multi-host (M5)
 
-Same harness + `deployment.fixture.yml` / `deployment.simulation.yml` bindings:
+Root `agent.yml` remains for recorded multi-host smoke. Prefer the `agents/` dirs for live work:
 
-```bash +code
-# Local TypeScript (recorded smoke)
-pnpm -C engines/ts exec node --import tsx src/cli.ts run ../../examples/coding-counterbalance \
-  --deployment ../../examples/coding-counterbalance/deployment.fixture.yml
-
-# Python host (same recorded proposals)
-python -m fausth run examples/coding-counterbalance \
-  --deployment examples/coding-counterbalance/deployment.fixture.yml
-
-# Compare TS ≡ Python ≡ golden (also run in CI via multi-host.yml)
-pnpm ci:multi-host
+```bash
+pnpm -C engines/ts exec node --import tsx src/cli.ts run ../../examples/coding-counterbalance/agents/research \
+  --deployment ../../case-studies/coding-counterbalance/deployments/local-kit.yml \
+  --workspace /path/to/worktree
 ```
 
-Missing or unknown `bindings.*.native` values fail as **adapter** errors (`binding_missing` / `adapter_unresolved`), not harness authorize denies.
+### Case-study matrix
 
-### Live models (M5.1)
-
-Same harness; swap deployment for the key you have:
-
-```bash +code
-# OpenRouter (OPENROUTER_API_KEY)
-pnpm -C engines/ts exec node --import tsx src/cli.ts live \
-  --deployment ../../examples/coding-counterbalance/deployment.openrouter-free.yml \
-  --scenarios ../../live/scenarios-coding-counterbalance \
-  --report ../../live/reports/coding-counterbalance-openrouter.json \
-  --catch-rate-min 0.5
-
-# KIT (KIT_AI_API_KEY)
-pnpm -C engines/ts exec node --import tsx src/cli.ts live \
-  --deployment ../../examples/coding-counterbalance/deployment.kit.yml \
-  --scenarios ../../live/scenarios-coding-counterbalance \
-  --report ../../live/reports/coding-counterbalance-kit.json \
-  --catch-rate-min 0.5
+```bash
+node scripts/case-study-coding.mjs --mode live --run-id live-kit-smoke-v3 --limit 8
 ```
 
-## Local disposable worktree (M8)
-
-`deployment.local-*.yml` is **never** auto-selected by `test` / replay. Requires `--workspace` = linked disposable git worktree.
-
-```bash +code
-pnpm ci:local-e2e   # recorded happy path (CI-safe)
-
-# Live (secrets):
-node scripts/live-local-e2e.mjs local-openrouter
-node scripts/live-local-e2e.mjs local-kit
-```
-
-```bash +code
-pnpm -C engines/ts exec node --import tsx src/cli.ts validate ../../examples/coding-counterbalance
-pnpm replay   # includes cb-* fixtures
-```
-
-See [`docs/authoring.md`](../../docs/authoring.md), [`docs/counterbalance-architecture.md`](../../docs/counterbalance-architecture.md), and [`docs/harness-packaging-roadmap.md`](../../docs/harness-packaging-roadmap.md).
+Default live models: Gemma + Minimax (see `manifest.yml` `live_kit_models`).

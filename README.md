@@ -4,7 +4,7 @@ Portable runtime for **agent harnesses**: declare tools, gates, and verify rules
 
 The model proposes. Fausth governs what may run and how the world must prove it worked.
 
-**Status:** [v0.1.3-alpha](https://github.com/crasyK/fausth/releases/tag/v0.1.3-alpha) · contract `counterbalance-contract/v0.1` · **not** production-safe
+**Status:** [v0.2.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.2.0-alpha) · contract `counterbalance-contract/v0.2` · **not** production-safe
 
 ## Why it exists
 
@@ -36,6 +36,7 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 | Pack, sign, verify, resolve, MCP | [`docs/HOW-TO.md`](docs/HOW-TO.md) |
 | OpenAI-compatible models (KIT / OpenRouter) | [`docs/openai-compatible.md`](docs/openai-compatible.md) |
 | CI quality gate (SLOPATHON-style) | [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md) · [`examples/slopathon-review/`](examples/slopathon-review/) |
+| Case studies (coding pilot) | [`docs/case-studies/`](docs/case-studies/) · [`examples/coding-counterbalance/CASE-STUDY.md`](examples/coding-counterbalance/CASE-STUDY.md) |
 | Packaging roadmap (M4–M11) | [`docs/harness-packaging-roadmap.md`](docs/harness-packaging-roadmap.md) |
 
 ## What 0.1.3 proves (short)
@@ -45,8 +46,13 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 - Bundles `v0.1` · `v0.2` (connectors) · `v0.3` (MCP); optional Ed25519 signatures
 - MCP connectors: recorded CI + live stdio; live model + MCP (KIT / OpenRouter)
 - Local coding in disposable worktrees; CI review example for event repos
+- Coding Counterbalance case-study protocol + **live** 80-attempt KIT pilot
+  (held-out grader; recorded traces are plumbing only):
+  [`examples/coding-counterbalance/CASE-STUDY.md`](examples/coding-counterbalance/CASE-STUDY.md)
+  · [`docs/case-studies/`](docs/case-studies/)
 
-Still **not** claimed: production isolation, model-adaptive scaffolding, `kind: module` plugins.
+Still **not** claimed: production isolation, model-adaptive scaffolding, `kind: module` plugins,
+universal live-model task completion, or agent safety outside the published case-study bounds.
 
 ## Security (alpha)
 
@@ -56,7 +62,7 @@ Still **not** claimed: production isolation, model-adaptive scaffolding, `kind: 
 
 ## Spec & theory
 
-[`docs/spec-v0.1.md`](docs/spec-v0.1.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md) · [`docs/glossary.md`](docs/glossary.md)
+[`docs/spec-v0.2.md`](docs/spec-v0.2.md) · [`docs/spec-v0.1.md`](docs/spec-v0.1.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md) · [`docs/glossary.md`](docs/glossary.md)
 
 ## License
 

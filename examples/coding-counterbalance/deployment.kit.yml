@@ -36,6 +36,8 @@ model_catalog:
 bindings:
   fs.read:
     native: stub.fs_read
+  fs.list:
+    native: stub.fs_list
   fs.write_scoped:
     native: stub.fs_write
   shell.run_allowlisted:
@@ -44,7 +46,5 @@ bindings:
     native: stub.approve
   user.correct:
     native: stub.user_correct
-  mode.enter:
-    native: stub.mode_enter
   task.complete:
     native: stub.task_complete

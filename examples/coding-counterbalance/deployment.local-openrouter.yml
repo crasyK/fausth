@@ -26,6 +26,8 @@ world:
 bindings:
   fs.read:
     native: local.fs_read
+  fs.list:
+    native: local.fs_list
   fs.write_scoped:
     native: local.fs_write
   shell.run_allowlisted:
@@ -34,7 +36,5 @@ bindings:
     native: local.user_approve
   user.correct:
     native: local.user_correct
-  mode.enter:
-    native: local.mode_enter
   task.complete:
     native: local.task_complete

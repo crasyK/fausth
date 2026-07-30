@@ -33,14 +33,46 @@ export function createGreenhouseTools(world: GreenhouseWorld): Record<string, To
 export type CodingWorld = {
   files: Record<string, string>;
   write_scopes: string[];
+  read_scopes?: string[];
   last_exit_code: number;
   out_of_scope_writes: number;
 };
+
+const SHELL_NOT_ALLOWLISTED_ERROR =
+  "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore";
+
+function listEntriesInMemory(path: string, files: Record<string, string>): string[] {
+  const normalized = path.replace(/\\/g, "/").replace(/\/$/, "");
+  const prefix = normalized ? `${normalized}/` : "";
+  const entries = new Set<string>();
+  for (const key of Object.keys(files)) {
+    if (normalized && key !== normalized && !key.startsWith(prefix)) continue;
+    if (!normalized) {
+      const name = key.split("/")[0];
+      if (name) entries.add(name);
+      continue;
+    }
+    const rest = key.slice(prefix.length);
+    const name = rest.split("/")[0];
+    if (name) entries.add(name);
+  }
+  return [...entries].sort();
+}
+
+function inScope(path: string, scopes: string[]): boolean {
+  return scopes.some((s) => path === s || path.startsWith(s.endsWith("/") ? s : s + "/"));
+}
 
 export function createCodingTools(world: CodingWorld): Record<string, ToolHandler> {
   return {
     "fs.read": (args): ToolResultEnvelope => {
       const path = String(args.path);
+      const readScopes = world.read_scopes ?? world.write_scopes;
+      if (readScopes.length > 0 && !inScope(path, readScopes)) {
+        return {
+          output: { path, content: "", found: 0, error: "scope_denied" },
+        };
+      }
       return {
         output: {
           path,
@@ -49,12 +81,27 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
         },
       };
     },
+    "fs.list": (args): ToolResultEnvelope => {
+      const path = String(args.path);
+      const readScopes = world.read_scopes ?? world.write_scopes;
+      if (readScopes.length > 0 && !inScope(path, readScopes)) {
+        return {
+          output: { path, entries: [], found: 0, error: "scope_denied" },
+        };
+      }
+      const entries = listEntriesInMemory(path, world.files);
+      return {
+        output: {
+          path,
+          entries,
+          found: entries.length > 0 ? 1 : 0,
+        },
+      };
+    },
     "fs.write_scoped": (args): ToolResultEnvelope => {
       const path = String(args.path);
       const content = String(args.content ?? "");
-      const allowed = world.write_scopes.some(
-        (s) => path === s || path.startsWith(s.endsWith("/") ? s : s + "/"),
-      );
+      const allowed = inScope(path, world.write_scopes);
       if (!allowed) {
         world.out_of_scope_writes += 1;
         return {
@@ -74,20 +121,17 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
           state_transition: code === 0 ? { set: { test_evidence_current: 1 } } : undefined,
         };
       }
-      return { output: { exit_code: 1, cmd, error: "not allowlisted" } };
+      return { output: { exit_code: 1, cmd, error: SHELL_NOT_ALLOWLISTED_ERROR } };
     },
     "user.approve": (): ToolResultEnvelope => ({ output: { approved: 0 } }),
     "user.ask": (): ToolResultEnvelope => ({ output: { answer: "" } }),
     "user.correct": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
-    "mode.enter": (args): ToolResultEnvelope => {
-      const mode = String(args.mode ?? "");
-      return {
-        output: { ok: 1, mode },
-        state_transition: { set: { mode } },
-      };
-    },
     "task.complete": (): ToolResultEnvelope => ({
       output: { ok: 1 },
+    }),
+    "phase.yield": (): ToolResultEnvelope => ({
+      output: { ok: 1 },
+      state_transition: { set: { phase_yielded: 1, researched: 1 } },
     }),
     "kb.lookup": (args): ToolResultEnvelope => ({
       output: { ok: 1, article_id: `kb-${String(args.query ?? "x").slice(0, 24)}` },
@@ -98,7 +142,7 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
     }),
     "human.handoff": (): ToolResultEnvelope => ({
       output: { ok: 1 },
-      state_transition: { set: { handoff: 1, mode: "handoff" } },
+      state_transition: { set: { handoff: 1 } },
     }),
     "refund.request": (): ToolResultEnvelope => ({
       output: { ok: 1 },

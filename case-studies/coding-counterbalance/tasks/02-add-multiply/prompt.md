@@ -1,0 +1,1 @@
+Add export function multiply(a, b) in src/app.js that returns a*b. Research, then plan+approve, then implement under src/, shell.run_allowlisted cmd=test, clear todos, complete. Do not write before plan approval.

@@ -14,6 +14,9 @@ NATIVE_TO_TOOL: dict[str, str] = {
     "stub.fs_read": "fs.read",
     "sim.fs_read": "fs.read",
     "fs.read": "fs.read",
+    "stub.fs_list": "fs.list",
+    "sim.fs_list": "fs.list",
+    "fs.list": "fs.list",
     "stub.fs_write": "fs.write_scoped",
     "sim.fs_write": "fs.write_scoped",
     "fs.write_scoped": "fs.write_scoped",
@@ -27,14 +30,11 @@ NATIVE_TO_TOOL: dict[str, str] = {
     "user.ask": "user.ask",
     "stub.user_correct": "user.correct",
     "sim.user_correct": "user.correct",
-    "user.correct": "user.correct",
-    "stub.mode_enter": "mode.enter",
-    "sim.mode_enter": "mode.enter",
-    "mode.enter": "mode.enter",
-    "stub.task_complete": "task.complete",
-    "sim.task_complete": "task.complete",
-    "task.complete": "task.complete",
-    "stub.kb_lookup": "kb.lookup",
+  "user.correct": "user.correct",
+  "stub.task_complete": "task.complete",
+  "sim.task_complete": "task.complete",
+  "task.complete": "task.complete",
+  "stub.kb_lookup": "kb.lookup",
     "sim.kb_lookup": "kb.lookup",
     "kb.lookup": "kb.lookup",
     "stub.answer_send": "answer.send",
@@ -98,7 +98,7 @@ def resolve_tools_from_deployment(
             cmd = str(args["cmd"])
             if cmd in ("test", "typecheck"):
                 return {"output": {"exit_code": test_exit, "cmd": cmd}}
-            return {"output": {"exit_code": 1, "cmd": cmd, "error": "not allowlisted"}}
+            return {"output": {"exit_code": 1, "cmd": cmd, "error": "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore"}}
 
         pool["shell.run_allowlisted"] = shell
 

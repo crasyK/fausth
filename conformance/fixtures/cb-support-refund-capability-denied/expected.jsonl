@@ -1,2 +1,2 @@
-{"args":{},"seq":1,"stage":"propose","state_hash":"f5c5f48cc7245e28c6968aedc24ed96a02630c83c8a6a20c5dd3570fb65d75f1","tool":"refund.request","ts_logical":1}
-{"args":{},"reason":"capability_missing","seq":2,"stage":"validate","state_hash":"f5c5f48cc7245e28c6968aedc24ed96a02630c83c8a6a20c5dd3570fb65d75f1","tool":"refund.request","ts_logical":2,"verdict":"deny"}
+{"args":{},"seq":1,"stage":"propose","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"refund.request","ts_logical":1}
+{"args":{},"reason":"capability_missing","seq":2,"stage":"validate","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"refund.request","ts_logical":2,"verdict":"deny"}

@@ -28,7 +28,8 @@
       "properties": {
         "max_steps": { "type": "integer", "minimum": 0 },
         "max_tool_calls": { "type": "integer", "minimum": 0 },
-        "timeout_ms": { "type": "integer", "minimum": 1 }
+        "timeout_ms": { "type": "integer", "minimum": 1 },
+        "continue_after_deny": { "type": "boolean" }
       }
     },
     "safe_state": { "type": "object" },
@@ -69,7 +70,7 @@
     },
     "counterbalance": {
       "type": "object",
-      "description": "Executable Counterbalance bridge (modes, sequences, invalidate_after). See docs/spec-v0.2-draft.md.",
+      "description": "Executable Counterbalance bridge (sequences, invalidate_after, completion, checkpoints). Capability surface = tools list; see docs/spec-v0.2.md.",
       "additionalProperties": true
     }
   },

@@ -1,0 +1,2 @@
+{"args":{"path":"package.json"},"call_seq":1,"result":{"output":{"content":"","error":"scope_denied","found":0,"path":"package.json"}},"tool":"fs.read"}
+{"args":{"path":"src/app.ts"},"call_seq":2,"result":{"output":{"content":"export {}","found":1,"path":"src/app.ts"},"state_transition":{"set":{"researched":1}}},"tool":"fs.read"}

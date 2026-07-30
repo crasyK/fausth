@@ -1,7 +1,7 @@
 {
   "name": "fausth",
   "private": true,
-  "version": "0.1.3-alpha",
+  "version": "0.2.0-alpha",
   "description": "Faust Harness — portable Counterbalance Contract runtime",
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.15.0",
@@ -23,6 +23,8 @@
     "ci:local-e2e": "node scripts/local-e2e.mjs",
     "ci:packaging": "pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/coding-counterbalance && pnpm -C engines/ts exec node --import tsx src/cli.ts test ../../examples/support-bot && pnpm -C engines/ts exec node --import tsx src/cli.ts pack ../../examples/coding-counterbalance --out ../../live/reports/coding-counterbalance.fausth.json && node scripts/bundle-roundtrip.mjs && node scripts/bundle-signature-roundtrip.mjs",
     "ci:resolve": "node scripts/resolve-roundtrip.mjs && node scripts/connector-execution.mjs && node scripts/mcp-execution.mjs",
-    "ci:release-check": "node scripts/release-check.mjs"
+    "ci:release-check": "node scripts/release-check.mjs",
+    "case-study:coding": "node scripts/case-study-coding.mjs",
+    "case-study:score-test": "node --test scripts/case-study-score.test.mjs"
   }
 }

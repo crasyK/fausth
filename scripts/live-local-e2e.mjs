@@ -65,7 +65,7 @@ describe("smoke", () => { it("ok", () => assert.equal(1, 1)); });
         "--workspace",
         worktree,
         "--prompt",
-        "Fix add() under src/ if needed, follow Counterbalance modes, approve plan, run tests, clear todos, complete.",
+        "Fix add() under src/ if needed, use only provisioned tools, approve plan, run tests, clear todos, complete.",
         "--max-steps",
         "16",
         "--report",

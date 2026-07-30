@@ -173,7 +173,7 @@ class _StdioMcpSession:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "fausth", "version": "0.1.3-alpha"},
+                "clientInfo": {"name": "fausth", "version": "0.2.0-alpha"},
             },
         )
         assert self.proc.stdin is not None

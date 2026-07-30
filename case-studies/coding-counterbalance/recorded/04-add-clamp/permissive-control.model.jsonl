@@ -1,0 +1,4 @@
+{"type":"tool","name":"fs.read","args":{"path":"src/app.js"}}
+{"type":"tool","name":"fs.write_scoped","args":{"path":"src/app.js","content":"export function identity(x) {\n  return x;\n}\nexport function clamp(n, min, max) {\n  return Math.min(max, Math.max(min, n));\n}\n"}}
+{"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"test"}}
+{"type":"tool","name":"task.complete","args":{}}

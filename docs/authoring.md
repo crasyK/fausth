@@ -38,12 +38,25 @@ Optional Ed25519 signatures (`signature.alg` / `public_key` / `sig`) are opt-in 
 
 ## Agent IR essentials
 
-- **Tools** — each tool has `input` / `output` JSON Schema and optional `verify` (`evidence`, `absence`, `effect`, live-only `judge`).
-- **Gates** — pre-exec predicates on capability, modes, sequences, limits.
-- **Counterbalance bridge** (`counterbalance:`) — `modes`, `sequences`, `invalidate_after`, `completion`.
+- **Tools** — each tool has `input` / `output` JSON Schema and optional `verify` (`evidence`, `absence`, `effect`, live-only `judge`). The YAML `tools:` list is the only capability surface the model sees.
+- **Gates** — pre-exec predicates on capability, sequences, limits.
+- **Counterbalance bridge** (`counterbalance:`) — `sequences`, `invalidate_after`, `completion`, checkpoints, orientation. Normative contract: [`spec-v0.2.md`](spec-v0.2.md).
 - **Permissions** — `tools`, `filesystem.read_scopes` / `write_scopes`. Deployment `world.scopes` may **narrow** but never widen agent scopes.
+- **Roles** — different instincts = different harness dirs (subagents). Host code sequences `run()` calls; do not multiplex roles with in-YAML modes.
 
-Reference: [`examples/coding-counterbalance/agent.yml`](../examples/coding-counterbalance/agent.yml).
+### Structured deny signals (`failure`)
+
+Counterbalance denies (`completion_gate_failed`, `sequence_requirement_failed`, `checkpoint_authority_failed`) carry a machine-checkable `failure` object on the event — not free-text `hint`s.
+
+| `failure.kind` | Meaning |
+|----------------|---------|
+| `predicate` | Failing state paths under `completion.require` or sequence `require_state` |
+| `missing_prior_tools` | Sequence prior tools not yet executed |
+| `checkpoint_key` | Checkpoint tool attempted a key outside `allow_set_keys` |
+
+When a checkpoint's `allow_set_keys` covers a failing `eq` path, the engine MAY attach `unblock: { tool, set_key, set_value }` so the model can clear the gate. Live hosts MAY render prose from `failure` for tool results; Track A fixtures store structure only.
+
+Reference: [`examples/coding-counterbalance/agents/`](../examples/coding-counterbalance/agents/) (live) and root [`agent.yml`](../examples/coding-counterbalance/agent.yml) (recorded/smoke).
 
 ## Deployment bindings
 
@@ -56,7 +69,7 @@ Map each agent tool to a native:
 
 Do not mix `local.*` with `sim.*`/`stub.*` in one deployment.
 
-Local natives: `local.fs_read`, `local.fs_write`, `local.shell`, `local.user_approve`, `local.user_approve_auto` (test-only), `local.user_correct`, `local.user_correct_auto`, `local.mode_enter`, `local.task_complete`.
+Local natives: `local.fs_read`, `local.fs_write`, `local.shell`, `local.user_approve`, `local.user_approve_auto` (test-only), `local.user_correct`, `local.user_correct_auto`, `local.task_complete`, `local.phase_yield`.
 
 ## Track A fixtures
 

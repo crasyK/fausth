@@ -1,0 +1,19 @@
+# Outcome-based scoring rules for the coding case-study runner.
+# Primary truth is the held-out grader (ground_truth_pass), not the event log.
+
+metrics:
+  - task_success
+  - false_completion
+  - blocked_false_completion
+  - missed_completion
+  - test_tampering
+  - denial_recovery
+
+diagnostics:
+  - deny_count
+  - repeated_identical_deny
+  - reason_histogram
+
+notes: |
+  Recorded traces are plumbing regression only — not empirical evidence.
+  Live matrix uses temperature 0.7 and clustered bootstrap over tasks.

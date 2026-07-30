@@ -1,6 +1,6 @@
 # How-to recipes
 
-Practical commands for v0.1.3-alpha. Normative rules stay in the [spec](spec-v0.1.md); authoring layout is in [authoring.md](authoring.md).
+Practical commands for v0.2.0-alpha. Normative rules stay in the [spec](spec-v0.2.md) (v0.1 baseline: [spec-v0.1.md](spec-v0.1.md)); authoring layout is in [authoring.md](authoring.md).
 
 ## Install
 
@@ -49,7 +49,7 @@ Format is chosen automatically:
 | Connectors, no MCP | `v0.2` |
 | Any `kind: mcp` | `v0.3` |
 
-Coding `v0.1` packs stay **byte-identical** when unsigned (15650 bytes).
+Coding `v0.1` packs stay **byte-identical** when unsigned (17022 bytes).
 
 ## Sign and verify
 

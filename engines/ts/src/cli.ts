@@ -98,7 +98,14 @@ function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealt
 function toRuntimeProposal(p: PortProposal): ModelProposal {
   if (p.type === "tool") return { type: "tool", name: p.name, args: p.args };
   if (p.type === "stop") return { type: "stop", message: p.message };
-  return { type: "stop", message: "" };
+  if (p.type === "invalid") {
+    return {
+      type: "invalid",
+      reason: p.reason,
+      message: p.raw ?? p.reason,
+    };
+  }
+  return { type: "invalid", reason: "empty_proposal", message: "" };
 }
 
 function defaultDeploymentPath(agentDir: string, profile: "openrouter" | "ollama" | "kit"): string {
@@ -319,7 +326,6 @@ async function cmdLive(args: {
           e.reason === "input_schema_invalid" ||
           e.reason === "output_schema_invalid" ||
           e.reason === "tool_execution_failed" ||
-          e.reason === "mode_denied" ||
           e.reason === "sequence_requirement_failed" ||
           e.reason === "completion_gate_failed" ||
           e.reason === "memory_stale" ||
@@ -485,10 +491,19 @@ async function cmdRun(
     propose = async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!);
   } else {
     const { adapter } = createAdapterFromDeployment(deployment);
+    const toolIds = agent.tools.map((t) => t.id).sort();
+    const toolHint =
+      toolIds.length > 0 ? ` Available tools: ${toolIds.join(", ")}.` : "";
+    const shellHint =
+      agent.tools.some((t) => t.id === "shell.run_allowlisted")
+        ? ' For tests call shell.run_allowlisted with cmd "test" (not npm/node directly).'
+        : "";
+    const contractHint =
+      " Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd=\"test\" → user.correct → task.complete. Never invent shell commands or mode.enter.";
     const conv = createConversationalPropose({
       adapter,
       tools: toolsFromAgent(agent.tools),
-      system: `You are ${agent.name}. Follow Counterbalance modes and scopes. Prefer tools.`,
+      system: `You are ${agent.name}. Use only the tools listed for this agent. Prefer tools.${toolHint}${shellHint}${contractHint}`,
       user: userPrompt,
       getRuntime: () => runtime,
     });

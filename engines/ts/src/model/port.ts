@@ -17,9 +17,13 @@ export type ModelToolDef = {
   input?: Record<string, unknown>;
 };
 
+export type ModelToolChoice = "auto" | "required";
+
 export type ModelProposeRequest = {
   messages: ChatMessage[];
   tools: ModelToolDef[];
+  /** When tools are offered, agent loops should prefer "required". */
+  tool_choice?: ModelToolChoice;
 };
 
 export type ModelProposal =

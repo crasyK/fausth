@@ -1,9 +1,11 @@
 # Counterbalance Contract — Specification v0.1
 
-**Status:** Normative for Faust Harness v0.1.1  
+**Status:** Normative for Faust Harness v0.1.x  
 **Spec id:** `counterbalance-contract/v0.1`
 
-This document is the source of truth. Golden `expected.jsonl` files MUST be hand-derived from this prose before any engine is treated as correct. Live OpenRouter runs MUST NOT rewrite golden expectations automatically.
+This document is the source of truth for the v0.1 baseline. Golden `expected.jsonl` files MUST be hand-derived from this prose before any engine is treated as correct. Live OpenRouter runs MUST NOT rewrite golden expectations automatically.
+
+**Extension:** [`spec-v0.2.md`](spec-v0.2.md) (`counterbalance-contract/v0.2`) adds the Counterbalance bridge, structured deny `failure` objects, and additional reason codes. v0.1 goldens that predate those fields remain valid under this document.
 
 ---
 
@@ -213,6 +215,8 @@ Required fields:
 - `state_hash` — hex SHA-256 of canonical state
 
 Optional: `verdict`, `reason`, `tool`, `args`, `result`, `observation`, `error`.
+
+v0.2 adds optional `failure` on Counterbalance denies — see [`spec-v0.2.md`](spec-v0.2.md) §4–§5.
 
 Events for a successful tool step (happy path):
 

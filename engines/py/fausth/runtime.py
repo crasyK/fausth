@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .canonical import canonical_json, deep_eq, state_hash
+from .deny_failure import (
+    build_checkpoint_key_failure,
+    build_missing_prior_tools_failure,
+    build_predicate_failure,
+)
 from .predicates import eval_predicate
 from .schema_validate import validate_against_schema
 
@@ -69,7 +74,7 @@ class FaustRuntime:
             "state_hash": partial.get("state_hash") or state_hash(self.agent["state"]),
             "stage": partial["stage"],
         }
-        for k in ("verdict", "reason", "tool", "args", "result", "observation", "error"):
+        for k in ("verdict", "reason", "tool", "args", "result", "observation", "error", "failure"):
             if k in partial and partial[k] is not None:
                 ev[k] = partial[k]
         if self.depth > 0:
@@ -103,6 +108,11 @@ class FaustRuntime:
             self.emit({"stage": "authorize", "verdict": "deny", "reason": "limit_exceeded"})
             return False
         return True
+
+    def deny_is_terminal(self) -> bool:
+        """Plain deny stops by default; opt-in continue_after_deny lets the agent recover."""
+        limits = self.agent.get("limits") or {}
+        return limits.get("continue_after_deny") is not True
 
     def eval_gates(self, snapshot: dict[str, Any]) -> tuple[bool, str | None, str | None]:
         for g in self.agent.get("gates") or []:
@@ -206,14 +216,10 @@ class FaustRuntime:
 
     def build_orientation_frame(self) -> dict[str, Any]:
         cb = self.agent.get("counterbalance") or {}
-        mode_id = str(self.agent["state"].get("mode", ""))
-        modes = cb.get("modes") or []
-        mode = next((m for m in modes if m.get("id") == mode_id), None)
-        permitted = sorted(list(mode.get("tools") or [])) if isinstance(mode, dict) else []
-        allowed = (self.agent.get("permissions") or {}).get("tools") or [
-            t.get("id") for t in (self.agent.get("tools") or [])
-        ]
-        blocked = sorted([t for t in allowed if t not in permitted])
+        # Can-only: advertise tools this harness actually declares — never blocked_tools / modes.
+        permitted = sorted(
+            [t.get("id") for t in (self.agent.get("tools") or []) if t.get("id")]
+        )
         done = self.successful_executes()
         sequence_blockers: list[dict[str, Any]] = []
         for seq in cb.get("sequences") or []:
@@ -231,11 +237,10 @@ class FaustRuntime:
         completion = cb.get("completion") or {}
         completion_paths = sorted(set(self.collect_completion_paths(completion.get("require"))))
         ctool = completion.get("tool") or "task.complete"
-        ready, _ = self.check_completion(ctool)
+        ready, _, _ = self.check_completion(ctool)
         return {
-            "mode": mode_id,
             "permitted_tools": permitted,
-            "blocked_tools": blocked,
+            "tools": permitted,
             "sequence_blockers": sequence_blockers,
             "freshness": freshness,
             "completion": {
@@ -245,35 +250,33 @@ class FaustRuntime:
             },
         }
 
-    def check_mode(self, action_name: str) -> tuple[bool, str | None]:
-        modes = (self.agent.get("counterbalance") or {}).get("modes") or []
-        if not modes:
-            return True, None
-        mode_id = str(self.agent["state"].get("mode", ""))
-        mode = next((m for m in modes if m.get("id") == mode_id), None)
-        if not mode:
-            return False, "mode_denied"
-        tools = mode.get("tools")
-        if tools is not None and action_name not in tools:
-            return False, "mode_denied"
-        return True, None
-
-    def check_sequences(self, action: dict[str, Any]) -> tuple[bool, str | None]:
+    def check_sequences(
+        self, action: dict[str, Any]
+    ) -> tuple[bool, str | None, dict[str, Any] | None]:
         seqs = (self.agent.get("counterbalance") or {}).get("sequences") or []
         if not seqs:
-            return True, None
+            return True, None, None
         done = self.successful_executes()
         snap = {"action": action, "state": self.agent["state"]}
+        checkpoints = ((self.agent.get("counterbalance") or {}).get("checkpoints")) or []
         for seq in seqs:
             if seq.get("action") != action["name"]:
                 continue
-            for prior in seq.get("require_prior_tools") or []:
-                if prior not in done:
-                    return False, "sequence_requirement_failed"
+            missing = [p for p in (seq.get("require_prior_tools") or []) if p not in done]
+            if missing:
+                return (
+                    False,
+                    "sequence_requirement_failed",
+                    build_missing_prior_tools_failure(missing),
+                )
             req = seq.get("require_state")
             if req and not eval_predicate(req, snap):
-                return False, "sequence_requirement_failed"
-        return True, None
+                return (
+                    False,
+                    "sequence_requirement_failed",
+                    build_predicate_failure(req, snap, checkpoints),
+                )
+        return True, None, None
 
     def apply_invalidate_after(self, action_name: str) -> None:
         rules = (self.agent.get("counterbalance") or {}).get("invalidate_after") or []
@@ -298,28 +301,35 @@ class FaustRuntime:
             }
         )
 
-    def check_completion(self, action_name: str) -> tuple[bool, str | None]:
+    def check_completion(
+        self, action_name: str
+    ) -> tuple[bool, str | None, dict[str, Any] | None]:
         completion = (self.agent.get("counterbalance") or {}).get("completion") or {}
         if not completion:
-            return True, None
+            return True, None, None
         tool = completion.get("tool") or "task.complete"
         if action_name != tool:
-            return True, None
+            return True, None, None
         req = completion.get("require")
         if not req:
-            return True, None
+            return True, None, None
         snap = {"action": {"name": action_name, "args": {}}, "state": self.agent["state"]}
         if not eval_predicate(req, snap):
-            return False, "completion_gate_failed"
-        return True, None
+            checkpoints = ((self.agent.get("counterbalance") or {}).get("checkpoints")) or []
+            return (
+                False,
+                "completion_gate_failed",
+                build_predicate_failure(req, snap, checkpoints),
+            )
+        return True, None, None
 
     def check_checkpoint_authority(
         self, action: dict[str, Any], transition: dict[str, Any] | None
-    ) -> tuple[bool, str | None, str | None]:
+    ) -> tuple[bool, str | None, str | None, dict[str, Any] | None]:
         policies = ((self.agent.get("counterbalance") or {}).get("checkpoints")) or []
         policy = next((p for p in policies if p.get("tool") == action["name"]), None)
         if not policy:
-            return True, None, None
+            return True, None, None, None
         allowed = set(policy.get("allow_set_keys") or [])
         requested = action.get("args", {}).get("set") or {}
         if isinstance(requested, dict):
@@ -329,6 +339,7 @@ class FaustRuntime:
                         False,
                         "checkpoint_authority_failed",
                         f"checkpoint args attempted protected key '{key}'",
+                        build_checkpoint_key_failure(key),
                     )
         actual_set = (transition or {}).get("set") or {}
         if isinstance(actual_set, dict):
@@ -338,8 +349,9 @@ class FaustRuntime:
                         False,
                         "checkpoint_authority_failed",
                         f"checkpoint transition attempted protected key '{key}'",
+                        build_checkpoint_key_failure(key),
                     )
-        return True, None, None
+        return True, None, None, None
 
     def apply_state_transition(self, transition: dict[str, Any] | None) -> None:
         if not transition:
@@ -655,7 +667,7 @@ class FaustRuntime:
             self.apply_fallback_state()
             self.recovering = False
             return
-        cok, creason, cerr = self.check_checkpoint_authority(
+        cok, creason, cerr, cfail = self.check_checkpoint_authority(
             action, envelope.get("state_transition")
         )
         if not cok:
@@ -668,6 +680,8 @@ class FaustRuntime:
             }
             if cerr:
                 ev["error"] = cerr
+            if cfail:
+                ev["failure"] = cfail
             self.emit(ev)
             self.emit({"stage": "record", "verdict": "deny", "reason": "terminal_failure"})
             self.apply_fallback_state()
@@ -728,7 +742,9 @@ class FaustRuntime:
                         "args": action["args"],
                     }
                 )
-                break
+                if self.deny_is_terminal():
+                    break
+                continue
             allowed = (self.agent.get("permissions") or {}).get("tools")
             if allowed and action["name"] not in allowed and action["name"] != "agent.spawn":
                 self.emit(
@@ -740,7 +756,9 @@ class FaustRuntime:
                         "args": action["args"],
                     }
                 )
-                break
+                if self.deny_is_terminal():
+                    break
+                continue
             ok, errs = validate_against_schema(tool.get("input"), action["args"])
             if not ok:
                 self.emit(
@@ -753,7 +771,9 @@ class FaustRuntime:
                         "error": "input schema validation failed",
                     }
                 )
-                break
+                if self.deny_is_terminal():
+                    break
+                continue
             self.emit(
                 {
                     "stage": "validate",
@@ -777,7 +797,10 @@ class FaustRuntime:
                 )
                 if verdict == "safe_state":
                     self.enter_safe_flow("gate_denied")
-                break
+                    break
+                if self.deny_is_terminal():
+                    break
+                continue
             if action["name"] == "agent.spawn":
                 cok, creason, cerr = self.compare_child_envelope(action["args"])
                 if not cok:
@@ -791,43 +814,39 @@ class FaustRuntime:
                     if cerr:
                         ev["error"] = cerr
                     self.emit(ev)
-                    break
-            mok, mreason = self.check_mode(action["name"])
-            if not mok:
-                self.emit(
-                    {
-                        "stage": "authorize",
-                        "verdict": "deny",
-                        "reason": mreason,
-                        "tool": action["name"],
-                        "args": action["args"],
-                    }
-                )
-                break
-            sok, sreason = self.check_sequences(action)
+                    if self.deny_is_terminal():
+                        break
+                    continue
+            sok, sreason, sfail = self.check_sequences(action)
             if not sok:
-                self.emit(
-                    {
-                        "stage": "authorize",
-                        "verdict": "deny",
-                        "reason": sreason,
-                        "tool": action["name"],
-                        "args": action["args"],
-                    }
-                )
-                break
-            cok2, creason2 = self.check_completion(action["name"])
+                ev_seq: dict[str, Any] = {
+                    "stage": "authorize",
+                    "verdict": "deny",
+                    "reason": sreason,
+                    "tool": action["name"],
+                    "args": action["args"],
+                }
+                if sfail:
+                    ev_seq["failure"] = sfail
+                self.emit(ev_seq)
+                if self.deny_is_terminal():
+                    break
+                continue
+            cok2, creason2, cfail2 = self.check_completion(action["name"])
             if not cok2:
-                self.emit(
-                    {
-                        "stage": "authorize",
-                        "verdict": "deny",
-                        "reason": creason2,
-                        "tool": action["name"],
-                        "args": action["args"],
-                    }
-                )
-                break
+                ev_comp: dict[str, Any] = {
+                    "stage": "authorize",
+                    "verdict": "deny",
+                    "reason": creason2,
+                    "tool": action["name"],
+                    "args": action["args"],
+                }
+                if cfail2:
+                    ev_comp["failure"] = cfail2
+                self.emit(ev_comp)
+                if self.deny_is_terminal():
+                    break
+                continue
             self.emit(
                 {
                     "stage": "authorize",
@@ -850,7 +869,9 @@ class FaustRuntime:
                         "error": str(e),
                     }
                 )
-                break
+                if self.deny_is_terminal():
+                    break
+                continue
             ok, errs = validate_against_schema(tool.get("output"), envelope["output"])
             if not ok:
                 self.emit(
@@ -863,8 +884,10 @@ class FaustRuntime:
                         "error": "output schema validation failed",
                     }
                 )
-                break
-            cok3, creason3, cerr3 = self.check_checkpoint_authority(
+                if self.deny_is_terminal():
+                    break
+                continue
+            cok3, creason3, cerr3, cfail3 = self.check_checkpoint_authority(
                 action, envelope.get("state_transition")
             )
             if not cok3:
@@ -877,8 +900,12 @@ class FaustRuntime:
                 }
                 if cerr3:
                     ev3["error"] = cerr3
+                if cfail3:
+                    ev3["failure"] = cfail3
                 self.emit(ev3)
-                break
+                if self.deny_is_terminal():
+                    break
+                continue
             self.apply_state_transition(envelope.get("state_transition"))
             self.emit(
                 {
@@ -944,11 +971,63 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
 
     def fs_read(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         path = str(args["path"])
+        read_scopes = world.get("read_scopes") or world["write_scopes"]
+        if read_scopes and not any(
+            path == s or path.startswith(s if s.endswith("/") else s + "/")
+            for s in read_scopes
+        ):
+            return {
+                "output": {
+                    "path": path,
+                    "content": "",
+                    "found": 0,
+                    "error": "scope_denied",
+                }
+            }
         return {
             "output": {
                 "path": path,
                 "content": world["files"].get(path, ""),
                 "found": 1 if path in world["files"] else 0,
+            }
+        }
+
+    def fs_list(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+        path = str(args["path"])
+        read_scopes = world.get("read_scopes") or world["write_scopes"]
+        if read_scopes and not any(
+            path == s or path.startswith(s if s.endswith("/") else s + "/")
+            for s in read_scopes
+        ):
+            return {
+                "output": {
+                    "path": path,
+                    "entries": [],
+                    "found": 0,
+                    "error": "scope_denied",
+                }
+            }
+        normalized = path.replace("\\", "/").rstrip("/")
+        prefix = f"{normalized}/" if normalized else ""
+        entries: set[str] = set()
+        for key in world["files"]:
+            if normalized and key != normalized and not key.startswith(prefix):
+                continue
+            if not normalized:
+                name = key.split("/")[0]
+                if name:
+                    entries.add(name)
+                continue
+            rest = key[len(prefix) :]
+            name = rest.split("/")[0]
+            if name:
+                entries.add(name)
+        sorted_entries = sorted(entries)
+        return {
+            "output": {
+                "path": path,
+                "entries": sorted_entries,
+                "found": 1 if sorted_entries else 0,
             }
         }
 
@@ -976,14 +1055,16 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
             if code == 0:
                 result["state_transition"] = {"set": {"test_evidence_current": 1}}
             return result
-        return {"output": {"exit_code": 1, "cmd": cmd, "error": "not allowlisted"}}
+        return {
+            "output": {
+                "exit_code": 1,
+                "cmd": cmd,
+                "error": "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore",
+            }
+        }
 
     def spawn(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         return {"output": {"spawned": 1, "tools": args.get("tools") or []}}
-
-    def mode_enter(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
-        mode = str(args.get("mode", ""))
-        return {"output": {"ok": 1, "mode": mode}, "state_transition": {"set": {"mode": mode}}}
 
     def task_complete(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         return {"output": {"ok": 1}}
@@ -1004,7 +1085,7 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
     def human_handoff(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         return {
             "output": {"ok": 1},
-            "state_transition": {"set": {"handoff": 1, "mode": "handoff"}},
+            "state_transition": {"set": {"handoff": 1}},
         }
 
     def refund_request(args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1016,11 +1097,11 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
         "actuator.fan.set": fan_set,
         "system.wait": wait,
         "fs.read": fs_read,
+        "fs.list": fs_list,
         "fs.write_scoped": fs_write,
         "shell.run_allowlisted": shell,
         "user.approve": lambda a, c: {"output": {"approved": 0}},
         "user.correct": user_correct,
-        "mode.enter": mode_enter,
         "task.complete": task_complete,
         "kb.lookup": kb_lookup,
         "answer.send": answer_send,

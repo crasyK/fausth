@@ -1,8 +1,11 @@
 spec: counterbalance-contract/v0.1
 name: coding-counterbalance-slice
 
+# Legacy single-file harness for recorded Track A / packaging smoke.
+# Live case study uses agents/{research,plan,implementation}/ — not this file.
+# Capability limits = tools list only (no modes).
+
 state:
-  mode: research
   researched: 0
   plan_approved: 0
   test_evidence_current: 0
@@ -10,8 +13,9 @@ state:
   out_of_scope_writes: 0
 
 limits:
-  max_steps: 20
-  max_tool_calls: 16
+  max_steps: 30
+  max_tool_calls: 28
+  continue_after_deny: true
 
 tools:
   - id: fs.read
@@ -29,6 +33,22 @@ tools:
       properties:
         path: { type: string }
         content: { type: string }
+        found: { type: integer }
+  - id: fs.list
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, entries, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { type: string } }
         found: { type: integer }
   - id: fs.write_scoped
     input:
@@ -90,20 +110,6 @@ tools:
       additionalProperties: false
       properties:
         ok: { type: integer }
-  - id: mode.enter
-    input:
-      type: object
-      required: [mode]
-      additionalProperties: false
-      properties:
-        mode: { type: string }
-    output:
-      type: object
-      required: [ok, mode]
-      additionalProperties: false
-      properties:
-        ok: { type: integer }
-        mode: { type: string }
   - id: task.complete
     input: { type: object, additionalProperties: false, properties: {} }
     output:
@@ -116,30 +122,17 @@ tools:
 permissions:
   tools:
     - fs.read
+    - fs.list
     - fs.write_scoped
     - shell.run_allowlisted
     - user.approve
     - user.correct
-    - mode.enter
     - task.complete
   filesystem:
     write_scopes: [src/]
     read_scopes: [src/]
 
 counterbalance:
-  modes:
-    - id: research
-      tools: [fs.read, mode.enter, user.correct]
-    - id: plan
-      tools: [fs.read, user.approve, mode.enter, user.correct]
-    - id: implementation
-      tools:
-        - fs.read
-        - fs.write_scoped
-        - shell.run_allowlisted
-        - mode.enter
-        - task.complete
-        - user.correct
   sequences:
     - id: plan-before-write
       action: fs.write_scoped

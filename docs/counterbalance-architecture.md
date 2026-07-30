@@ -20,7 +20,7 @@ The six cells are **primary counterweights**, not isolated silos (permissions ca
 |-----------|--------------|--------------|-----------------|
 | **Ability** | Skills | Gates | Can it attempt this, and what proves it worked? |
 | **Awareness** | Memory | User checkpoints | What does it believe, and where can intent/reality correct it? |
-| **Behaviour** | Instincts | Security (permissions, modes, hooks, sequences) | What pattern is promoted, and what boundaries enforce a valid path? |
+| **Behaviour** | Instincts | Security (permissions, hooks, sequences; role harnesses) | What pattern is promoted, and what boundaries enforce a valid path? |
 
 The **model** generates proposals. It is not an architectural axis — transport and model id live in `deployment.yml`.
 
@@ -53,11 +53,11 @@ Memory items need provenance and status (`current` | `stale` | `contradicted` | 
 
 ## Behaviour
 
-Modes (research / plan / implementation / verification / …), permissions, sequence requirements, and hooks shape acceptable paths. Same exchange kernel for coding, support, CI review, later multi-agent.
+Role-specific **subagent harnesses** (separate YAMLs with distinct tool lists), permissions, sequence requirements, and hooks shape acceptable paths. Same exchange kernel for coding, support, CI review, later multi-agent. Do not multiplex roles via in-YAML modes.
 
 ## Reference harnesses
 
-1. **Coding** — modes, plan approval, scoped writes, invalidate-on-edit, tests, completion gates.  
+1. **Coding** — research/plan/implementation subagents, plan approval, scoped writes, invalidate-on-edit, tests, completion gates.  
 2. **Support bot** — KB evidence before policy, handoff, user-corrected context.  
 3. **SLOPATHON reviewer** — CI host proof; evidence-bound findings; human merge authority.
 
@@ -65,4 +65,4 @@ Modes (research / plan / implementation / verification / …), permissions, sequ
 
 Every new semantic starts from a **failing Track A fixture**. Schema fields that exist only for diagram symmetry are rejected.
 
-See also: [`glossary.md`](glossary.md) · [`spec-v0.2-draft.md`](spec-v0.2-draft.md) · [`BASELINE-v0.1.md`](BASELINE-v0.1.md).
+See also: [`glossary.md`](glossary.md) · [`spec-v0.2.md`](spec-v0.2.md) · [`BASELINE-v0.1.md`](BASELINE-v0.1.md).

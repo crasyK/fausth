@@ -1,7 +1,5 @@
 {"args":{"path":"src/app.ts"},"name":"fs.read","type":"tool"}
-{"args":{"mode":"plan"},"name":"mode.enter","type":"tool"}
 {"args":{},"name":"user.approve","type":"tool"}
-{"args":{"mode":"implementation"},"name":"mode.enter","type":"tool"}
 {"args":{"content":"export const ok=1","path":"src/app.ts"},"name":"fs.write_scoped","type":"tool"}
 {"args":{"cmd":"test"},"name":"shell.run_allowlisted","type":"tool"}
 {"args":{"request":"mark todos resolved"},"name":"user.correct","type":"tool"}

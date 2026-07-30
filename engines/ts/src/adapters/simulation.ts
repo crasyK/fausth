@@ -33,7 +33,7 @@ export function createSimulationCodingAdapter(
     if (cmd === "test" || cmd === "typecheck" || exitCodes[cmd] !== undefined) {
       return { output: { exit_code: code, cmd } };
     }
-    return { output: { exit_code: 1, cmd, error: "not allowlisted" } };
+    return { output: { exit_code: 1, cmd, error: "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore" } };
   };
   return {
     world,
