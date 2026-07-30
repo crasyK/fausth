@@ -16,17 +16,12 @@ export type ReasonCode =
   | "safe_state_entered"
   | "recovery_succeeded"
   | "terminal_failure"
-  | "mode_denied"
   | "sequence_requirement_failed"
   | "memory_stale"
   | "completion_gate_failed"
   | "checkpoint_authority_failed"
-  | "user_checkpoint_required";
-
-export type CounterbalanceMode = {
-  id: string;
-  tools?: string[];
-};
+  | "user_checkpoint_required"
+  | "empty_proposal";
 
 export type CounterbalanceSequence = {
   id?: string;
@@ -59,7 +54,6 @@ export type CounterbalanceOrientation = {
 
 /** Executable Counterbalance extensions (v0.1 bridge). */
 export type CounterbalanceExt = {
-  modes?: CounterbalanceMode[];
   sequences?: CounterbalanceSequence[];
   invalidate_after?: CounterbalanceInvalidateAfter[];
   completion?: CounterbalanceCompletion;
@@ -88,6 +82,25 @@ export type Predicate =
   | { all: Predicate[] }
   | { any: Predicate[] }
   | { not: Predicate };
+
+/** Structured counterbalance deny signal (machine-checkable; no prose in event log). */
+export type DenyFailureUnblock = {
+  tool: string;
+  set_key: string;
+  set_value: unknown;
+};
+
+export type DenyFailureItem = {
+  path: string;
+  current: unknown;
+  require: Record<string, unknown>;
+  unblock?: DenyFailureUnblock;
+};
+
+export type DenyFailure =
+  | { kind: "predicate"; failed: DenyFailureItem[] }
+  | { kind: "missing_prior_tools"; missing_prior_tools: string[] }
+  | { kind: "checkpoint_key"; checkpoint_key: string };
 
 export type Gate = {
   id?: string;
@@ -161,6 +174,8 @@ export type AgentIR = {
     max_steps?: number;
     max_tool_calls?: number;
     timeout_ms?: number;
+    /** When true, plain deny verdicts continue the loop; limit_exceeded and safe_state still stop. */
+    continue_after_deny?: boolean;
   };
   /** @deprecated use fallback_state */
   safe_state?: Record<string, unknown>;
@@ -175,7 +190,7 @@ export type AgentIR = {
     tighten_only?: boolean;
     allow_nested?: boolean;
   };
-  /** Counterbalance bridge — modes, sequences, invalidate_after (see spec-v0.2-draft). */
+  /** Counterbalance bridge — sequences, invalidate_after, completion (see spec-v0.2). */
   counterbalance?: CounterbalanceExt;
 };
 
@@ -274,6 +289,8 @@ export type Event = {
   observation?: Record<string, unknown>;
   state_hash: string;
   error?: string;
+  /** Structured counterbalance deny facts (completion, sequence, checkpoint). */
+  failure?: DenyFailure;
   /** Nesting depth (0 = root). Set on child reaction events. */
   depth?: number;
   /** Id of the parent spawn that produced this event (child log only). */
@@ -282,7 +299,8 @@ export type Event = {
 
 export type ModelProposal =
   | { type: "tool"; name: string; args: Record<string, unknown> }
-  | { type: "stop"; message?: string };
+  | { type: "stop"; message?: string }
+  | { type: "invalid"; reason: string; message?: string };
 
 export type Snapshot = {
   action?: { name: string; args: Record<string, unknown> };

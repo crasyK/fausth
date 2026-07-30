@@ -1,0 +1,8 @@
+id: 06-fix-null-guard
+title: "Guard null length"
+category: bugfix
+prompt_file: prompt.md
+seed_dir: seed
+grade_dir: grade
+verify:
+  test_command: test

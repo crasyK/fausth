@@ -1,5 +1,8 @@
 /**
  * Generate Counterbalance coding vertical-slice Track A fixtures and freeze expected.jsonl.
+ *
+ * Track A is mode-free: a harness advertises exactly the tools it may use, and ordering comes
+ * from sequences, freshness invalidation and completion gates — never from a mode register.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -7,13 +10,13 @@ import { fileURLToPath } from "node:url";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { createCodingTools } from "./tools/world.js";
 import { canonicalJson } from "./canonical.js";
-import type { AgentIR, ModelProposal, RecordedToolCall } from "./types.js";
+import type { AgentIR, ModelProposal, RecordedToolCall, ToolDef } from "./types.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const fixturesRoot = join(root, "conformance/fixtures");
 
-const toolDefs = [
-  {
+const codingToolDefs: Record<string, ToolDef> = {
+  "fs.read": {
     id: "fs.read",
     read_only: true,
     input: { type: "object", required: ["path"], additionalProperties: false, properties: { path: { type: "string" } } },
@@ -24,7 +27,7 @@ const toolDefs = [
       properties: { path: { type: "string" }, content: { type: "string" }, found: { type: "integer" } },
     },
   },
-  {
+  "fs.write_scoped": {
     id: "fs.write_scoped",
     input: {
       type: "object",
@@ -40,7 +43,7 @@ const toolDefs = [
     },
     verify: [{ kind: "absence", require: { path: "result.out_of_scope", eq: 0 }, otherwise: "safe_state" }],
   },
-  {
+  "shell.run_allowlisted": {
     id: "shell.run_allowlisted",
     input: {
       type: "object",
@@ -56,7 +59,7 @@ const toolDefs = [
     },
     verify: [{ kind: "evidence", require: { path: "result.exit_code", eq: 0 }, otherwise: "deny" }],
   },
-  {
+  "user.approve": {
     id: "user.approve",
     input: { type: "object", additionalProperties: true, properties: {} },
     output: {
@@ -66,7 +69,7 @@ const toolDefs = [
       properties: { approved: { type: "integer" } },
     },
   },
-  {
+  "user.correct": {
     id: "user.correct",
     input: {
       type: "object",
@@ -83,22 +86,7 @@ const toolDefs = [
       properties: { ok: { type: "integer" } },
     },
   },
-  {
-    id: "mode.enter",
-    input: {
-      type: "object",
-      required: ["mode"],
-      additionalProperties: false,
-      properties: { mode: { type: "string" } },
-    },
-    output: {
-      type: "object",
-      required: ["ok", "mode"],
-      additionalProperties: false,
-      properties: { ok: { type: "integer" }, mode: { type: "string" } },
-    },
-  },
-  {
+  "task.complete": {
     id: "task.complete",
     input: { type: "object", additionalProperties: false, properties: {} },
     output: {
@@ -108,50 +96,44 @@ const toolDefs = [
       properties: { ok: { type: "integer" } },
     },
   },
-] as AgentIR["tools"];
+};
+
+function codingTools(ids: string[]): ToolDef[] {
+  return ids.map((id) => {
+    const def = codingToolDefs[id];
+    if (!def) throw new Error(`unknown coding tool: ${id}`);
+    return def;
+  });
+}
+
+/** Tools the full coding slice actually uses — no mode register, no blocked-tool advertising. */
+const codingToolIds = [
+  "fs.read",
+  "fs.write_scoped",
+  "shell.run_allowlisted",
+  "user.approve",
+  "user.correct",
+  "task.complete",
+];
 
 function baseAgent(over: Partial<AgentIR> & { counterbalance?: AgentIR["counterbalance"] }): AgentIR {
   const agent: AgentIR = {
     spec: "counterbalance-contract/v0.1",
     name: "coding-counterbalance-slice",
     state: {
-      mode: "research",
       researched: 0,
       plan_approved: 0,
       test_evidence_current: 0,
       open_todos: 1,
       out_of_scope_writes: 0,
     },
-    tools: toolDefs,
+    tools: codingTools(codingToolIds),
     limits: { max_steps: 20, max_tool_calls: 16 },
     permissions: {
-      tools: [
-        "fs.read",
-        "fs.write_scoped",
-        "shell.run_allowlisted",
-        "user.approve",
-        "user.correct",
-        "mode.enter",
-        "task.complete",
-      ],
+      tools: [...codingToolIds],
       filesystem: { write_scopes: ["src/"], read_scopes: ["src/"] },
     },
     counterbalance: {
-      modes: [
-        { id: "research", tools: ["fs.read", "mode.enter", "user.correct"] },
-        { id: "plan", tools: ["fs.read", "user.approve", "mode.enter", "user.correct"] },
-        {
-          id: "implementation",
-          tools: [
-            "fs.read",
-            "fs.write_scoped",
-            "shell.run_allowlisted",
-            "mode.enter",
-            "task.complete",
-            "user.correct",
-          ],
-        },
-      ],
       sequences: [
         {
           id: "plan-before-write",
@@ -186,6 +168,34 @@ function baseAgent(over: Partial<AgentIR> & { counterbalance?: AgentIR["counterb
   return agent;
 }
 
+/**
+ * Research-scoped harness: it can read and take user corrections, nothing else.
+ * Writing is not a denied mode — the capability was simply never provisioned.
+ */
+function researchAgent(): AgentIR {
+  return {
+    spec: "counterbalance-contract/v0.1",
+    name: "coding-counterbalance-research",
+    state: {
+      researched: 0,
+      plan_approved: 0,
+      test_evidence_current: 0,
+      open_todos: 1,
+      out_of_scope_writes: 0,
+    },
+    tools: codingTools(["fs.read", "user.correct"]),
+    limits: { max_steps: 20, max_tool_calls: 16 },
+    permissions: {
+      tools: ["fs.read", "user.correct"],
+      filesystem: { read_scopes: ["src/"] },
+    },
+    counterbalance: {
+      checkpoints: [{ tool: "user.correct", allow_set_keys: ["open_todos"] }],
+      orientation: { emit_each_step: true },
+    },
+  };
+}
+
 async function materialize(
   name: string,
   agent: AgentIR,
@@ -211,6 +221,7 @@ async function materialize(
     tools: createCodingTools({
       files: { "src/app.ts": "export {}" },
       write_scopes: ["src/"],
+      read_scopes: ["src/"],
       last_exit_code: 0,
       out_of_scope_writes: 0,
     }),
@@ -222,12 +233,11 @@ async function materialize(
 }
 
 async function main(): Promise<void> {
-  // Behaviour: write before plan approval denied
+  // Behaviour: write before plan approval denied by the plan-before-write sequence
   await materialize(
     "cb-write-before-plan-denied",
     baseAgent({
       state: {
-        mode: "implementation",
         researched: 1,
         plan_approved: 0,
         test_evidence_current: 0,
@@ -244,7 +254,6 @@ async function main(): Promise<void> {
     "cb-stale-test-success",
     baseAgent({
       state: {
-        mode: "plan",
         researched: 1,
         plan_approved: 0,
         test_evidence_current: 0,
@@ -254,7 +263,6 @@ async function main(): Promise<void> {
     }),
     [
       { type: "tool", name: "user.approve", args: {} },
-      { type: "tool", name: "mode.enter", args: { mode: "implementation" } },
       { type: "tool", name: "shell.run_allowlisted", args: { cmd: "test" } },
       { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "export const x=1" } },
       { type: "tool", name: "task.complete", args: {} },
@@ -271,15 +279,6 @@ async function main(): Promise<void> {
       },
       {
         call_seq: 2,
-        tool: "mode.enter",
-        args: { mode: "implementation" },
-        result: {
-          output: { ok: 1, mode: "implementation" },
-          state_transition: { set: { mode: "implementation" } },
-        },
-      },
-      {
-        call_seq: 3,
         tool: "shell.run_allowlisted",
         args: { cmd: "test" },
         result: {
@@ -288,7 +287,7 @@ async function main(): Promise<void> {
         },
       },
       {
-        call_seq: 4,
+        call_seq: 3,
         tool: "fs.write_scoped",
         args: { path: "src/app.ts", content: "export const x=1" },
         result: { output: { ok: 1, out_of_scope: 0, path: "src/app.ts" } },
@@ -301,7 +300,6 @@ async function main(): Promise<void> {
     "cb-user-correction-cannot-be-self-authored",
     baseAgent({
       state: {
-        mode: "implementation",
         researched: 1,
         plan_approved: 0,
         test_evidence_current: 0,
@@ -324,7 +322,6 @@ async function main(): Promise<void> {
     "cb-completion-open-todos-denied",
     baseAgent({
       state: {
-        mode: "implementation",
         researched: 1,
         plan_approved: 1,
         test_evidence_current: 1,
@@ -336,15 +333,13 @@ async function main(): Promise<void> {
     [],
   );
 
-  // Happy path: research → plan approve → implement → test → clear todos → complete
+  // Happy path: read → approve → write → test → clear todos → complete
   await materialize(
     "cb-coding-happy-path",
     baseAgent({}),
     [
       { type: "tool", name: "fs.read", args: { path: "src/app.ts" } },
-      { type: "tool", name: "mode.enter", args: { mode: "plan" } },
       { type: "tool", name: "user.approve", args: {} },
-      { type: "tool", name: "mode.enter", args: { mode: "implementation" } },
       { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "export const ok=1" } },
       { type: "tool", name: "shell.run_allowlisted", args: { cmd: "test" } },
       { type: "tool", name: "user.correct", args: { request: "mark todos resolved" } },
@@ -362,12 +357,6 @@ async function main(): Promise<void> {
       },
       {
         call_seq: 2,
-        tool: "mode.enter",
-        args: { mode: "plan" },
-        result: { output: { ok: 1, mode: "plan" }, state_transition: { set: { mode: "plan" } } },
-      },
-      {
-        call_seq: 3,
         tool: "user.approve",
         args: {},
         result: {
@@ -376,22 +365,13 @@ async function main(): Promise<void> {
         },
       },
       {
-        call_seq: 4,
-        tool: "mode.enter",
-        args: { mode: "implementation" },
-        result: {
-          output: { ok: 1, mode: "implementation" },
-          state_transition: { set: { mode: "implementation" } },
-        },
-      },
-      {
-        call_seq: 5,
+        call_seq: 3,
         tool: "fs.write_scoped",
         args: { path: "src/app.ts", content: "export const ok=1" },
         result: { output: { ok: 1, out_of_scope: 0, path: "src/app.ts" } },
       },
       {
-        call_seq: 6,
+        call_seq: 4,
         tool: "shell.run_allowlisted",
         args: { cmd: "test" },
         result: {
@@ -400,13 +380,13 @@ async function main(): Promise<void> {
         },
       },
       {
-        call_seq: 7,
+        call_seq: 5,
         tool: "user.correct",
         args: { request: "mark todos resolved" },
         result: { output: { ok: 1 }, state_transition: { set: { open_todos: 0 } } },
       },
       {
-        call_seq: 8,
+        call_seq: 6,
         tool: "task.complete",
         args: {},
         result: { output: { ok: 1 } },
@@ -414,10 +394,10 @@ async function main(): Promise<void> {
     ],
   );
 
-  // Mode denied: write while still in research
+  // Capability missing: the research harness never declares a write tool
   await materialize(
-    "cb-write-in-research-mode-denied",
-    baseAgent({}),
+    "cb-write-not-provisioned",
+    researchAgent(),
     [{ type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } }],
     [],
   );
@@ -475,32 +455,18 @@ async function main(): Promise<void> {
         properties: { ok: { type: "integer" } },
       },
     },
-    {
-      id: "refund.request",
-      input: { type: "object", additionalProperties: true, properties: {} },
-      output: {
-        type: "object",
-        required: ["ok"],
-        additionalProperties: false,
-        properties: { ok: { type: "integer" } },
-      },
-    },
   ] as AgentIR["tools"];
 
   const supportAgent: AgentIR = {
     spec: "counterbalance-contract/v0.1",
     name: "support-bot-counterbalance",
-    state: { mode: "support", kb_cited: 0, handoff: 0 },
+    state: { kb_cited: 0, handoff: 0 },
     tools: supportTools,
     limits: { max_steps: 12, max_tool_calls: 10 },
     permissions: {
       tools: ["kb.lookup", "answer.send", "human.handoff", "user.correct"],
     },
     counterbalance: {
-      modes: [
-        { id: "support", tools: ["kb.lookup", "answer.send", "human.handoff", "user.correct"] },
-        { id: "handoff", tools: ["human.handoff", "user.correct"] },
-      ],
       sequences: [{ id: "kb-before-answer", action: "answer.send", require_prior_tools: ["kb.lookup"] }],
       completion: { tool: "answer.send", require: { path: "state.kb_cited", eq: 1 } },
     },
@@ -542,6 +508,138 @@ async function main(): Promise<void> {
         tool: "answer.send",
         args: { text: "Per article, refunds need review." },
         result: { output: { ok: 1 } },
+      },
+    ],
+  );
+
+  // Opt-in: deny then recover with continue_after_deny
+  await materialize(
+    "cb-deny-then-recover",
+    baseAgent({
+      limits: { max_steps: 20, max_tool_calls: 16, continue_after_deny: true },
+      state: {
+        researched: 1,
+        plan_approved: 0,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } },
+      { type: "tool", name: "user.approve", args: {} },
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "export const ok=1" } },
+      { type: "tool", name: "shell.run_allowlisted", args: { cmd: "test" } },
+      { type: "tool", name: "user.correct", args: { request: "mark todos resolved" } },
+      { type: "tool", name: "task.complete", args: {} },
+    ],
+    [
+      {
+        call_seq: 1,
+        tool: "user.approve",
+        args: {},
+        result: {
+          output: { approved: 1 },
+          state_transition: { set: { plan_approved: 1 } },
+        },
+      },
+      {
+        call_seq: 2,
+        tool: "fs.write_scoped",
+        args: { path: "src/app.ts", content: "export const ok=1" },
+        result: { output: { ok: 1, out_of_scope: 0, path: "src/app.ts" } },
+      },
+      {
+        call_seq: 3,
+        tool: "shell.run_allowlisted",
+        args: { cmd: "test" },
+        result: {
+          output: { exit_code: 0, cmd: "test" },
+          state_transition: { set: { test_evidence_current: 1 } },
+        },
+      },
+      {
+        call_seq: 4,
+        tool: "user.correct",
+        args: { request: "mark todos resolved" },
+        result: { output: { ok: 1 }, state_transition: { set: { open_todos: 0 } } },
+      },
+      {
+        call_seq: 5,
+        tool: "task.complete",
+        args: {},
+        result: { output: { ok: 1 } },
+      },
+    ],
+  );
+
+  // Opt-in: repeated identical deny until max_steps
+  await materialize(
+    "cb-deny-then-repeat",
+    baseAgent({
+      limits: { max_steps: 3, max_tool_calls: 16, continue_after_deny: true },
+      state: {
+        researched: 1,
+        plan_approved: 0,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } },
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } },
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } },
+    ],
+    [],
+  );
+
+  // Default remains terminal: same first deny without continue_after_deny stops the run
+  await materialize(
+    "cb-continue-after-deny-off",
+    baseAgent({
+      state: {
+        researched: 1,
+        plan_approved: 0,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } },
+      { type: "tool", name: "user.approve", args: {} },
+    ],
+    [],
+  );
+
+  // Schema-valid out-of-scope read: informative found:0, then continue to in-scope read
+  await materialize(
+    "cb-read-out-of-scope-informative",
+    baseAgent({
+      limits: { max_steps: 20, max_tool_calls: 16, continue_after_deny: true },
+    }),
+    [
+      { type: "tool", name: "fs.read", args: { path: "package.json" } },
+      { type: "tool", name: "fs.read", args: { path: "src/app.ts" } },
+    ],
+    [
+      {
+        call_seq: 1,
+        tool: "fs.read",
+        args: { path: "package.json" },
+        result: {
+          output: { path: "package.json", content: "", found: 0, error: "scope_denied" },
+        },
+      },
+      {
+        call_seq: 2,
+        tool: "fs.read",
+        args: { path: "src/app.ts" },
+        result: {
+          output: { path: "src/app.ts", content: "export {}", found: 1 },
+          state_transition: { set: { researched: 1 } },
+        },
       },
     ],
   );

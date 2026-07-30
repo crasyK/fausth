@@ -74,14 +74,16 @@ export class OpenAICompatibleAdapter implements ModelPort {
           };
           if (tools.length && caps?.native_tools !== false) {
             body.tools = tools;
-            if (useToolChoice) body.tool_choice = "auto";
+            if (useToolChoice) {
+              body.tool_choice = input.tool_choice === "required" ? "required" : "auto";
+            }
           }
           // Re-attach preserved provider fields (e.g. reasoning_details)
           for (const [k, v] of Object.entries(this.sessionExtras)) {
             body[k] = v;
           }
 
-          const res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+          let res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${this.cfg.apiKey}`,
@@ -90,6 +92,34 @@ export class OpenAICompatibleAdapter implements ModelPort {
             },
             body: JSON.stringify(body),
           });
+          // Some gateways reject tool_choice:"required" — fall back to auto once.
+          if (
+            !res.ok &&
+            body.tool_choice === "required" &&
+            res.status !== 429 &&
+            res.status !== 404
+          ) {
+            const failText = await res.text();
+            if (/tool_choice|required|unsupported|invalid/i.test(failText)) {
+              body.tool_choice = "auto";
+              res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${this.cfg.apiKey}`,
+                  "Content-Type": "application/json",
+                  ...(this.cfg.headers ?? {}),
+                },
+                body: JSON.stringify(body),
+              });
+            } else {
+              if (/daily|rate.?limit|quota/i.test(failText)) {
+                const err = new Error(`RATE_LIMIT: ${failText}`) as Error & { code?: number };
+                err.code = 2;
+                throw err;
+              }
+              throw new Error(`OpenAI-compatible error ${res.status}: ${failText}`);
+            }
+          }
           if (res.status === 429) {
             await sleep(500 * 2 ** attempt);
             continue;
@@ -161,6 +191,62 @@ export class OpenAICompatibleAdapter implements ModelPort {
               transport_name: tc.function.name,
             };
           }
+
+          // Some gateways accept tool_choice:"required" but return finish_reason
+          // tool_calls with an empty message (no tool_calls). Retry once with auto.
+          if (
+            body.tool_choice === "required" &&
+            tools.length > 0 &&
+            (!msg.tool_calls || msg.tool_calls.length === 0)
+          ) {
+            body.tool_choice = "auto";
+            const retryRes = await fetch(
+              `${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${this.cfg.apiKey}`,
+                  "Content-Type": "application/json",
+                  ...(this.cfg.headers ?? {}),
+                },
+                body: JSON.stringify(body),
+              },
+            );
+            if (retryRes.ok) {
+              const retryData = (await retryRes.json()) as typeof data;
+              this.lastModelUsed = model;
+              this.cfg.onModelUsed?.(model);
+              const retryMsg = retryData.choices[0]?.message;
+              const retryTc = retryMsg?.tool_calls?.[0];
+              if (retryTc) {
+                const name = idMap.get(retryTc.function.name);
+                if (name) {
+                  let args: Record<string, unknown> = {};
+                  try {
+                    args = JSON.parse(retryTc.function.arguments || "{}") as Record<
+                      string,
+                      unknown
+                    >;
+                    return {
+                      type: "tool",
+                      name,
+                      args,
+                      tool_call_id: retryTc.id,
+                      transport_name: retryTc.function.name,
+                    };
+                  } catch {
+                    return {
+                      type: "invalid",
+                      reason: "invalid_tool_arguments_json",
+                      raw: retryTc.function.arguments,
+                    };
+                  }
+                }
+              }
+              return { type: "stop", message: retryMsg?.content ?? "" };
+            }
+          }
+
           return { type: "stop", message: msg.content ?? "" };
         } catch (e) {
           lastErr = e;

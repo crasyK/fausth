@@ -133,7 +133,6 @@ def inspect_harness(
         "spec": agent.get("spec"),
         "tools": [t["id"] for t in agent.get("tools") or []],
         "permissions_tools": (agent.get("permissions") or {}).get("tools"),
-        "modes": [m.get("id") for m in (agent.get("counterbalance") or {}).get("modes") or []],
         "sequences": [
             s.get("id") or s.get("action")
             for s in (agent.get("counterbalance") or {}).get("sequences") or []

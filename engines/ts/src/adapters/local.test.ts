@@ -166,6 +166,17 @@ describe("local adapter worktree", () => {
     );
     assert.equal((denied as { output: { out_of_scope: number } }).output.out_of_scope, 1);
 
+    const readDenied = await tools["fs.read"]!({ path: "package.json" }, { state: {} });
+    const readOut = (readDenied as { output: { found: number; error?: string; path: string } }).output;
+    assert.equal(readOut.found, 0);
+    assert.equal(readOut.error, "scope_denied");
+    assert.equal(readOut.path, "package.json");
+
+    const listed = await tools["fs.list"]!({ path: "src" }, { state: {} });
+    const listOut = (listed as { output: { found: number; entries: string[] } }).output;
+    assert.equal(listOut.found, 1);
+    assert.ok(listOut.entries.includes("app.ts"));
+
     const shell = await tools["shell.run_allowlisted"]!({ cmd: "test" }, { state: {} });
     assert.equal((shell as { output: { exit_code: number } }).output.exit_code, 0);
 
@@ -190,16 +201,16 @@ describe("local adapter worktree", () => {
     const agent = {
       tools: [
         { id: "fs.read", input: {}, output: {} },
-        { id: "mode.enter", input: {}, output: {} },
+        { id: "task.complete", input: {}, output: {} },
       ],
       state: {},
-      permissions: { tools: ["fs.read", "mode.enter"] },
+      permissions: { tools: ["fs.read", "task.complete"] },
     } as unknown as AgentIR;
     const deployment: Deployment = {
       model: { transport: "recorded" },
       bindings: {
         "fs.read": { native: "local.fs_read" },
-        "mode.enter": { native: "sim.mode_enter" },
+        "task.complete": { native: "sim.task_complete" },
       },
     };
     assert.throws(() => resolveToolsFromDeployment(agent, deployment, { workspace: worktree }));

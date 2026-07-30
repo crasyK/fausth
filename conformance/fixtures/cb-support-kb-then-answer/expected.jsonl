@@ -1,11 +1,11 @@
-{"args":{"query":"refund-policy"},"seq":1,"stage":"propose","state_hash":"f5c5f48cc7245e28c6968aedc24ed96a02630c83c8a6a20c5dd3570fb65d75f1","tool":"kb.lookup","ts_logical":1}
-{"args":{"query":"refund-policy"},"seq":2,"stage":"validate","state_hash":"f5c5f48cc7245e28c6968aedc24ed96a02630c83c8a6a20c5dd3570fb65d75f1","tool":"kb.lookup","ts_logical":2,"verdict":"allow"}
-{"args":{"query":"refund-policy"},"seq":3,"stage":"authorize","state_hash":"f5c5f48cc7245e28c6968aedc24ed96a02630c83c8a6a20c5dd3570fb65d75f1","tool":"kb.lookup","ts_logical":3,"verdict":"allow"}
-{"args":{"query":"refund-policy"},"result":{"article_id":"kb-refund-policy","ok":1},"seq":4,"stage":"execute","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","tool":"kb.lookup","ts_logical":4,"verdict":"allow"}
-{"seq":5,"stage":"verify","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","ts_logical":5,"verdict":"allow"}
-{"args":{"text":"Per article, refunds need review."},"seq":6,"stage":"propose","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","tool":"answer.send","ts_logical":6}
-{"args":{"text":"Per article, refunds need review."},"seq":7,"stage":"validate","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","tool":"answer.send","ts_logical":7,"verdict":"allow"}
-{"args":{"text":"Per article, refunds need review."},"seq":8,"stage":"authorize","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","tool":"answer.send","ts_logical":8,"verdict":"allow"}
-{"args":{"text":"Per article, refunds need review."},"result":{"ok":1},"seq":9,"stage":"execute","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","tool":"answer.send","ts_logical":9,"verdict":"allow"}
-{"seq":10,"stage":"verify","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","ts_logical":10,"verdict":"allow"}
-{"seq":11,"stage":"propose","state_hash":"559ade038ecba049fae9557a76c6d33bed90629d47d390f11e256cabe3938532","ts_logical":11,"verdict":"allow"}
+{"args":{"query":"refund-policy"},"seq":1,"stage":"propose","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"kb.lookup","ts_logical":1}
+{"args":{"query":"refund-policy"},"seq":2,"stage":"validate","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"kb.lookup","ts_logical":2,"verdict":"allow"}
+{"args":{"query":"refund-policy"},"seq":3,"stage":"authorize","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"kb.lookup","ts_logical":3,"verdict":"allow"}
+{"args":{"query":"refund-policy"},"result":{"article_id":"kb-refund-policy","ok":1},"seq":4,"stage":"execute","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"kb.lookup","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","ts_logical":5,"verdict":"allow"}
+{"args":{"text":"Per article, refunds need review."},"seq":6,"stage":"propose","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":6}
+{"args":{"text":"Per article, refunds need review."},"seq":7,"stage":"validate","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":7,"verdict":"allow"}
+{"args":{"text":"Per article, refunds need review."},"seq":8,"stage":"authorize","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":8,"verdict":"allow"}
+{"args":{"text":"Per article, refunds need review."},"result":{"ok":1},"seq":9,"stage":"execute","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":9,"verdict":"allow"}
+{"seq":10,"stage":"verify","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","ts_logical":10,"verdict":"allow"}
+{"seq":11,"stage":"propose","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","ts_logical":11,"verdict":"allow"}

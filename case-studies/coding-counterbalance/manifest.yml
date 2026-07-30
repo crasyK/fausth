@@ -1,0 +1,85 @@
+study_id: coding-counterbalance-pilot
+protocol: docs/case-studies/PROTOCOL.md
+version: 0.3.1
+
+# Next full live matrix (v0.3.1): tasks 01, 02, 04, 05, 06 — 5 tasks × 4 models × 2 arms × 3 reps = 120 planned.
+# Task 04 is the calibration floor; task 06 uses strLen in src/app.js with fs.list discovery.
+
+harnesses:
+  counterbalanced:
+    kind: pipeline
+    root: examples/coding-counterbalance
+    phases:
+      - id: research
+        path: examples/coding-counterbalance/agents/research
+      - id: plan
+        path: examples/coding-counterbalance/agents/plan
+      - id: implementation
+        path: examples/coding-counterbalance/agents/implementation
+  permissive-control:
+    kind: single
+    path: case-studies/coding-counterbalance/harnesses/permissive-control
+
+deployments:
+  kit:
+    id: kit
+    path: case-studies/coding-counterbalance/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  openrouter:
+    id: openrouter
+    path: case-studies/coding-counterbalance/deployments/local-openrouter.yml
+    model_id: nvidia/nemotron-3-super-120b-a12b:free
+    api_key_env: OPENROUTER_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/coding-counterbalance/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+
+matrix:
+  repetitions: 5
+  max_steps: 30
+  conditions:
+    - counterbalanced
+    - permissive-control
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+    - kit.minimax-m2.7-229b
+  recorded_provider_labels:
+    - kit
+
+tasks:
+  - id: 01-fix-add
+    category: bugfix
+    path: case-studies/coding-counterbalance/tasks/01-fix-add
+  - id: 02-add-multiply
+    category: feature
+    path: case-studies/coding-counterbalance/tasks/02-add-multiply
+  - id: 03-fix-off-by-one
+    category: bugfix
+    path: case-studies/coding-counterbalance/tasks/03-fix-off-by-one
+  - id: 04-add-clamp
+    category: feature
+    path: case-studies/coding-counterbalance/tasks/04-add-clamp
+  - id: 05-rename-greet
+    category: refactor
+    path: case-studies/coding-counterbalance/tasks/05-rename-greet
+  - id: 06-fix-null-guard
+    category: bugfix
+    path: case-studies/coding-counterbalance/tasks/06-fix-null-guard
+  - id: 07-extract-sum
+    category: refactor
+    path: case-studies/coding-counterbalance/tasks/07-extract-sum
+  - id: 08-add-avg
+    category: feature
+    path: case-studies/coding-counterbalance/tasks/08-add-avg
+
+scoring:
+  path: case-studies/coding-counterbalance/expected/scoring.yml
+
+outputs:
+  raw_dir: live/reports/case-studies/coding-counterbalance
+  summary: case-studies/coding-counterbalance/results/summary.json

@@ -32,6 +32,10 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "sim.fs_read": "fs.read",
   "local.fs_read": "fs.read",
   "fs.read": "fs.read",
+  "stub.fs_list": "fs.list",
+  "sim.fs_list": "fs.list",
+  "local.fs_list": "fs.list",
+  "fs.list": "fs.list",
   "stub.fs_write": "fs.write_scoped",
   "sim.fs_write": "fs.write_scoped",
   "local.fs_write": "fs.write_scoped",
@@ -52,14 +56,14 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "local.user_correct": "user.correct",
   "local.user_correct_auto": "user.correct",
   "user.correct": "user.correct",
-  "stub.mode_enter": "mode.enter",
-  "sim.mode_enter": "mode.enter",
-  "local.mode_enter": "mode.enter",
-  "mode.enter": "mode.enter",
   "stub.task_complete": "task.complete",
   "sim.task_complete": "task.complete",
   "local.task_complete": "task.complete",
   "task.complete": "task.complete",
+  "stub.phase_yield": "phase.yield",
+  "sim.phase_yield": "phase.yield",
+  "local.phase_yield": "phase.yield",
+  "phase.yield": "phase.yield",
   "stub.kb_lookup": "kb.lookup",
   "sim.kb_lookup": "kb.lookup",
   "kb.lookup": "kb.lookup",
@@ -113,7 +117,7 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
       if (cmd === "test" || cmd === "typecheck") {
         return { output: { exit_code: opts.testExit!, cmd } };
       }
-      return { output: { exit_code: 1, cmd, error: "not allowlisted" } };
+      return { output: { exit_code: 1, cmd, error: "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore" } };
     };
   }
   const greenhouse = createGreenhouseTools({

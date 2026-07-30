@@ -11,6 +11,8 @@ model:
 bindings:
   fs.read:
     native: stub.fs_read
+  fs.list:
+    native: stub.fs_list
   fs.write_scoped:
     native: stub.fs_write
   shell.run_allowlisted:

@@ -1,4 +1,3 @@
 {"args":{},"call_seq":1,"result":{"output":{"approved":1},"state_transition":{"set":{"plan_approved":1}}},"tool":"user.approve"}
-{"args":{"mode":"implementation"},"call_seq":2,"result":{"output":{"mode":"implementation","ok":1},"state_transition":{"set":{"mode":"implementation"}}},"tool":"mode.enter"}
-{"args":{"cmd":"test"},"call_seq":3,"result":{"output":{"cmd":"test","exit_code":0},"state_transition":{"set":{"test_evidence_current":1}}},"tool":"shell.run_allowlisted"}
-{"args":{"content":"export const x=1","path":"src/app.ts"},"call_seq":4,"result":{"output":{"ok":1,"out_of_scope":0,"path":"src/app.ts"}},"tool":"fs.write_scoped"}
+{"args":{"cmd":"test"},"call_seq":2,"result":{"output":{"cmd":"test","exit_code":0},"state_transition":{"set":{"test_evidence_current":1}}},"tool":"shell.run_allowlisted"}
+{"args":{"content":"export const x=1","path":"src/app.ts"},"call_seq":3,"result":{"output":{"ok":1,"out_of_scope":0,"path":"src/app.ts"}},"tool":"fs.write_scoped"}

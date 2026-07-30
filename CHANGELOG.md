@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0-alpha — Normative structured denies (contract v0.2)
+
+### Added
+
+- Normative [`docs/spec-v0.2.md`](docs/spec-v0.2.md) and [`schema/counterbalance-contract.v0.2.json`](schema/counterbalance-contract.v0.2.json).
+- Structured deny signal `failure` on Counterbalance denies (`predicate` / `missing_prior_tools` / `checkpoint_key`), with optional checkpoint-derived `unblock`.
+- `fs.list` read-only discovery tool; instructive shell allowlist errors.
+- Case-study scoring: `discovery_failure`, `obsolete_surface_call`, floor/ceiling headline deltas.
+- CLI contract-loop teaching on by default for live coding runs.
+
+### Removed
+
+- In-engine **modes** (`counterbalance.modes`, `mode.enter`, `mode_denied`, orientation `available_modes`).
+  Capability limits come only from each harness YAML's tool list. Phased work uses separate
+  subagent dirs; host code owns launch order.
+- Fixture `cb-write-in-research-mode-denied` → `cb-write-not-provisioned` (`capability_missing`).
+- Ad-hoc free-text `hint` on deny events (hosts may still render prose from `failure` for live models).
+
+### Notes
+
+- Normative contract is now **`counterbalance-contract/v0.2`**. v0.1 remains for pre-CB goldens.
+- Unsigned coding `v0.1` pack size pin: **15411** bytes.
+- Post-cut live baseline gate documented in [`docs/case-studies/PROTOCOL.md`](docs/case-studies/PROTOCOL.md) as `v0.4.0-baseline` (not run in this cut).
+
 ## 0.1.3-alpha — Portable connectors, signatures, MCP (M10–M11)
 
 ### Added
@@ -10,12 +34,17 @@
 - MCP connectors (`kind: mcp`) with offline resolve and host transports `recorded` / `stdio`.
 - Live proofs: `scripts/live-mcp-stdio.mjs` (process) and `scripts/live-mcp-model.mjs` (KIT/OpenRouter + MCP).
 - Example harness: [`examples/primitives/mcp-connectors/`](examples/primitives/mcp-connectors/).
+- Opt-in `limits.continue_after_deny` (default remains terminal deny for Track A goldens).
+- Coding case-study live protocol v0.2: held-out grader, single-mode permissive control,
+  outcome-based scorer, KIT 80-attempt matrix (`live-kit-v2`).
 
 ### Notes
 
-- Legacy coding packs without connectors remain **byte-identical** `v0.1` (15650 bytes unsigned).
+- Legacy coding packs without connectors remain **byte-identical** `v0.1` (17022 bytes unsigned).
 - `kind: module` is schema-recognized but fails closed until a later milestone.
 - Normative contract remains **`counterbalance-contract/v0.1`**.
+- Recorded case-study traces are plumbing regression only; live results are in
+  [`examples/coding-counterbalance/VERIFICATION.md`](examples/coding-counterbalance/VERIFICATION.md).
 
 ## 0.1.2-alpha — Usable local coding harness (M8)
 

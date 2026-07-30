@@ -1,8 +1,6 @@
 {"args":{"path":"src/app.ts"},"call_seq":1,"result":{"output":{"content":"export {}","found":1,"path":"src/app.ts"},"state_transition":{"set":{"researched":1}}},"tool":"fs.read"}
-{"args":{"mode":"plan"},"call_seq":2,"result":{"output":{"mode":"plan","ok":1},"state_transition":{"set":{"mode":"plan"}}},"tool":"mode.enter"}
-{"args":{},"call_seq":3,"result":{"output":{"approved":1},"state_transition":{"set":{"plan_approved":1}}},"tool":"user.approve"}
-{"args":{"mode":"implementation"},"call_seq":4,"result":{"output":{"mode":"implementation","ok":1},"state_transition":{"set":{"mode":"implementation"}}},"tool":"mode.enter"}
-{"args":{"content":"export const ok=1","path":"src/app.ts"},"call_seq":5,"result":{"output":{"ok":1,"out_of_scope":0,"path":"src/app.ts"}},"tool":"fs.write_scoped"}
-{"args":{"cmd":"test"},"call_seq":6,"result":{"output":{"cmd":"test","exit_code":0},"state_transition":{"set":{"test_evidence_current":1}}},"tool":"shell.run_allowlisted"}
-{"args":{"request":"mark todos resolved"},"call_seq":7,"result":{"output":{"ok":1},"state_transition":{"set":{"open_todos":0}}},"tool":"user.correct"}
-{"args":{},"call_seq":8,"result":{"output":{"ok":1}},"tool":"task.complete"}
+{"args":{},"call_seq":2,"result":{"output":{"approved":1},"state_transition":{"set":{"plan_approved":1}}},"tool":"user.approve"}
+{"args":{"content":"export const ok=1","path":"src/app.ts"},"call_seq":3,"result":{"output":{"ok":1,"out_of_scope":0,"path":"src/app.ts"}},"tool":"fs.write_scoped"}
+{"args":{"cmd":"test"},"call_seq":4,"result":{"output":{"cmd":"test","exit_code":0},"state_transition":{"set":{"test_evidence_current":1}}},"tool":"shell.run_allowlisted"}
+{"args":{"request":"mark todos resolved"},"call_seq":5,"result":{"output":{"ok":1},"state_transition":{"set":{"open_todos":0}}},"tool":"user.correct"}
+{"args":{},"call_seq":6,"result":{"output":{"ok":1}},"tool":"task.complete"}

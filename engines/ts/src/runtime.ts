@@ -1,10 +1,16 @@
 import { canonicalJson, deepEq, stateHash } from "./canonical.js";
+import {
+  buildCheckpointKeyFailure,
+  buildMissingPriorToolsFailure,
+  buildPredicateFailure,
+} from "./deny-failure.js";
 import { evalPredicate } from "./predicates.js";
 import { validateAgainstSchema } from "./schema-validate.js";
 import { fallbackStateOf } from "./load.js";
 import type {
   AgentIR,
   Event,
+  DenyFailure,
   Gate,
   ModelProposal,
   ReasonCode,
@@ -105,6 +111,7 @@ export class FaustRuntime {
     if (partial.result !== undefined) ev.result = partial.result;
     if (partial.observation !== undefined) ev.observation = partial.observation;
     if (partial.error !== undefined) ev.error = partial.error;
+    if (partial.failure !== undefined) ev.failure = partial.failure;
     if (this.depth > 0) ev.depth = this.depth;
     if (this.spawnId) ev.spawn_id = this.spawnId;
     if (partial.depth !== undefined) ev.depth = partial.depth;
@@ -133,6 +140,11 @@ export class FaustRuntime {
       return false;
     }
     return true;
+  }
+
+  /** Plain deny stops by default; opt-in continue_after_deny lets the agent recover. */
+  private denyIsTerminal(): boolean {
+    return this.agent.limits?.continue_after_deny !== true;
   }
 
   private evalGates(snapshot: Snapshot, gates: Gate[] | undefined): { ok: true } | { ok: false; verdict: Verdict; reason: ReasonCode } {
@@ -174,12 +186,8 @@ export class FaustRuntime {
 
   private buildOrientationFrame(): Record<string, unknown> {
     const cb = this.agent.counterbalance ?? {};
-    const modeId = String(this.agent.state.mode ?? "");
-    const modes = cb.modes ?? [];
-    const mode = modes.find((m) => m.id === modeId);
-    const permitted = [...(mode?.tools ?? [])].sort();
-    const allowed = this.agent.permissions?.tools ?? this.agent.tools.map((t) => t.id);
-    const blocked = [...allowed].filter((t) => !permitted.includes(t)).sort();
+    // Can-only: advertise tools this harness actually declares — never blocked_tools / modes.
+    const permitted = this.agent.tools.map((t) => t.id).sort();
     const done = this.successfulExecutes();
     const sequence_blockers = (cb.sequences ?? [])
       .filter((s) => s.action && (s.require_prior_tools?.length ?? 0) > 0)
@@ -203,9 +211,8 @@ export class FaustRuntime {
         ? this.checkCompletion(completion.tool).ok
         : true;
     return {
-      mode: modeId,
       permitted_tools: permitted,
-      blocked_tools: blocked,
+      tools: permitted,
       sequence_blockers,
       freshness,
       completion: {
@@ -216,36 +223,33 @@ export class FaustRuntime {
     };
   }
 
-  private checkMode(actionName: string): { ok: true } | { ok: false; reason: ReasonCode } {
-    const modes = this.agent.counterbalance?.modes;
-    if (!modes || modes.length === 0) return { ok: true };
-    const modeId = String(this.agent.state.mode ?? "");
-    const mode = modes.find((m) => m.id === modeId);
-    if (!mode) {
-      return { ok: false, reason: "mode_denied" };
-    }
-    if (mode.tools && !mode.tools.includes(actionName)) {
-      return { ok: false, reason: "mode_denied" };
-    }
-    return { ok: true };
-  }
-
   private checkSequences(
     action: { name: string; args: Record<string, unknown> },
-  ): { ok: true } | { ok: false; reason: ReasonCode } {
+  ): { ok: true } | { ok: false; reason: ReasonCode; failure: DenyFailure } {
     const seqs = this.agent.counterbalance?.sequences;
     if (!seqs || seqs.length === 0) return { ok: true };
     const done = this.successfulExecutes();
     const snap: Snapshot = { action, state: this.agent.state };
     for (const seq of seqs) {
       if (seq.action !== action.name) continue;
-      for (const prior of seq.require_prior_tools ?? []) {
-        if (!done.has(prior)) {
-          return { ok: false, reason: "sequence_requirement_failed" };
-        }
+      const missing = (seq.require_prior_tools ?? []).filter((t) => !done.has(t));
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          reason: "sequence_requirement_failed",
+          failure: buildMissingPriorToolsFailure(missing),
+        };
       }
       if (seq.require_state && !evalPredicate(seq.require_state, snap)) {
-        return { ok: false, reason: "sequence_requirement_failed" };
+        return {
+          ok: false,
+          reason: "sequence_requirement_failed",
+          failure: buildPredicateFailure(
+            seq.require_state,
+            snap,
+            this.agent.counterbalance?.checkpoints ?? [],
+          ),
+        };
       }
     }
     return { ok: true };
@@ -274,7 +278,9 @@ export class FaustRuntime {
     });
   }
 
-  private checkCompletion(actionName: string): { ok: true } | { ok: false; reason: ReasonCode } {
+  private checkCompletion(
+    actionName: string,
+  ): { ok: true } | { ok: false; reason: ReasonCode; failure: DenyFailure } {
     const completion = this.agent.counterbalance?.completion;
     if (!completion) return { ok: true };
     const tool = completion.tool ?? "task.complete";
@@ -285,7 +291,15 @@ export class FaustRuntime {
       state: this.agent.state,
     };
     if (!evalPredicate(completion.require, snap)) {
-      return { ok: false, reason: "completion_gate_failed" };
+      return {
+        ok: false,
+        reason: "completion_gate_failed",
+        failure: buildPredicateFailure(
+          completion.require,
+          snap,
+          this.agent.counterbalance?.checkpoints ?? [],
+        ),
+      };
     }
     return { ok: true };
   }
@@ -293,7 +307,7 @@ export class FaustRuntime {
   private checkCheckpointAuthority(
     action: { name: string; args: Record<string, unknown> },
     transition: StateTransition | undefined,
-  ): { ok: true } | { ok: false; reason: ReasonCode; error: string } {
+  ): { ok: true } | { ok: false; reason: ReasonCode; error: string; failure: DenyFailure } {
     const policies = this.agent.counterbalance?.checkpoints ?? [];
     const policy = policies.find((p) => p.tool === action.name);
     if (!policy) return { ok: true };
@@ -305,6 +319,7 @@ export class FaustRuntime {
           ok: false,
           reason: "checkpoint_authority_failed",
           error: `checkpoint args attempted protected key '${key}'`,
+          failure: buildCheckpointKeyFailure(key),
         };
       }
     }
@@ -315,6 +330,7 @@ export class FaustRuntime {
           ok: false,
           reason: "checkpoint_authority_failed",
           error: `checkpoint transition attempted protected key '${key}'`,
+          failure: buildCheckpointKeyFailure(key),
         };
       }
     }
@@ -819,6 +835,7 @@ export class FaustRuntime {
   }
 
   async runLoop(maxIterations = 32): Promise<Event[]> {
+    let consecutiveEmptyProposals = 0;
     for (let i = 0; i < maxIterations; i++) {
       if (!this.checkLimits()) break;
       this.steps += 1;
@@ -836,9 +853,29 @@ export class FaustRuntime {
         this.emit({
           stage: "propose",
           verdict: "allow",
+          ...(proposal?.type === "stop" && proposal.message
+            ? { observation: { stop_message: String(proposal.message).slice(0, 500) } }
+            : {}),
         });
         break;
       }
+      if (proposal.type === "invalid") {
+        consecutiveEmptyProposals += 1;
+        this.emit({
+          stage: "propose",
+          verdict: "deny",
+          reason: "empty_proposal",
+          error: proposal.message ?? proposal.reason,
+          observation: {
+            invalid_reason: proposal.reason,
+            stop_message: proposal.message ? String(proposal.message).slice(0, 500) : null,
+          },
+        });
+        // Cap empty-proposal thrash even when continue_after_deny is on.
+        if (this.denyIsTerminal() || consecutiveEmptyProposals >= 2) break;
+        continue;
+      }
+      consecutiveEmptyProposals = 0;
 
       const action = { name: proposal.name, args: proposal.args };
       this.emit({
@@ -856,7 +893,8 @@ export class FaustRuntime {
           tool: action.name,
           args: action.args,
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       const allowed = this.agent.permissions?.tools;
@@ -868,7 +906,8 @@ export class FaustRuntime {
           tool: action.name,
           args: action.args,
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       const inCheck = validateAgainstSchema(tool.input, action.args);
@@ -881,7 +920,8 @@ export class FaustRuntime {
           args: action.args,
           error: "input schema validation failed",
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       this.emit({ stage: "validate", verdict: "allow", tool: action.name, args: action.args });
@@ -896,8 +936,12 @@ export class FaustRuntime {
           tool: action.name,
           args: action.args,
         });
-        if (gated.verdict === "safe_state") await this.enterSafeFlow("gate_denied");
-        break;
+        if (gated.verdict === "safe_state") {
+          await this.enterSafeFlow("gate_denied");
+          break;
+        }
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       if (action.name === "agent.spawn") {
@@ -911,20 +955,9 @@ export class FaustRuntime {
             args: action.args,
             error: child.error,
           });
-          break;
+          if (this.denyIsTerminal()) break;
+          continue;
         }
-      }
-
-      const modeCheck = this.checkMode(action.name);
-      if (!modeCheck.ok) {
-        this.emit({
-          stage: "authorize",
-          verdict: "deny",
-          reason: modeCheck.reason,
-          tool: action.name,
-          args: action.args,
-        });
-        break;
       }
 
       const seqCheck = this.checkSequences(action);
@@ -933,10 +966,12 @@ export class FaustRuntime {
           stage: "authorize",
           verdict: "deny",
           reason: seqCheck.reason,
+          failure: seqCheck.failure,
           tool: action.name,
           args: action.args,
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       const completionAuth = this.checkCompletion(action.name);
@@ -945,10 +980,12 @@ export class FaustRuntime {
           stage: "authorize",
           verdict: "deny",
           reason: completionAuth.reason,
+          failure: completionAuth.failure,
           tool: action.name,
           args: action.args,
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       this.emit({ stage: "authorize", verdict: "allow", tool: action.name, args: action.args });
@@ -967,7 +1004,8 @@ export class FaustRuntime {
           args: action.args,
           error: e instanceof Error ? e.message : String(e),
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       const outCheck = validateAgainstSchema(tool.output, envelope.output);
@@ -980,7 +1018,8 @@ export class FaustRuntime {
           args: action.args,
           error: "output schema validation failed",
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       const checkpoint = this.checkCheckpointAuthority(action, envelope.state_transition);
@@ -992,8 +1031,10 @@ export class FaustRuntime {
           tool: action.name,
           args: action.args,
           error: checkpoint.error,
+          failure: checkpoint.failure,
         });
-        break;
+        if (this.denyIsTerminal()) break;
+        continue;
       }
 
       this.applyStateTransition(envelope.state_transition);

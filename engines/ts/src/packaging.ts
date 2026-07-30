@@ -78,7 +78,6 @@ export type InspectReport = {
   spec: string;
   tools: string[];
   permissions_tools?: string[];
-  modes?: string[];
   sequences?: string[];
   spawn?: AgentIR["spawn"];
   deployments: { file: string; platform?: string; transport?: string; binding_count: number }[];
@@ -169,7 +168,6 @@ export function inspectHarness(
     spec: agent.spec,
     tools: agent.tools.map((t) => t.id),
     permissions_tools: agent.permissions?.tools,
-    modes: agent.counterbalance?.modes?.map((m) => m.id),
     sequences: agent.counterbalance?.sequences?.map((s) => s.id ?? s.action),
     spawn: agent.spawn,
     deployments,

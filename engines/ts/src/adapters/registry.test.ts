@@ -9,7 +9,7 @@ import type { AgentIR, Deployment } from "../types.js";
 const agent: AgentIR = {
   spec: "counterbalance-contract/v0.1",
   name: "t",
-  state: { mode: "research" },
+  state: {},
   tools: [
     {
       id: "fs.read",
@@ -17,7 +17,7 @@ const agent: AgentIR = {
       output: { type: "object", properties: {} },
     },
     {
-      id: "mode.enter",
+      id: "task.complete",
       input: { type: "object", properties: {} },
       output: { type: "object", properties: {} },
     },
@@ -32,12 +32,12 @@ describe("resolveToolsFromDeployment", () => {
       model: { transport: "recorded" },
       bindings: {
         "fs.read": { native: "sim.fs_read" },
-        "mode.enter": { native: "sim.mode_enter" },
+        "task.complete": { native: "sim.task_complete" },
       },
     };
     const tools = resolveToolsFromDeployment(agent, deployment);
     assert.ok(tools["fs.read"]);
-    assert.ok(tools["mode.enter"]);
+    assert.ok(tools["task.complete"]);
     assert.equal(Object.keys(tools).length, 2);
   });
 
@@ -63,7 +63,7 @@ describe("resolveToolsFromDeployment", () => {
       model: { transport: "recorded" },
       bindings: {
         "fs.read": { native: "no.such.native" },
-        "mode.enter": { native: "sim.mode_enter" },
+        "task.complete": { native: "sim.task_complete" },
       },
     };
     try {

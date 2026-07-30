@@ -1,0 +1,4 @@
+{"type":"tool","name":"fs.read","args":{"path":"src/app.js"}}
+{"type":"tool","name":"fs.write_scoped","args":{"path":"src/app.js","content":"export function add(a, b) {\n  return a + b;\n}\nexport function multiply(a, b) {\n  return a * b;\n}\n"}}
+{"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"test"}}
+{"type":"tool","name":"task.complete","args":{}}

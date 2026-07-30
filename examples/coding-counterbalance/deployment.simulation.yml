@@ -4,6 +4,8 @@ model:
 bindings:
   fs.read:
     native: sim.fs_read
+  fs.list:
+    native: sim.fs_list
   fs.write_scoped:
     native: sim.fs_write
   shell.run_allowlisted:
@@ -12,7 +14,5 @@ bindings:
     native: sim.approve
   user.correct:
     native: sim.user_correct
-  mode.enter:
-    native: sim.mode_enter
   task.complete:
     native: sim.task_complete

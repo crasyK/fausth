@@ -1,0 +1,8 @@
+id: 02-add-multiply
+title: "Add multiply()"
+category: feature
+prompt_file: prompt.md
+seed_dir: seed
+grade_dir: grade
+verify:
+  test_command: test

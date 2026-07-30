@@ -2,7 +2,6 @@ spec: counterbalance-contract/v0.1
 name: support-bot-counterbalance
 
 state:
-  mode: support
   kb_cited: 0
   handoff: 0
 
@@ -80,11 +79,6 @@ permissions:
     # refund.request intentionally omitted — billing mutation denied
 
 counterbalance:
-  modes:
-    - id: support
-      tools: [kb.lookup, answer.send, human.handoff, user.correct]
-    - id: handoff
-      tools: [human.handoff, user.correct]
   sequences:
     - id: kb-before-answer
       action: answer.send

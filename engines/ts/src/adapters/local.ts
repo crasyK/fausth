@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -24,6 +25,9 @@ import {
 } from "./sandbox-path.js";
 
 const execFileAsync = promisify(execFile);
+
+export const SHELL_NOT_ALLOWLISTED_ERROR =
+  "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore";
 
 export type LocalWorldOptions = {
   workspace: string;
@@ -146,18 +150,28 @@ function errEnvelope(code: string, message: string): ToolResultEnvelope {
 
 export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHandler> {
   const fsRead: ToolHandler = (args) => {
+    const rel = String(args.path ?? "");
+    const unified = rel.replace(/\\/g, "/");
+    const refused = (code: string, message?: string): ToolResultEnvelope => ({
+      output: {
+        path: unified,
+        content: "",
+        found: 0,
+        error: code,
+        ...(message ? { message } : {}),
+      },
+    });
     try {
-      const rel = String(args.path ?? "");
-      assertInScope(rel.replace(/\\/g, "/"), world.readScopes.length ? world.readScopes : undefined, "read");
+      assertInScope(unified, world.readScopes.length ? world.readScopes : undefined, "read");
       const abs = resolveContainedPath(world.root, rel);
       if (!existsSync(abs)) {
-        return { output: { path: rel.replace(/\\/g, "/"), content: "", found: 0 } };
+        return { output: { path: unified, content: "", found: 0 } };
       }
       const st = lstatSync(abs);
       if (st.isDirectory()) {
         return {
           output: {
-            path: toRelUnderRoot(world.root, abs) || rel.replace(/\\/g, "/"),
+            path: toRelUnderRoot(world.root, abs) || unified,
             content: "",
             found: 0,
             error: "is_directory",
@@ -166,12 +180,12 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
       }
       const buf = readFileSync(abs);
       if (buf.byteLength > world.maxReadBytes) {
-        return errEnvelope("read_too_large", `file exceeds max_read_bytes (${world.maxReadBytes})`);
+        return refused("read_too_large", `file exceeds max_read_bytes (${world.maxReadBytes})`);
       }
       const content = buf.toString("utf8");
       return {
         output: {
-          path: toRelUnderRoot(world.root, abs) || rel.replace(/\\/g, "/"),
+          path: toRelUnderRoot(world.root, abs) || unified,
           content,
           found: 1,
         },
@@ -179,18 +193,57 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
       };
     } catch (e) {
       if (e instanceof SandboxPathError) {
-        return errEnvelope(e.code, e.message);
+        return refused(e.code, e.message);
       }
       const msg = e instanceof Error ? e.message : String(e);
       if (/EISDIR|illegal operation on a directory/i.test(msg)) {
+        return refused("is_directory", msg);
+      }
+      throw e;
+    }
+  };
+
+  const fsList: ToolHandler = (args) => {
+    const rel = String(args.path ?? "");
+    const unified = rel.replace(/\\/g, "/");
+    const refused = (code: string, message?: string): ToolResultEnvelope => ({
+      output: {
+        path: unified,
+        entries: [] as string[],
+        found: 0,
+        error: code,
+        ...(message ? { message } : {}),
+      },
+    });
+    try {
+      assertInScope(unified, world.readScopes.length ? world.readScopes : undefined, "read");
+      const abs = resolveContainedPath(world.root, rel);
+      if (!existsSync(abs)) {
+        return { output: { path: unified, entries: [], found: 0 } };
+      }
+      const st = lstatSync(abs);
+      if (!st.isDirectory()) {
         return {
           output: {
-            path: String(args.path ?? ""),
-            content: "",
+            path: toRelUnderRoot(world.root, abs) || unified,
+            entries: [],
             found: 0,
-            error: "is_directory",
+            error: "not_directory",
           },
         };
+      }
+      const entries = readdirSync(abs).sort();
+      return {
+        output: {
+          path: toRelUnderRoot(world.root, abs) || unified,
+          entries,
+          found: 1,
+        },
+        state_transition: { set: { researched: 1 } },
+      };
+    } catch (e) {
+      if (e instanceof SandboxPathError) {
+        return refused(e.code, e.message);
       }
       throw e;
     }
@@ -231,7 +284,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     const cmd = String(args.cmd ?? "");
     const argv = world.commands[cmd];
     if (!argv || argv.length === 0) {
-      return { output: { exit_code: 1, cmd, error: "not allowlisted" } };
+      return { output: { exit_code: 1, cmd, error: SHELL_NOT_ALLOWLISTED_ERROR } };
     }
     const [bin, ...rest] = argv;
     if (!bin) {
@@ -325,18 +378,16 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
 
   return {
     "fs.read": fsRead,
+    "fs.list": fsList,
     "fs.write_scoped": fsWrite,
     "shell.run_allowlisted": shell,
     "user.approve": approveInteractive,
     "user.correct": correctInteractive,
-    "mode.enter": (args): ToolResultEnvelope => {
-      const mode = String(args.mode ?? "");
-      return {
-        output: { ok: 1, mode },
-        state_transition: { set: { mode } },
-      };
-    },
     "task.complete": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
+    "phase.yield": (): ToolResultEnvelope => ({
+      output: { ok: 1 },
+      state_transition: { set: { phase_yielded: 1, researched: 1 } },
+    }),
     // Internal keys used by registry for *_auto natives
     "__local.user_approve_auto": approveAuto,
     "__local.user_correct_auto": correctAuto,

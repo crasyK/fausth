@@ -1,0 +1,41 @@
+# Case-study local OpenRouter deployment — optional secondary arm.
+# Explicit-only. Requires --workspace and OPENROUTER_API_KEY.
+
+platform: case-study-coding-openrouter
+model:
+  transport: openai-compatible
+  profile: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+  models:
+    - nvidia/nemotron-3-super-120b-a12b:free
+  temperature: 0.7
+  max_tokens: 2048
+
+world:
+  shell_timeout_ms: 60000
+  max_read_bytes: 256000
+  max_output_bytes: 64000
+  commands:
+    test: ["node", "--test", "src/app.test.js"]
+  scopes:
+    read: [src/]
+    write: [src/]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve_auto
+  user.correct:
+    native: local.user_correct_auto
+  task.complete:
+    native: local.task_complete
+  phase.yield:
+    native: local.phase_yield
