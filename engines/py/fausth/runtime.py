@@ -727,7 +727,11 @@ class FaustRuntime:
             proposal = self.proposals[self.pi]
             self.pi += 1
             if proposal.get("type") == "stop":
-                self.emit({"stage": "propose", "verdict": "allow"})
+                stop_ev: dict[str, Any] = {"stage": "propose", "verdict": "allow"}
+                msg = proposal.get("message")
+                if msg is not None and str(msg) != "":
+                    stop_ev["observation"] = {"stop_message": str(msg)[:500]}
+                self.emit(stop_ev)
                 break
             action = {"name": proposal["name"], "args": proposal.get("args") or {}}
             self.emit({"stage": "propose", "tool": action["name"], "args": action["args"]})
