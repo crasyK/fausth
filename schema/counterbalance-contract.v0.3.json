@@ -1,0 +1,104 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/counterbalance-contract.v0.3.json",
+  "title": "Counterbalance Contract v0.3",
+  "description": "Schema for counterbalance-contract/v0.3. See docs/spec-v0.3-draft.md.",
+  "type": "object",
+  "required": ["spec", "name"],
+  "additionalProperties": true,
+  "properties": {
+    "spec": {
+      "type": "string",
+      "enum": ["counterbalance-contract/v0.3", "counterbalance-contract/v0.2", "counterbalance-contract/v0.1"]
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "state": { "type": "object" },
+    "tools": { "type": "array" },
+    "gates": { "type": "array" },
+    "limits": { "type": "object" },
+    "permissions": { "type": "object" },
+    "counterbalance": { "$ref": "#/$defs/counterbalanceExt" },
+    "mutable": {
+      "type": "array",
+      "description": "Non-normative: cells the agent may propose edits to (never security).",
+      "items": { "type": "string", "enum": ["skills", "memory", "instincts"] }
+    }
+  },
+  "$defs": {
+    "predicate": { "type": "object" },
+    "verifyOutput": {
+      "type": "object",
+      "required": ["kind", "require"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "output" },
+        "require": { "$ref": "#/$defs/predicate" },
+        "otherwise": { "type": "string", "enum": ["allow", "deny", "safe_state"] }
+      }
+    },
+    "invalidateAfter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string" },
+        "ttl_steps": { "type": "integer", "minimum": 1 },
+        "memory_keys": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "memoryProvenanceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string", "enum": ["current", "stale", "contradicted", "unknown"] },
+        "source": { "type": "string", "enum": ["user", "world", "agent-inference"] },
+        "updated_at_step": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "interventionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_activations": { "type": "integer", "minimum": 1 },
+        "window": { "type": "string", "enum": ["run", "host_day"] }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["cron", "event", "human"] },
+        "every_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "counterbalanceExt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sequences": { "type": "array" },
+        "invalidate_after": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/invalidateAfter" }
+        },
+        "completion": { "type": "object" },
+        "checkpoints": { "type": "array" },
+        "orientation": { "type": "object" },
+        "output_verifies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/verifyOutput" }
+        },
+        "memory_provenance": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/memoryProvenanceEntry" }
+        },
+        "intervention_budget": { "$ref": "#/$defs/interventionBudget" },
+        "triggers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trigger" }
+        }
+      }
+    }
+  }
+}
+

@@ -132,3 +132,22 @@ pnpm ci:resolve
 pnpm ci:local-e2e
 pnpm ci:release-check
 ```
+
+## Audit deny telemetry
+
+Treat closed reason codes as a sensor (capability_missing, structured `failure`, output verifies):
+
+```bash +code
+pnpm fausth -- audit conformance/fixtures/cb-chat-solution-absence-denied/expected.jsonl
+pnpm fausth -- audit live/reports/run.jsonl --json
+```
+
+Human summary counts denies, near-misses (deny→retry→deny), `verify_output_failed`, `memory_stale`, and `budget_exceeded`.
+
+## Intervention host (budget demo)
+
+```bash +code
+pnpm -C engines/ts exec node --import tsx ../../scripts/intervention-host.mjs --activations 2
+```
+
+Uses `conformance/fixtures/cb-budget-exceeded` — engine emits `budget_exceeded` on the run window; cron triggers remain host-declared.

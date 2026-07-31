@@ -21,7 +21,9 @@ import type {
   ToolResultEnvelope,
   Verdict,
   Verify,
+  VerifyOutput,
 } from "./types.js";
+import { buildMessageSnapshot } from "./types.js";
 
 export type ToolHandler = (
   args: Record<string, unknown>,
@@ -261,10 +263,11 @@ export class FaustRuntime {
     let touched = false;
     const next = { ...this.agent.state };
     for (const rule of rules) {
-      if (rule.action !== actionName) continue;
+      if (!rule.action || rule.action !== actionName) continue;
       for (const key of rule.memory_keys) {
         next[key] = 0;
         touched = true;
+        this.touchProvenanceStale(key);
       }
     }
     if (!touched) return;
@@ -276,6 +279,75 @@ export class FaustRuntime {
       tool: actionName,
       result: { invalidated: 1 },
     });
+  }
+
+  private touchProvenanceStale(key: string): void {
+    const mp = this.agent.counterbalance?.memory_provenance;
+    if (!mp || !mp[key]) return;
+    mp[key] = { ...mp[key], status: "stale", updated_at_step: this.steps };
+  }
+
+  private touchProvenanceFresh(key: string): void {
+    const cb = this.agent.counterbalance;
+    if (!cb) return;
+    if (!cb.memory_provenance) cb.memory_provenance = {};
+    const prev = cb.memory_provenance[key] ?? {};
+    cb.memory_provenance[key] = {
+      ...prev,
+      status: "current",
+      updated_at_step: this.steps,
+      source: prev.source ?? "world",
+    };
+  }
+
+  /** v0.3: ttl_steps invalidation — age evidence without requiring a mutating action. */
+  private applyTtlInvalidation(): void {
+    const rules = this.agent.counterbalance?.invalidate_after;
+    if (!rules) return;
+    const mp = this.agent.counterbalance?.memory_provenance ?? {};
+    let touched = false;
+    const next = { ...this.agent.state };
+    for (const rule of rules) {
+      if (rule.action || !rule.ttl_steps || rule.ttl_steps < 1) continue;
+      for (const key of rule.memory_keys) {
+        const meta = mp[key];
+        const updated = meta?.updated_at_step ?? 0;
+        if (this.steps - updated < rule.ttl_steps) continue;
+        if (Number(next[key] ?? 0) === 0 && meta?.status === "stale") continue;
+        next[key] = 0;
+        this.touchProvenanceStale(key);
+        touched = true;
+      }
+    }
+    if (!touched) return;
+    this.agent.state = next;
+    this.emit({
+      stage: "record",
+      verdict: "allow",
+      reason: "memory_stale",
+      result: { invalidated: 1, ttl: 1 },
+    });
+  }
+
+  /** Host-reported activation count vs intervention_budget (window: run). */
+  private checkInterventionBudget(): void {
+    const budget = this.agent.counterbalance?.intervention_budget;
+    if (!budget || budget.max_activations < 1) return;
+    if (budget.window === "host_day") return; // host-persisted; engine does not enforce
+    // Each loop iteration that reaches propose counts as one activation for window:run
+    // when steps exceeds max — emit telemetry once at the boundary.
+    if (this.steps === budget.max_activations + 1) {
+      this.emit({
+        stage: "record",
+        verdict: "allow",
+        reason: "budget_exceeded",
+        result: {
+          max_activations: budget.max_activations,
+          activations: this.steps,
+          window: budget.window ?? "run",
+        },
+      });
+    }
   }
 
   private checkCompletion(
@@ -346,6 +418,10 @@ export class FaustRuntime {
           // allow setting keys already in state; also allow new keys that match writable convention
         }
         next[k] = v;
+        // Fresh write: reset TTL clock when value is truthy / non-zero
+        if (v !== 0 && v !== null && v !== undefined && v !== "") {
+          this.touchProvenanceFresh(k);
+        }
       }
     }
     if (transition.remove) {
@@ -812,6 +888,10 @@ export class FaustRuntime {
       return true;
     }
 
+    if (v.kind === "output") {
+      return this.runOutputVerify(v, action, result);
+    }
+
     const reason: ReasonCode =
       v.kind === "evidence" ? "verify_evidence_failed" : "verify_absence_failed";
     const snapshot: Snapshot = { action, state: this.agent.state, result };
@@ -834,11 +914,68 @@ export class FaustRuntime {
     return true;
   }
 
+  private messageContentFrom(
+    action: { name: string; args: Record<string, unknown> },
+    result: Record<string, unknown>,
+  ): string {
+    if (typeof action.args.message === "string") return action.args.message;
+    if (typeof result.message === "string") return result.message;
+    return "";
+  }
+
+  private async runOutputVerify(
+    v: VerifyOutput,
+    action: { name: string; args: Record<string, unknown> },
+    result: Record<string, unknown>,
+  ): Promise<boolean> {
+    const message = buildMessageSnapshot(this.messageContentFrom(action, result));
+    const snapshot: Snapshot = { action, state: this.agent.state, result, message };
+    if (!evalPredicate(v.require, snapshot)) {
+      const verdict = v.otherwise ?? "deny";
+      this.emit({
+        stage: "verify",
+        verdict,
+        reason: "verify_output_failed",
+        tool: action.name,
+        args: action.args,
+        result,
+        observation: { message },
+      });
+      if (verdict === "safe_state" && !this.recovering) {
+        await this.enterSafeFlow("verify_output_failed");
+      }
+      return false;
+    }
+    this.emit({
+      stage: "verify",
+      verdict: "allow",
+      tool: action.name,
+      result,
+      observation: { message },
+    });
+    return true;
+  }
+
+  private async runAgentOutputVerifies(content: string): Promise<boolean> {
+    const verifies = this.agent.counterbalance?.output_verifies ?? [];
+    if (verifies.length === 0) return true;
+    const action = { name: "assistant.message", args: { message: content } };
+    const result = { message: content };
+    for (const v of verifies) {
+      if (v.kind !== "output") continue;
+      const ok = await this.runOutputVerify(v, action, result);
+      if (!ok) return false;
+    }
+    return true;
+  }
+
   async runLoop(maxIterations = 32): Promise<Event[]> {
     let consecutiveEmptyProposals = 0;
     for (let i = 0; i < maxIterations; i++) {
       if (!this.checkLimits()) break;
       this.steps += 1;
+      this.applyTtlInvalidation();
+      this.checkInterventionBudget();
 
       if (this.agent.counterbalance?.orientation?.emit_each_step === true) {
         this.emit({
@@ -850,11 +987,19 @@ export class FaustRuntime {
 
       const proposal = await this.propose();
       if (!proposal || proposal.type === "stop") {
+        const stopMessage =
+          proposal?.type === "stop" && proposal.message
+            ? String(proposal.message)
+            : undefined;
+        if (stopMessage !== undefined) {
+          const ok = await this.runAgentOutputVerifies(stopMessage);
+          if (!ok) break;
+        }
         this.emit({
           stage: "propose",
           verdict: "allow",
-          ...(proposal?.type === "stop" && proposal.message
-            ? { observation: { stop_message: String(proposal.message).slice(0, 500) } }
+          ...(stopMessage
+            ? { observation: { stop_message: stopMessage.slice(0, 500) } }
             : {}),
         });
         break;

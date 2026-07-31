@@ -71,6 +71,12 @@ Do not mix `local.*` with `sim.*`/`stub.*` in one deployment.
 
 Local natives: `local.fs_read`, `local.fs_write`, `local.shell`, `local.user_approve`, `local.user_approve_auto` (test-only), `local.user_correct`, `local.user_correct_auto`, `local.task_complete`, `local.phase_yield`.
 
+## Design heuristics (Counterbalance)
+
+1. **Absence first.** Ask what must *never* happen before what must happen. Prefer `absence` / `output` verifies for enumerable harms; prefer capability absence when the option must never exist.
+2. **User-appeal idiom.** Every *inferential* gate (LLM judge, weakness analysis, injection heuristics) SHOULD be paired with either a computational pre-filter or a `user.correct` checkpoint with `allow_set_keys` covering the judged keys. Checkpoints without independence from the model are mirrors, not counterweights.
+3. **Control timing.** Irreversible-never → cannot; irreversible-sometimes → may not (+ role harness); open chat surfaces → did not (`kind: output`). See [`spec-v0.3-draft.md`](spec-v0.3-draft.md).
+
 ## Track A fixtures
 
 Golden dirs under `conformance/fixtures/` must stay byte-stable. New semantics need a **failing fixture first**, then the runtime change. Never rewrite existing goldens to greenwash live logs.

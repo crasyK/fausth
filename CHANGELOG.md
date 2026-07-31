@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0-alpha — Output verifies, memory TTL, audit, budgets (M12–M15)
+
+### Added
+
+- Output-surface verifies (`kind: output`) with `verify_output_failed` — predicates on `message.contains_code_fence` / content (Track A).
+- Memory provenance map + `invalidate_after.ttl_steps` time-based staleness (mutation `action` rules unchanged).
+- `fausth audit` / `fausth-py audit` — deny-log sensor (capability_missing, structured failures, near-misses, output/TTL/budget counters).
+- `intervention_budget` + declarative `triggers`; engine emits `budget_exceeded` record events for `window: run`. Host demo: `scripts/intervention-host.mjs`.
+- Spec draft / schema: [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md), [`schema/counterbalance-contract.v0.3.json`](schema/counterbalance-contract.v0.3.json).
+- Theory hub drafts: [`docs/notion-hub/`](docs/notion-hub/) (control timing, deny-as-sensor); design doc [`docs/self-improving-harnesses.md`](docs/self-improving-harnesses.md) (mutable cells — not implemented).
+- Fixtures: `cb-chat-*`, `cb-stale-after-ttl`, `cb-memory-provenance-status`, `cb-budget-exceeded`.
+
+### Notes
+
+- Normative promotion of v0.3 sections rides on Track A fixtures; v0.1/v0.2 goldens remain immutable.
+- Unsigned coding `v0.1` pack size pin remains **15411** bytes.
+- Mutable-cell self-editing harnesses remain design-only.
+
 ## 0.2.0-alpha — Normative structured denies (contract v0.2)
 
 ### Added

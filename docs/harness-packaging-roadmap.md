@@ -137,4 +137,20 @@ pnpm ci:resolve
 - Live stdio proof (toy server, recorded model): `node scripts/live-mcp-stdio.mjs`
 - Live model + MCP: `node scripts/live-mcp-model.mjs` (`deployment.stdio-kit.yml` / `deployment.stdio-openrouter.yml`)
 
-**Deferred (later PRs):** real `module` plugins, HTTP MCP, registries, Agent Skills loading, memory ports, Reaction Trace, `fausth audit`.
+**Deferred (later PRs):** real `module` plugins, HTTP MCP, registries, Agent Skills loading, Reaction Trace.
+
+## M12 — Output-surface verifies (shipped in `0.3.0-alpha`)
+
+`kind: output` verifies on assistant/tool message content (`message.contains_code_fence`, …). Reason: `verify_output_failed`. Fixtures: `cb-chat-solution-absence-denied`, `cb-chat-absence-ok`.
+
+## M13 — Memory provenance + TTL (shipped in `0.3.0-alpha`)
+
+`invalidate_after.ttl_steps` + optional `memory_provenance`. Fixtures: `cb-stale-after-ttl`, `cb-memory-provenance-status`.
+
+## M14 — `fausth audit` (shipped in `0.3.0-alpha`)
+
+Deny-log sensor: aggregates `capability_missing`, structured `failure`, near-misses, `verify_output_failed`, `memory_stale`, `budget_exceeded`.
+
+## M15 — Triggers + intervention budgets (shipped in `0.3.0-alpha`)
+
+`intervention_budget` + declarative `triggers` (host interprets). Engine emits `budget_exceeded` record events for `window: run`. Demo: `scripts/intervention-host.mjs`.

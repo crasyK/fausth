@@ -1,6 +1,6 @@
 # Counterbalance Architecture
 
-**Status:** Design thesis for Fausth (guides v0.2). Normative behaviour remains [`spec-v0.1.md`](spec-v0.1.md) until fixtures promote new semantics.
+**Status:** Design thesis for Fausth (guides v0.2; v0.3 candidates in [`spec-v0.3-draft.md`](spec-v0.3-draft.md)). Normative behaviour remains [`spec-v0.2.md`](spec-v0.2.md) / [`spec-v0.1.md`](spec-v0.1.md) until fixtures promote new semantics.
 
 ## Product claim
 
@@ -42,18 +42,40 @@ loop (or complete / recover)
 
 **Instinct** is disposition. The **world** enforces it mid-run against the event log (e.g. deny write before plan approval). Orchestration is the same loop nested — not a separate foundation.
 
+## Control timing (cannot / may not / did not)
+
+The grid names *what*; control timing names *when* a counterweight bites:
+
+| Timing | Name | Epistemics |
+|--------|------|------------|
+| Design-time | **Cannot** — option absent from the vessel | Auditable offline (YAML tool list) |
+| Pre-execution | **May not** — authorize / sequences | Deny before side effects |
+| Post-execution | **Did not** — evidence / absence / output verifies | Per-trace proof |
+
+Decision rule: **irreversibility × enumerability** — provision when needs are enumerable; authorize-gate irreversible-but-legitimate actions; absence/output-verify when harms are enumerable on open surfaces. See [`notion-hub/control-timing.md`](notion-hub/control-timing.md).
+
+Mature designs are marked by their **absence** verifies — ask what must *never* happen before what must happen.
+
 ## Ability
 
 Distinguish: invocation → result → effect → evidence → absence → **acceptance**.  
-v0.1 already ships `effect` / `evidence` / `absence` verifies; Counterbalance strengthens acceptance and evidence freshness.
+v0.1 ships `effect` / `evidence` / `absence`; v0.3 adds `output` verifies for assistant-message surfaces. Counterbalance strengthens acceptance and evidence freshness.
 
 ## Awareness
 
-Memory items need provenance and status (`current` | `stale` | `contradicted` | `unknown`). After mutating actions, dependent observations (file snapshots, prior test results) must become stale. User checkpoints correct or invalidate beliefs — not only approve.
+Memory items need provenance and status (`current` | `stale` | `contradicted` | `unknown`). After mutating actions, dependent observations (file snapshots, prior test results) must become stale; evidence also ages by **steps** (`ttl_steps`, v0.3 draft). User checkpoints correct or invalidate beliefs — not only approve.
+
+### Evidence Independence Principle
+
+A checkpoint is only as strong as its **independence** from what it checks. Orchestrator todos written by the *same* model are Gates (`open_todos eq 0`), not User-cell authority. Self-reported learning without observed work is a mirror, not a counterweight.
 
 ## Behaviour
 
 Role-specific **subagent harnesses** (separate YAMLs with distinct tool lists), permissions, sequence requirements, and hooks shape acceptable paths. Same exchange kernel for coding, support, CI review, later multi-agent. Do not multiplex roles via in-YAML modes.
+
+## Host as part of the vessel
+
+Host scheduling, triggers, and cross-run memory are policy. Leaving them outside the harness recreates “modes smuggled into the host.” Intervention budgets and declarative triggers (v0.3 draft) pull activation rate back into the counterbalance. Deny logs are sensors — see [`notion-hub/deny-log-as-sensor.md`](notion-hub/deny-log-as-sensor.md).
 
 ## Reference harnesses
 

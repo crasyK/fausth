@@ -283,11 +283,12 @@ class FaustRuntime:
         touched = False
         next_state = dict(self.agent["state"])
         for rule in rules:
-            if rule.get("action") != action_name:
+            if not rule.get("action") or rule.get("action") != action_name:
                 continue
             for key in rule.get("memory_keys") or []:
                 next_state[key] = 0
                 touched = True
+                self.touch_provenance_stale(key)
         if not touched:
             return
         self.agent["state"] = next_state
@@ -300,6 +301,79 @@ class FaustRuntime:
                 "result": {"invalidated": 1},
             }
         )
+
+    def touch_provenance_stale(self, key: str) -> None:
+        cb = self.agent.get("counterbalance")
+        if not cb:
+            return
+        mp = cb.setdefault("memory_provenance", {})
+        prev = dict(mp.get(key) or {})
+        prev["status"] = "stale"
+        prev["updated_at_step"] = self.steps
+        mp[key] = prev
+
+    def touch_provenance_fresh(self, key: str) -> None:
+        cb = self.agent.get("counterbalance")
+        if not cb:
+            return
+        mp = cb.setdefault("memory_provenance", {})
+        prev = dict(mp.get(key) or {})
+        prev["status"] = "current"
+        prev["updated_at_step"] = self.steps
+        prev.setdefault("source", "world")
+        mp[key] = prev
+
+    def apply_ttl_invalidation(self) -> None:
+        rules = (self.agent.get("counterbalance") or {}).get("invalidate_after") or []
+        mp = (self.agent.get("counterbalance") or {}).get("memory_provenance") or {}
+        touched = False
+        next_state = dict(self.agent["state"])
+        for rule in rules:
+            if rule.get("action") or not rule.get("ttl_steps") or int(rule["ttl_steps"]) < 1:
+                continue
+            ttl = int(rule["ttl_steps"])
+            for key in rule.get("memory_keys") or []:
+                meta = mp.get(key) or {}
+                updated = int(meta.get("updated_at_step") or 0)
+                if self.steps - updated < ttl:
+                    continue
+                if int(next_state.get(key, 0) or 0) == 0 and meta.get("status") == "stale":
+                    continue
+                next_state[key] = 0
+                self.touch_provenance_stale(key)
+                touched = True
+        if not touched:
+            return
+        self.agent["state"] = next_state
+        self.emit(
+            {
+                "stage": "record",
+                "verdict": "allow",
+                "reason": "memory_stale",
+                "result": {"invalidated": 1, "ttl": 1},
+            }
+        )
+
+    def check_intervention_budget(self) -> None:
+        budget = (self.agent.get("counterbalance") or {}).get("intervention_budget") or {}
+        max_a = budget.get("max_activations")
+        if not max_a or int(max_a) < 1:
+            return
+        if budget.get("window") == "host_day":
+            return
+        if self.steps == int(max_a) + 1:
+            self.emit(
+                {
+                    "stage": "record",
+                    "verdict": "allow",
+                    "reason": "budget_exceeded",
+                    "result": {
+                        "max_activations": int(max_a),
+                        "activations": self.steps,
+                        "window": budget.get("window") or "run",
+                    },
+                }
+            )
 
     def check_completion(
         self, action_name: str
@@ -359,6 +433,8 @@ class FaustRuntime:
         next_state = dict(self.agent["state"])
         for k, v in (transition.get("set") or {}).items():
             next_state[k] = v
+            if v not in (0, None, ""):
+                self.touch_provenance_fresh(k)
         for k in transition.get("remove") or []:
             next_state.pop(k, None)
         self.agent["state"] = next_state
@@ -531,6 +607,8 @@ class FaustRuntime:
         reason = (
             "verify_evidence_failed" if v["kind"] == "evidence" else "verify_absence_failed"
         )
+        if v["kind"] == "output":
+            return self.run_output_verify(v, action, result)
         snapshot = {"action": action, "state": self.agent["state"], "result": result}
         if not eval_predicate(v["require"], snapshot):
             verdict = v.get("otherwise", "safe_state")
@@ -555,6 +633,73 @@ class FaustRuntime:
                 "result": result,
             }
         )
+        return True
+
+    @staticmethod
+    def build_message_snapshot(content: str) -> dict[str, Any]:
+        c = str(content or "")
+        return {
+            "content": c,
+            "contains_code_fence": 1 if "```" in c else 0,
+            "length": len(c),
+        }
+
+    def message_content_from(self, action: dict[str, Any], result: dict[str, Any]) -> str:
+        args = action.get("args") or {}
+        if isinstance(args.get("message"), str):
+            return args["message"]
+        if isinstance(result.get("message"), str):
+            return result["message"]
+        return ""
+
+    def run_output_verify(
+        self, v: dict[str, Any], action: dict[str, Any], result: dict[str, Any]
+    ) -> bool:
+        message = self.build_message_snapshot(self.message_content_from(action, result))
+        snapshot = {
+            "action": action,
+            "state": self.agent["state"],
+            "result": result,
+            "message": message,
+        }
+        if not eval_predicate(v["require"], snapshot):
+            verdict = v.get("otherwise", "deny")
+            self.emit(
+                {
+                    "stage": "verify",
+                    "verdict": verdict,
+                    "reason": "verify_output_failed",
+                    "tool": action["name"],
+                    "args": action["args"],
+                    "result": result,
+                    "observation": {"message": message},
+                }
+            )
+            if verdict == "safe_state" and not self.recovering:
+                self.enter_safe_flow("verify_output_failed")
+            return False
+        self.emit(
+            {
+                "stage": "verify",
+                "verdict": "allow",
+                "tool": action["name"],
+                "result": result,
+                "observation": {"message": message},
+            }
+        )
+        return True
+
+    def run_agent_output_verifies(self, content: str) -> bool:
+        verifies = (self.agent.get("counterbalance") or {}).get("output_verifies") or []
+        if not verifies:
+            return True
+        action = {"name": "assistant.message", "args": {"message": content}}
+        result = {"message": content}
+        for v in verifies:
+            if v.get("kind") != "output":
+                continue
+            if not self.run_output_verify(v, action, result):
+                return False
         return True
 
     def run_verifies(
@@ -711,6 +856,8 @@ class FaustRuntime:
             if not self.check_limits():
                 break
             self.steps += 1
+            self.apply_ttl_invalidation()
+            self.check_intervention_budget()
             if ((self.agent.get("counterbalance") or {}).get("orientation") or {}).get(
                 "emit_each_step"
             ) is True:
@@ -727,8 +874,11 @@ class FaustRuntime:
             proposal = self.proposals[self.pi]
             self.pi += 1
             if proposal.get("type") == "stop":
-                stop_ev: dict[str, Any] = {"stage": "propose", "verdict": "allow"}
                 msg = proposal.get("message")
+                if msg is not None and str(msg) != "":
+                    if not self.run_agent_output_verifies(str(msg)):
+                        break
+                stop_ev: dict[str, Any] = {"stage": "propose", "verdict": "allow"}
                 if msg is not None and str(msg) != "":
                     stop_ev["observation"] = {"stop_message": str(msg)[:500]}
                 self.emit(stop_ev)

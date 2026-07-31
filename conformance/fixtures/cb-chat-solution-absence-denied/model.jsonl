@@ -1,0 +1,1 @@
+{"type":"tool","name":"teacher.reply","args":{"message":"Try a recursive approach:\n```ts\nfunction fact(n){return n<2?1:n*fact(n-1)}\n```"}}

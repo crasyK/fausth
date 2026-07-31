@@ -1,7 +1,7 @@
 {
   "name": "fausth",
   "private": true,
-  "version": "0.2.0-alpha",
+  "version": "0.3.0-alpha",
   "description": "Faust Harness — portable Counterbalance Contract runtime",
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.15.0",

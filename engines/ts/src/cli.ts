@@ -32,6 +32,7 @@ import type { ModelProposal as PortProposal } from "./model/port.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
 import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
+import { auditJsonlFile, formatAuditHuman } from "./audit.js";
 import type { AgentIR, Deployment, Event, ModelProposal, RecordedToolCall } from "./types.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
 import {
@@ -806,6 +807,7 @@ Usage:
   fausth capture --from <events> --scenario <id> --out <dir>
   fausth provider probe --deployment <yml>
   fausth review --mode deterministic|advisory ...
+  fausth audit <events.jsonl> [--json]
 
 Harness refs may be a directory or a .fausth.json bundle (validate/test/inspect/resolve/run unpack to a temp dir).
 Pack signing is opt-in (--sign-key or FAUSTH_SIGN_KEY); unsigned packs stay byte-identical.
@@ -1010,6 +1012,29 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
   }
   if (cmd === "provider") process.exit(await cmdProvider(rest));
   if (cmd === "review") process.exit(await cmdReview(parseArgs(rest)));
+  if (cmd === "audit") {
+    const a = parseArgs(rest);
+    const file = rest.find((x) => !x.startsWith("--"));
+    if (!file) {
+      console.error("usage: fausth audit <events.jsonl> [--json]");
+      process.exit(1);
+    }
+    try {
+      const abs = existsSync(resolve(file))
+        ? resolve(file)
+        : resolve(repoRoot(), file);
+      const summary = auditJsonlFile(abs);
+      if (a.json === "true" || a.json === "1" || rest.includes("--json")) {
+        console.log(canonicalJson(summary));
+      } else {
+        console.log(formatAuditHuman(summary));
+      }
+      process.exit(0);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exit(1);
+    }
+  }
   console.error(`Unknown command ${cmd}`);
   process.exit(1);
 }

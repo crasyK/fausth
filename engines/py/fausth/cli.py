@@ -159,8 +159,64 @@ def main(argv: list[str] | None = None) -> None:
     p_unpack.add_argument("--force", action="store_true")
     p_verify = sub.add_parser("verify")
     p_verify.add_argument("bundle")
+    p_audit = sub.add_parser("audit")
+    p_audit.add_argument("events")
+    p_audit.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
     default_agent = str(repo_root() / "examples" / "coding-counterbalance")
+    if args.cmd == "audit":
+        path = Path(args.events)
+        events = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        by_reason: dict[str, int] = {}
+        structured: dict[str, int] = {}
+        denies = 0
+        caps = 0
+        out_fail = 0
+        stale = 0
+        budget = 0
+        for e in events:
+            if e.get("verdict") == "deny":
+                denies += 1
+                r = e.get("reason") or "unknown"
+                by_reason[r] = by_reason.get(r, 0) + 1
+                if r == "capability_missing":
+                    caps += 1
+                if r == "verify_output_failed":
+                    out_fail += 1
+                kind = (e.get("failure") or {}).get("kind")
+                if kind:
+                    structured[kind] = structured.get(kind, 0) + 1
+            if e.get("reason") == "memory_stale":
+                stale += 1
+            if e.get("reason") == "budget_exceeded":
+                budget += 1
+        summary = {
+            "source": str(path),
+            "events": len(events),
+            "denies": denies,
+            "by_reason": by_reason,
+            "capability_missing": caps,
+            "structured_failures": structured,
+            "verify_output_failed": out_fail,
+            "memory_stale": stale,
+            "budget_exceeded": budget,
+        }
+        if args.as_json:
+            print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
+        else:
+            print(f"fausth-py audit — {path}")
+            print(
+                f"events: {len(events)}  denies: {denies}  "
+                f"capability_missing: {caps}  verify_output_failed: {out_fail}"
+            )
+            print(f"memory_stale: {stale}  budget_exceeded: {budget}")
+            for k, v in sorted(by_reason.items(), key=lambda kv: -kv[1]):
+                print(f"  {k}: {v}")
+        raise SystemExit(0)
     if args.cmd == "replay":
         raise SystemExit(cmd_replay(args.dump_dir))
     if args.cmd == "run":

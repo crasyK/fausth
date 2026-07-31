@@ -7,8 +7,10 @@ export type ReasonCode =
   | "verify_effect_failed"
   | "verify_evidence_failed"
   | "verify_absence_failed"
+  | "verify_output_failed"
   | "verify_judge_invalid"
   | "verify_judge_failed"
+  | "budget_exceeded"
   | "schema_invalid"
   | "input_schema_invalid"
   | "output_schema_invalid"
@@ -31,8 +33,28 @@ export type CounterbalanceSequence = {
 };
 
 export type CounterbalanceInvalidateAfter = {
-  action: string;
+  /** Mutation-triggered invalidation (v0.2). XOR with ttl_steps in v0.3. */
+  action?: string;
+  /** Step-age invalidation (v0.3): stale after N steps since last fresh write. */
+  ttl_steps?: number;
   memory_keys: string[];
+};
+
+export type MemoryProvenanceEntry = {
+  status?: "current" | "stale" | "contradicted" | "unknown";
+  source?: "user" | "world" | "agent-inference";
+  updated_at_step?: number;
+};
+
+export type InterventionBudget = {
+  max_activations: number;
+  window?: "run" | "host_day";
+};
+
+export type CounterbalanceTrigger = {
+  id: string;
+  kind: "cron" | "event" | "human";
+  every_seconds?: number;
 };
 
 export type CounterbalanceCompletion = {
@@ -52,13 +74,18 @@ export type CounterbalanceOrientation = {
   emit_each_step?: boolean;
 };
 
-/** Executable Counterbalance extensions (v0.1 bridge). */
+/** Executable Counterbalance extensions (v0.1 bridge + v0.3 candidates). */
 export type CounterbalanceExt = {
   sequences?: CounterbalanceSequence[];
   invalidate_after?: CounterbalanceInvalidateAfter[];
   completion?: CounterbalanceCompletion;
   checkpoints?: CounterbalanceCheckpointPolicy[];
   orientation?: CounterbalanceOrientation;
+  /** Assistant/tool message verifies (v0.3). */
+  output_verifies?: VerifyOutput[];
+  memory_provenance?: Record<string, MemoryProvenanceEntry>;
+  intervention_budget?: InterventionBudget;
+  triggers?: CounterbalanceTrigger[];
 };
 export type Stage =
   | "orient"
@@ -128,6 +155,13 @@ export type VerifyAbsence = {
   otherwise?: Verdict;
 };
 
+/** Predicates on assistant/tool message content (`message.*` snapshot paths). */
+export type VerifyOutput = {
+  kind: "output";
+  require: Predicate;
+  otherwise?: Verdict;
+};
+
 export type VerifyJudge = {
   kind: "judge";
   model_from?: string;
@@ -136,7 +170,12 @@ export type VerifyJudge = {
   otherwise?: Verdict;
 };
 
-export type Verify = VerifyEffect | VerifyEvidence | VerifyAbsence | VerifyJudge;
+export type Verify =
+  | VerifyEffect
+  | VerifyEvidence
+  | VerifyAbsence
+  | VerifyOutput
+  | VerifyJudge;
 
 export type ToolDef = {
   id: string;
@@ -302,13 +341,30 @@ export type ModelProposal =
   | { type: "stop"; message?: string }
   | { type: "invalid"; reason: string; message?: string };
 
+export type MessageSnapshot = {
+  content: string;
+  contains_code_fence: number;
+  length: number;
+};
+
 export type Snapshot = {
   action?: { name: string; args: Record<string, unknown> };
   state: Record<string, unknown>;
   result?: Record<string, unknown>;
   observation?: Record<string, unknown>;
   judgment?: Record<string, unknown>;
+  message?: MessageSnapshot;
 };
+
+/** Build message.* paths for kind:output verifies. */
+export function buildMessageSnapshot(content: string): MessageSnapshot {
+  const c = String(content ?? "");
+  return {
+    content: c,
+    contains_code_fence: c.includes("```") ? 1 : 0,
+    length: c.length,
+  };
+}
 
 export type RecordedToolCall = {
   call_seq: number;

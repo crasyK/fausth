@@ -19,3 +19,9 @@
 | **Track A** | Deterministic recorded replay; byte-identical across engines. |
 | **Track B** | Live model runs; must not redefine Track A goldens. |
 | **Deny signal (`failure`)** | Machine-checkable object on Counterbalance deny events (`predicate` / `missing_prior_tools` / `checkpoint_key`). Optional `unblock` names a checkpoint tool that can clear a failing `eq` state key. Normative in [`spec-v0.2.md`](spec-v0.2.md). |
+| **Cannot / may not / did not** | Control timing: design-time capability absence; pre-execution authorize/sequence deny; post-execution evidence/absence/output verify. See [`notion-hub/control-timing.md`](notion-hub/control-timing.md). |
+| **Deny telemetry** | Closed reason codes and structured `failure` objects treated as a measurement grammar (`fausth audit`). Security hides disposition; gates reveal it. |
+| **Output verify** | `kind: output` — predicates on assistant/tool message content (`message.contains_code_fence`, …). Reason: `verify_output_failed`. Draft: [`spec-v0.3-draft.md`](spec-v0.3-draft.md). |
+| **Memory provenance** | Per-key status (`current` \| `stale` \| `contradicted` \| `unknown`), source, and `updated_at_step`. Enables mutation and TTL invalidation. |
+| **Intervention budget** | Max harness activations per window (`run` \| `host_day`). Host-persisted for cross-run; engine emits `budget_exceeded` record events. |
+| **Mutable cells** | Non-normative: which agent-side cells may be self-edited (`skills`); security remains immutable. See [`self-improving-harnesses.md`](self-improving-harnesses.md). |
