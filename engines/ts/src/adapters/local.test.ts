@@ -76,6 +76,13 @@ describe("sandbox-path", () => {
     assert.equal(scopeCovered("src/a.ts", ["src/"]), true);
     assert.equal(scopeCovered("lib/a.ts", ["src/"]), false);
   });
+
+  it("scopeCovered treats . as repo root", () => {
+    assert.equal(scopeCovered("src", ["."]), true);
+    assert.equal(scopeCovered("src/app.ts", ["."]), true);
+    assert.equal(scopeCovered("README.md", ["."]), true);
+    assert.equal(scopeCovered(".", ["."]), true);
+  });
 });
 
 describe("local adapter worktree", () => {
