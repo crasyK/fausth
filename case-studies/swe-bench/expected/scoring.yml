@@ -1,0 +1,9 @@
+primary:
+  - task_success
+secondary:
+  - false_completion
+  - engaged
+  - missed_completion
+notes: |
+  SWE-bench Lite HRI track. ground_truth_pass from grade.kind=swe_bench
+  (FAIL_TO_PASS / PASS_TO_PASS). Not a leaderboard claim — CB vs PC only.

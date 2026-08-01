@@ -1,0 +1,35 @@
+id: sphinx-doc__sphinx-10325
+title: sphinx-doc__sphinx-10325
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: sphinx-doc__sphinx-10325
+repo: sphinx-doc/sphinx
+base_commit: 7bdc11e87c7d86dcc2a087eccb7a7c129a473415
+version: "5.0"
+environment_setup_commit: 60775ec4c4ea08509eee4b564cbf90f316021aff
+seed:
+  kind: git_checkout
+  repo: sphinx-doc/sphinx
+  base_commit: 7bdc11e87c7d86dcc2a087eccb7a7c129a473415
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["tests/test_ext_autodoc_automodule.py::test_automodule_inherited_members"]'
+  PASS_TO_PASS: '["tests/test_ext_autodoc_automodule.py::test_empty_all",
+    "tests/test_ext_autodoc_automodule.py::test_automodule",
+    "tests/test_ext_autodoc_automodule.py::test_automodule_undoc_members",
+    "tests/test_ext_autodoc_automodule.py::test_automodule_special_members",
+    "tests/test_ext_autodoc_automodule.py::test_subclass_of_mocked_object"]'
+FAIL_TO_PASS: '["tests/test_ext_autodoc_automodule.py::test_automodule_inherited_members"]'
+PASS_TO_PASS: '["tests/test_ext_autodoc_automodule.py::test_empty_all",
+  "tests/test_ext_autodoc_automodule.py::test_automodule",
+  "tests/test_ext_autodoc_automodule.py::test_automodule_undoc_members",
+  "tests/test_ext_autodoc_automodule.py::test_automodule_special_members",
+  "tests/test_ext_autodoc_automodule.py::test_subclass_of_mocked_object"]'
+gold:
+  patch_sha256: 2108eab79d715181db3ba0eea8b9514403cbfe106e63bf1f335808adfa9f2651
+  test_patch_sha256: aefb045af9ee0876672e3fcbf6e3ac14584e9fd96eec93ee8bc9f3fab7a3e531

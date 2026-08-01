@@ -1,0 +1,39 @@
+id: retail-040
+title: retail-040
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 40
+  task_id: retail-040
+  user_id: isabella_lopez_6490
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_email
+      kwargs:
+        email: isabella.lopez3271@example.com
+    - name: get_user_details
+      kwargs:
+        user_id: isabella_lopez_6490
+    - name: get_order_details
+      kwargs:
+        order_id: "#W4923227"
+    - name: modify_pending_order_payment
+      kwargs:
+        order_id: "#W4923227"
+        payment_method_id: credit_card_8897086
+  outputs:
+    - "60"
+    - mastercard
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

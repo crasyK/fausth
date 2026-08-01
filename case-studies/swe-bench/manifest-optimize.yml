@@ -1,0 +1,115 @@
+study_id: swe-bench-opt-arms
+protocol: docs/case-studies/PROTOCOL.md
+proposal: docs/case-studies/HARNESS-OPTIMIZE-PROPOSAL.md
+hri_track: S
+version: 0.1.0
+
+# Parallel CB arms vs baseline (not stacked). Adaptive arms: never_reset + max_task_tries=5.
+
+harnesses:
+  counterbalanced:
+    kind: pipeline
+    root: case-studies/swe-bench/harnesses/counterbalanced
+    phases:
+      - id: research
+        path: case-studies/swe-bench/harnesses/counterbalanced/agents/research
+      - id: plan
+        path: case-studies/swe-bench/harnesses/counterbalanced/agents/plan
+      - id: implementation
+        path: case-studies/swe-bench/harnesses/counterbalanced/agents/implementation
+  cb-budget:
+    kind: pipeline
+    root: case-studies/swe-bench/harnesses/cb-budget
+    phases:
+      - id: research
+        path: case-studies/swe-bench/harnesses/cb-budget/agents/research
+      - id: plan
+        path: case-studies/swe-bench/harnesses/cb-budget/agents/plan
+      - id: implementation
+        path: case-studies/swe-bench/harnesses/cb-budget/agents/implementation
+  cb-mutable:
+    kind: pipeline
+    root: case-studies/swe-bench/harnesses/cb-mutable
+    phases:
+      - id: research
+        path: case-studies/swe-bench/harnesses/cb-mutable/agents/research
+      - id: plan
+        path: case-studies/swe-bench/harnesses/cb-mutable/agents/plan
+      - id: implementation
+        path: case-studies/swe-bench/harnesses/cb-mutable/agents/implementation
+  cb-optimize:
+    kind: pipeline
+    root: case-studies/swe-bench/harnesses/cb-optimize
+    phases:
+      - id: research
+        path: case-studies/swe-bench/harnesses/cb-optimize/agents/research
+      - id: plan
+        path: case-studies/swe-bench/harnesses/cb-optimize/agents/plan
+      - id: implementation
+        path: case-studies/swe-bench/harnesses/cb-optimize/agents/implementation
+
+deployments:
+  kit:
+    id: kit
+    path: case-studies/swe-bench/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/swe-bench/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+
+matrix:
+  repetitions: 1
+  max_steps: 60
+  max_task_tries: 5
+  harness_lineage: never_reset
+  soft_retry_plan: true
+  optimize_on_fail: true
+  optimizer_harness: case-studies/harness-optimize/agents/optimizer
+  optimizer_deployment: case-studies/harness-optimize/deployments/local-kit.yml
+  conditions:
+    - counterbalanced
+    - cb-budget
+    - cb-mutable
+    - cb-optimize
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+  recorded_provider_labels:
+    - kit
+
+# Pilot: 8 floor tasks (same set for every arm)
+tasks:
+  - id: pallets__flask-4045
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pallets__flask-4045
+  - id: mwaskom__seaborn-2848
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/mwaskom__seaborn-2848
+  - id: pydata__xarray-3364
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pydata__xarray-3364
+  - id: astropy__astropy-12907
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/astropy__astropy-12907
+  - id: psf__requests-1963
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/psf__requests-1963
+  - id: pylint-dev__pylint-5859
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pylint-dev__pylint-5859
+  - id: pytest-dev__pytest-11143
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pytest-dev__pytest-11143
+  - id: django__django-10914
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/django__django-10914
+
+scoring:
+  path: case-studies/swe-bench/expected/scoring.yml
+outputs:
+  raw_dir: live/reports/case-studies/swe-bench
+  summary: case-studies/swe-bench/results/hri-swe-opt-arms-v1.summary.json

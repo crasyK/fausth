@@ -1,0 +1,59 @@
+id: retail-016
+title: retail-016
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 16
+  task_id: retail-016
+  user_id: fatima_johnson_7581
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Fatima
+        last_name: Johnson
+        zip: "78712"
+    - name: get_user_details
+      kwargs:
+        user_id: fatima_johnson_7581
+    - name: get_order_details
+      kwargs:
+        order_id: "#W5199551"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W8665881"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W9389413"
+    - name: calculate
+      kwargs:
+        expression: 3131.1 + 4777.75 + 367.38
+    - name: cancel_pending_order
+      kwargs:
+        order_id: "#W5199551"
+        reason: no longer needed
+    - name: cancel_pending_order
+      kwargs:
+        order_id: "#W8665881"
+        reason: no longer needed
+    - name: return_delivered_order_items
+      kwargs:
+        order_id: "#W9389413"
+        item_ids:
+          - "2554056026"
+        payment_method_id: paypal_5364164
+  outputs:
+    - "8276.23"
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

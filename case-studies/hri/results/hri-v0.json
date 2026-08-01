@@ -1,0 +1,178 @@
+{
+  "schema_version": "hri-index.v0",
+  "generated_at": "2026-08-01T19:07:32.233Z",
+  "manifest_path": "case-studies/hri/manifest.yml",
+  "spec": "docs/testing/HRI.md",
+  "tracks": {
+    "C": {
+      "track_id": "C",
+      "status": "frozen",
+      "study_id": "coding-counterbalance-pilot",
+      "run_id": "live-kit-v3-reduced",
+      "summary_path": "case-studies/coding-counterbalance/results/live-kit-v3-reduced.summary.json",
+      "notes": "Calibrated micro-coding baseline (CB +8.6 pp vs PC).",
+      "metrics": {
+        "task_success_delta": {
+          "absolute_delta": 0.08652482269503547,
+          "counterbalanced": {
+            "p": 0.5333333333333333,
+            "low": 0.39077208862410456,
+            "high": 0.6706509605798527,
+            "n": 45,
+            "successes": 24
+          },
+          "permissive_control": {
+            "p": 0.44680851063829785,
+            "low": 0.3141074747491131,
+            "high": 0.5875478626124176,
+            "n": 47,
+            "successes": 21
+          },
+          "source": "paired_deltas.task_success"
+        }
+      }
+    },
+    "A": {
+      "track_id": "A",
+      "status": "frozen",
+      "study_id": "adversarial-security-pack",
+      "run_id": "adv-live-v3",
+      "summary_path": "case-studies/adversarial/results/adv-live-v3.summary.json",
+      "notes": null,
+      "metrics": {
+        "attack_block_rate_delta": {
+          "absolute_delta": 0.875,
+          "counterbalanced": {
+            "p": 0.875,
+            "n": 8,
+            "successes": 7
+          },
+          "permissive_control": {
+            "p": 0,
+            "n": 8,
+            "successes": 0
+          },
+          "source": "by_task_condition.blk"
+        },
+        "joint": {
+          "value": 0.875,
+          "notes": "CB rate of attack_block ∧ (benign_success or !attack_succeeded)",
+          "sources": [
+            "case-studies/adversarial/results/adv-live-v3.summary.json"
+          ]
+        }
+      }
+    },
+    "S": {
+      "track_id": "S",
+      "status": "frozen",
+      "study_id": "swe-bench-lite-hri",
+      "run_id": "hri-swe-gemma-full",
+      "summary_path": "case-studies/swe-bench/results/hri-swe-gemma-full.summary.json",
+      "notes": "Full Lite N=25 × CB/PC × gemma × 1 rep.",
+      "metrics": {
+        "task_success_delta": {
+          "absolute_delta": 0,
+          "counterbalanced": {
+            "p": 0,
+            "low": 0,
+            "high": 0.13319649395317873,
+            "n": 25,
+            "successes": 0
+          },
+          "permissive_control": {
+            "p": 0,
+            "low": 0,
+            "high": 0.13319649395317873,
+            "n": 25,
+            "successes": 0
+          },
+          "source": "paired_deltas.task_success"
+        }
+      }
+    },
+    "T": {
+      "track_id": "T",
+      "status": "frozen",
+      "study_id": "tau-bench-retail-hri",
+      "run_id": "hri-tau-gemma-full",
+      "summary_path": "case-studies/tau-bench/results/hri-tau-gemma-full.summary.json",
+      "notes": "Full retail N=25 × CB/PC × gemma × 1 rep.",
+      "metrics": {
+        "task_success_delta": {
+          "absolute_delta": 0,
+          "counterbalanced": {
+            "p": 0.12,
+            "low": 0.04166741357068093,
+            "high": 0.29956192183373487,
+            "n": 25,
+            "successes": 3
+          },
+          "permissive_control": {
+            "p": 0.12,
+            "low": 0.04166741357068093,
+            "high": 0.29956192183373487,
+            "n": 25,
+            "successes": 3
+          },
+          "source": "paired_deltas.task_success"
+        }
+      }
+    }
+  },
+  "headline": {
+    "HRI_utility": {
+      "absolute_delta": 0.04326241134751774,
+      "sources": [
+        "C",
+        "S"
+      ],
+      "components": [
+        {
+          "track_id": "C",
+          "absolute_delta": 0.08652482269503547
+        },
+        {
+          "track_id": "S",
+          "absolute_delta": 0
+        }
+      ]
+    },
+    "HRI_policy": {
+      "absolute_delta": 0,
+      "sources": [
+        "T"
+      ],
+      "components": [
+        {
+          "track_id": "T",
+          "absolute_delta": 0
+        }
+      ]
+    },
+    "HRI_security": {
+      "absolute_delta": 0.875,
+      "sources": [
+        "A"
+      ],
+      "components": [
+        {
+          "track_id": "A",
+          "absolute_delta": 0.875
+        }
+      ]
+    },
+    "HRI_joint": {
+      "value": 0.875,
+      "sources": [
+        "case-studies/adversarial/results/adv-live-v3.summary.json"
+      ],
+      "notes": "CB rate of attack_block ∧ (benign_success or !attack_succeeded)"
+    }
+  },
+  "non_claims": [
+    "Not a SWE-bench or τ-bench leaderboard score",
+    "Recorded adversarial rates do not enter HRI_security",
+    "No single opaque scalar until Track S has ≥2 live models frozen"
+  ]
+}

@@ -1,0 +1,91 @@
+spec: counterbalance-contract/v0.1
+name: swe-budget-research
+
+# SWE-bench Lite: explore whole repo (scopes "."), run tests via shell cmd=test (pytest).
+
+# Research subagent — can only read and yield. Host launches the next agent.
+
+state:
+  researched: 0
+  plan_approved: 0
+  test_evidence_current: 0
+  open_todos: 1
+  out_of_scope_writes: 0
+  phase_yielded: 0
+
+limits:
+  max_steps: 24
+  max_tool_calls: 20
+  continue_after_deny: true
+
+tools:
+  - id: fs.read
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: fs.list
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, entries, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { type: string } }
+        found: { type: integer }
+  - id: user.correct
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        request: { type: string }
+        reason: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+  - id: phase.yield
+    input: { type: object, additionalProperties: false, properties: {} }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - fs.read
+    - fs.list
+    - user.correct
+    - phase.yield
+  filesystem:
+    write_scopes: ["."]
+    read_scopes: ["."]
+
+counterbalance:
+  checkpoints:
+    - tool: user.correct
+      allow_set_keys: [open_todos]
+  orientation:
+    emit_each_step: true

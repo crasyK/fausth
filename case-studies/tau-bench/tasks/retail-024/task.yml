@@ -1,0 +1,26 @@
+id: retail-024
+title: retail-024
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 24
+  task_id: retail-024
+  user_id: sofia_hernandez_5364
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions: []
+  outputs:
+    - polyester
+    - cotton
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

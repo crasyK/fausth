@@ -1,0 +1,43 @@
+id: astropy__astropy-14182
+title: astropy__astropy-14182
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: astropy__astropy-14182
+repo: astropy/astropy
+base_commit: a5917978be39d13cd90b517e1de4e7a539ffaa48
+version: "5.1"
+environment_setup_commit: 5f74eacbcc7fff707a44d8eb58adaa514cb7dcb5
+seed:
+  kind: git_checkout
+  repo: astropy/astropy
+  base_commit: a5917978be39d13cd90b517e1de4e7a539ffaa48
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"]'
+  PASS_TO_PASS: '["astropy/io/ascii/tests/test_rst.py::test_read_normal",
+    "astropy/io/ascii/tests/test_rst.py::test_read_normal_names",
+    "astropy/io/ascii/tests/test_rst.py::test_read_normal_names_include",
+    "astropy/io/ascii/tests/test_rst.py::test_read_normal_exclude",
+    "astropy/io/ascii/tests/test_rst.py::test_read_unbounded_right_column",
+    "astropy/io/ascii/tests/test_rst.py::test_read_unbounded_right_column_header",
+    "astropy/io/ascii/tests/test_rst.py::test_read_right_indented_table",
+    "astropy/io/ascii/tests/test_rst.py::test_trailing_spaces_in_row_definition",
+    "astropy/io/ascii/tests/test_rst.py::test_write_normal"]'
+FAIL_TO_PASS: '["astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"]'
+PASS_TO_PASS: '["astropy/io/ascii/tests/test_rst.py::test_read_normal",
+  "astropy/io/ascii/tests/test_rst.py::test_read_normal_names",
+  "astropy/io/ascii/tests/test_rst.py::test_read_normal_names_include",
+  "astropy/io/ascii/tests/test_rst.py::test_read_normal_exclude",
+  "astropy/io/ascii/tests/test_rst.py::test_read_unbounded_right_column",
+  "astropy/io/ascii/tests/test_rst.py::test_read_unbounded_right_column_header",
+  "astropy/io/ascii/tests/test_rst.py::test_read_right_indented_table",
+  "astropy/io/ascii/tests/test_rst.py::test_trailing_spaces_in_row_definition",
+  "astropy/io/ascii/tests/test_rst.py::test_write_normal"]'
+gold:
+  patch_sha256: 1c80b57d515ed4da42842dff56cfec5b5c72fee6a469c9bb33f2f6b59dba0f3c
+  test_patch_sha256: f2a453dd318ca28281ea0d8240c3b641478ba9846b09a7eb9f2ce84db665a972

@@ -1,0 +1,39 @@
+id: pylint-dev__pylint-6506
+title: pylint-dev__pylint-6506
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: pylint-dev__pylint-6506
+repo: pylint-dev/pylint
+base_commit: 0a4204fd7555cfedd43f43017c94d24ef48244a5
+version: "2.14"
+environment_setup_commit: 680edebc686cad664bbed934a490aeafa775f163
+seed:
+  kind: git_checkout
+  repo: pylint-dev/pylint
+  base_commit: 0a4204fd7555cfedd43f43017c94d24ef48244a5
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["tests/config/test_config.py::test_unknown_option_name",
+    "tests/config/test_config.py::test_unknown_short_option_name"]'
+  PASS_TO_PASS: '["tests/config/test_config.py::test_can_read_toml_env_variable",
+    "tests/config/test_config.py::test_unknown_message_id",
+    "tests/config/test_config.py::test_unknown_confidence",
+    "tests/config/test_config.py::test_unknown_yes_no",
+    "tests/config/test_config.py::test_unknown_py_version",
+    "tests/config/test_config.py::test_short_verbose"]'
+FAIL_TO_PASS: '["tests/config/test_config.py::test_unknown_option_name",
+  "tests/config/test_config.py::test_unknown_short_option_name"]'
+PASS_TO_PASS: '["tests/config/test_config.py::test_can_read_toml_env_variable",
+  "tests/config/test_config.py::test_unknown_message_id",
+  "tests/config/test_config.py::test_unknown_confidence",
+  "tests/config/test_config.py::test_unknown_yes_no",
+  "tests/config/test_config.py::test_unknown_py_version",
+  "tests/config/test_config.py::test_short_verbose"]'
+gold:
+  patch_sha256: d998b15278fc2bfaddeeb5d44319201298246247a7ed18c76203e9d27d12b12a
+  test_patch_sha256: 08e5ea1feacdc2887a803130160708ac71a3ac0479b4a95254ae65d7012d8404

@@ -1,0 +1,47 @@
+platform: case-study-tau-kit
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.gemma4-31b-it
+  temperature: 0.7
+  max_tokens: 2048
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+world:
+  shell_timeout_ms: 60000
+  max_read_bytes: 512000
+  max_output_bytes: 128000
+  commands:
+    tau: ["node", "tau.mjs", "from-request"]
+    test: ["node", "tau.mjs", "hash"]
+  scopes:
+    read: ["."]
+    write: ["tau/", "data/"]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.ask:
+    native: local.user_ask_auto
+  user.correct:
+    native: local.user_correct_auto
+  task.complete:
+    native: local.task_complete
+  harness.reflect_skills:
+    native: local.harness_reflect
+  harness.propose_skills_patch:
+    native: local.harness_reflect
+  harness.decline_skills_patch:
+    native: local.harness_decline

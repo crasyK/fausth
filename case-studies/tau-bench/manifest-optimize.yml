@@ -1,0 +1,85 @@
+study_id: tau-bench-opt-arms
+protocol: docs/case-studies/PROTOCOL.md
+proposal: docs/case-studies/HARNESS-OPTIMIZE-PROPOSAL.md
+hri_track: T
+version: 0.1.0
+
+harnesses:
+  counterbalanced:
+    kind: single
+    path: case-studies/tau-bench/harnesses/counterbalanced
+  cb-budget:
+    kind: single
+    path: case-studies/tau-bench/harnesses/cb-budget
+  cb-mutable:
+    kind: single
+    path: case-studies/tau-bench/harnesses/cb-mutable
+  cb-optimize:
+    kind: single
+    path: case-studies/tau-bench/harnesses/cb-optimize
+
+deployments:
+  kit:
+    id: kit
+    path: case-studies/tau-bench/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/tau-bench/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+
+matrix:
+  repetitions: 1
+  max_steps: 40
+  max_task_tries: 5
+  harness_lineage: never_reset
+  soft_retry_plan: false
+  optimize_on_fail: true
+  optimizer_harness: case-studies/harness-optimize/agents/optimizer
+  optimizer_deployment: case-studies/harness-optimize/deployments/local-kit.yml
+  conditions:
+    - counterbalanced
+    - cb-budget
+    - cb-mutable
+    - cb-optimize
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+  recorded_provider_labels:
+    - kit
+
+# Pilot: 8 floor tasks (exclude ceiling retail-020/056/064)
+tasks:
+  - id: retail-000
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-000
+  - id: retail-004
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-004
+  - id: retail-008
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-008
+  - id: retail-012
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-012
+  - id: retail-016
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-016
+  - id: retail-024
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-024
+  - id: retail-028
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-028
+  - id: retail-032
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-032
+
+scoring:
+  path: case-studies/tau-bench/expected/scoring.yml
+outputs:
+  raw_dir: live/reports/case-studies/tau-bench
+  summary: case-studies/tau-bench/results/hri-tau-opt-arms-v1.summary.json

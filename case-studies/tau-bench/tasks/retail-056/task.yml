@@ -1,0 +1,52 @@
+id: retail-056
+title: retail-056
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 56
+  task_id: retail-056
+  user_id: ivan_hernandez_6923
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Ivan
+        last_name: Hernandez
+        zip: "92133"
+    - name: get_user_details
+      kwargs:
+        user_id: ivan_hernandez_6923
+    - name: get_order_details
+      kwargs:
+        order_id: "#W5838674"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W4284542"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W2782744"
+    - name: get_product_details
+      kwargs:
+        product_id: "3821016478"
+    - name: modify_pending_order_items
+      kwargs:
+        order_id: "#W4284542"
+        item_ids:
+          - "8302289002"
+        new_item_ids:
+          - "9534205511"
+        payment_method_id: gift_card_9368765
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

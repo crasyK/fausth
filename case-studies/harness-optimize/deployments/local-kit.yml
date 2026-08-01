@@ -1,0 +1,33 @@
+# Optimizer harness deployment — KIT live, read-only workspace with digest.
+platform: case-study-optimize-kit
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.gemma4-31b-it
+  temperature: 0.7
+  max_tokens: 4096
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+world:
+  shell_timeout_ms: 30000
+  max_read_bytes: 512000
+  max_output_bytes: 128000
+  scopes:
+    read: ["."]
+    write: []
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  harness.reflect_skills:
+    native: local.harness_reflect
+  task.complete:
+    native: local.task_complete

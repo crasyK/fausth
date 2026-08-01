@@ -1,0 +1,41 @@
+id: retail-068
+title: retail-068
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 68
+  task_id: retail-068
+  user_id: noah_ito_3850
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Noah
+        last_name: Ito
+        zip: "98178"
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Noah
+        last_name: Ito
+        zip: "98187"
+    - name: get_user_details
+      kwargs:
+        user_id: noah_ito_3850
+    - name: get_order_details
+      kwargs:
+        order_id: "#W6729841"
+  outputs:
+    - "829.43"
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

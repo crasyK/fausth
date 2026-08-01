@@ -1,0 +1,45 @@
+id: pylint-dev__pylint-5859
+title: pylint-dev__pylint-5859
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: pylint-dev__pylint-5859
+repo: pylint-dev/pylint
+base_commit: 182cc539b8154c0710fcea7e522267e42eba8899
+version: "2.13"
+environment_setup_commit: 3b2fbaec045697d53bdd4435e59dbfc2b286df4b
+seed:
+  kind: git_checkout
+  repo: pylint-dev/pylint
+  base_commit: 182cc539b8154c0710fcea7e522267e42eba8899
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["tests/checkers/unittest_misc.py::TestFixme::test_non_alphanumeric_codetag"]'
+  PASS_TO_PASS: '["tests/checkers/unittest_misc.py::TestFixme::test_fixme_with_message",
+    "tests/checkers/unittest_misc.py::TestFixme::test_todo_without_message",
+    "tests/checkers/unittest_misc.py::TestFixme::test_xxx_without_space",
+    "tests/checkers/unittest_misc.py::TestFixme::test_xxx_middle",
+    "tests/checkers/unittest_misc.py::TestFixme::test_without_space_fixme",
+    "tests/checkers/unittest_misc.py::TestFixme::test_absent_codetag",
+    "tests/checkers/unittest_misc.py::TestFixme::test_other_present_codetag",
+    "tests/checkers/unittest_misc.py::TestFixme::test_issue_2321_should_not_trigger",
+    "tests/checkers/unittest_misc.py::TestFixme::test_issue_2321_should_trigger",
+    "tests/checkers/unittest_misc.py::TestFixme::test_dont_trigger_on_todoist"]'
+FAIL_TO_PASS: '["tests/checkers/unittest_misc.py::TestFixme::test_non_alphanumeric_codetag"]'
+PASS_TO_PASS: '["tests/checkers/unittest_misc.py::TestFixme::test_fixme_with_message",
+  "tests/checkers/unittest_misc.py::TestFixme::test_todo_without_message",
+  "tests/checkers/unittest_misc.py::TestFixme::test_xxx_without_space",
+  "tests/checkers/unittest_misc.py::TestFixme::test_xxx_middle",
+  "tests/checkers/unittest_misc.py::TestFixme::test_without_space_fixme",
+  "tests/checkers/unittest_misc.py::TestFixme::test_absent_codetag",
+  "tests/checkers/unittest_misc.py::TestFixme::test_other_present_codetag",
+  "tests/checkers/unittest_misc.py::TestFixme::test_issue_2321_should_not_trigger",
+  "tests/checkers/unittest_misc.py::TestFixme::test_issue_2321_should_trigger",
+  "tests/checkers/unittest_misc.py::TestFixme::test_dont_trigger_on_todoist"]'
+gold:
+  patch_sha256: e7ec647093f251ba84dc511728af0ac5e7afafb0206bc826c343922d7afccebb
+  test_patch_sha256: fe4a17f367335844b29ea0b9b4a7cea04bd17435c5ff0911a22ceb550dc9ecb6

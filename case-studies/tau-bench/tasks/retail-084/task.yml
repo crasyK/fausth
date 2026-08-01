@@ -1,0 +1,30 @@
+id: retail-084
+title: retail-084
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 84
+  task_id: retail-084
+  user_id: chen_silva_7485
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: return_delivered_order_items
+      kwargs:
+        order_id: "#W9571698"
+        item_ids:
+          - "6065192424"
+        payment_method_id: gift_card_7250692
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct
