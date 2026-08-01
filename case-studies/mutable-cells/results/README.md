@@ -59,6 +59,8 @@ node scripts/case-study-coding.mjs --manifest case-studies/mutable-cells/manifes
 
 ## All-models locked host auto-decline
 
+Aborted mid-run (`live-kit-mutable-autodecline-all-v1`): first Minimax attempt alone took ~5.6h wall / heavy token burn; 64-attempt matrix not practical on current KIT latency. Rely on gemma mid-v* + minimax train-freeze / force-reflect above until a cheaper matrix (recorded or 1×1 smoke) is viable.
+
 ```bash
 node scripts/case-study-coding.mjs --manifest case-studies/mutable-cells/manifest.yml \
   --mode live --skip-conformance --reps 2 --kit-models all \
