@@ -260,7 +260,10 @@ def test_harness(
                 "cb-stale-",
                 "cb-completion-",
                 "cb-user-",
+                "cb-harness-patch-",
             )
+        elif d.name == "mutable-skills":
+            prefixes = ("cb-harness-patch-",)
         elif d.name == "support-bot":
             prefixes = ("cb-support-",)
         if prefixes and root.is_dir():
@@ -313,12 +316,13 @@ def pack_harness(
     if has_connectors:
         resolved = resolve_harness(d)
         has_mcp = any(lock.get("kind") == "mcp" for lock in resolved["resolution"]["lock"])
+        has_module = any(lock.get("kind") == "module" for lock in resolved["resolution"]["lock"])
         for name in CONNECTOR_MANIFEST_NAMES:
             p = d / name
             if p.is_file():
                 files[name] = p.read_text(encoding="utf-8")
         for lock in resolved["resolution"]["lock"]:
-            if lock.get("kind") not in ("file", "mcp"):
+            if lock.get("kind") not in ("file", "mcp", "module"):
                 continue
             path = lock.get("path")
             if not path:
@@ -334,7 +338,9 @@ def pack_harness(
         ordered = {k: files[k] for k in sorted(files.keys())}
         bundle: dict[str, Any] = {
             "format": (
-                "fausth-harness-bundle/v0.3" if has_mcp else "fausth-harness-bundle/v0.2"
+                "fausth-harness-bundle/v0.3"
+                if has_mcp or has_module
+                else "fausth-harness-bundle/v0.2"
             ),
             "name": d.name,
             "files": ordered,
@@ -368,4 +374,84 @@ def pack_harness(
         "files": sorted(ordered.keys()),
         "format": bundle["format"],
         "signed": signed,
+    }
+
+
+def select_harness(
+    harness_dir: str,
+    patch: dict[str, Any],
+    *,
+    fixtures_root: str | None = None,
+    skip_fixtures: bool = False,
+) -> dict[str, Any]:
+    from .harness_patch import apply_candidate_patch, harness_ir_hash
+    from .runtime import replay_fixture
+
+    d = Path(harness_dir).resolve()
+    agent = load_agent_dir(str(d))
+    before = harness_ir_hash(agent)
+    details: list[str] = []
+    errors: list[str] = []
+    try:
+        patched = apply_candidate_patch(agent, patch)
+    except ValueError as e:
+        return {
+            "ok": False,
+            "harness_hash_before": before,
+            "harness_hash_after": before,
+            "fixtures_ok": False,
+            "details": details,
+            "errors": [str(e)],
+            "patched_agent": None,
+        }
+    after = harness_ir_hash(patched)
+    details.append(f"patch applied {before[:12]}… → {after[:12]}…")
+    if skip_fixtures:
+        return {
+            "ok": True,
+            "harness_hash_before": before,
+            "harness_hash_after": after,
+            "fixtures_ok": True,
+            "details": details + ["fixtures skipped"],
+            "errors": errors,
+            "patched_agent": patched,
+        }
+    root = Path(fixtures_root) if fixtures_root else d.parents[1] / "conformance" / "fixtures"
+    prefixes: tuple[str, ...] = ()
+    if d.name == "coding-counterbalance":
+        prefixes = (
+            "cb-coding-",
+            "cb-write-",
+            "cb-stale-",
+            "cb-completion-",
+            "cb-user-",
+            "cb-harness-patch-",
+        )
+    elif d.name == "mutable-skills" or agent.get("mutable"):
+        prefixes = ("cb-harness-patch-",)
+    elif d.name == "support-bot":
+        prefixes = ("cb-support-",)
+    fixtures_ok = True
+    if not prefixes:
+        details.append("no fixture prefixes; selection accepted on patch validation alone")
+    elif not root.is_dir():
+        errors.append(f"fixtures root missing: {root}")
+        fixtures_ok = False
+    else:
+        for child in sorted(root.iterdir()):
+            if child.is_dir() and child.name.startswith(prefixes):
+                ok, _, _ = replay_fixture(child)
+                if not ok:
+                    fixtures_ok = False
+                    errors.append(f"{child.name}: golden mismatch")
+                else:
+                    details.append(f"{child.name}: OK")
+    return {
+        "ok": fixtures_ok and not errors,
+        "harness_hash_before": before,
+        "harness_hash_after": after,
+        "fixtures_ok": fixtures_ok,
+        "details": details,
+        "errors": errors,
+        "patched_agent": patched,
     }

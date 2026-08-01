@@ -213,7 +213,7 @@ bindings:
     }
   });
 
-  it("resolves mcp descriptors and rejects module kind", async () => {
+  it("resolves mcp descriptors and module manifests", async () => {
     const mcpExample = join(root, "examples/primitives/mcp-connectors");
     const resolved = resolveHarness(mcpExample);
     assert.equal(resolved.resolution.connectors.length, 1);
@@ -232,18 +232,56 @@ bindings:
         readFileSync(join(mcpExample, "agent.yml"), "utf8"),
         "utf8",
       );
+      mkdirSync(join(dir, "connectors/module"), { recursive: true });
+      writeFileSync(
+        join(dir, "connectors/module/echo.json"),
+        JSON.stringify({
+          format: "fausth-module-manifest/v0.1",
+          provides: [
+            {
+              id: "echo.ping",
+              input: { type: "object", additionalProperties: false, properties: {} },
+              output: {
+                type: "object",
+                required: ["ok"],
+                additionalProperties: false,
+                properties: { ok: { type: "integer" } },
+              },
+            },
+          ],
+        }),
+        "utf8",
+      );
       writeFileSync(
         join(dir, "connectors.yml"),
         `format: fausth-connectors/v0.1
 connectors:
   - id: plugin
     kind: module
-    path: connectors/plugin.js
+    path: connectors/module/echo.json
+    select: [echo.ping]
+`,
+        "utf8",
+      );
+      const mod = resolveHarness(dir);
+      assert.equal(mod.resolution.connectors[0]!.kind, "module");
+      assert.deepEqual(mod.resolution.selected, ["echo.ping"]);
+
+      // Wrong sha256 pin fails closed (deny-unsigned / pin enforcement)
+      writeFileSync(
+        join(dir, "connectors.yml"),
+        `format: fausth-connectors/v0.1
+connectors:
+  - id: plugin
+    kind: module
+    path: connectors/module/echo.json
+    sha256: "${"0".repeat(64)}"
+    select: [echo.ping]
 `,
         "utf8",
       );
       assert.throws(() => resolveHarness(dir), (e: unknown) => {
-        return e instanceof ConnectorError && e.code === "connectors_unsupported";
+        return e instanceof ConnectorError && e.code === "connectors_hash_mismatch";
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });

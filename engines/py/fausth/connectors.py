@@ -19,6 +19,7 @@ from .registry import load_agent_dir
 CONNECTORS_FORMAT = "fausth-connectors/v0.1"
 CONNECTOR_MANIFEST_FORMAT = "fausth-connector-manifest/v0.1"
 MCP_DESCRIPTOR_FORMAT = "fausth-mcp-descriptor/v0.1"
+MODULE_MANIFEST_FORMAT = "fausth-module-manifest/v0.1"
 RESOLVED_HARNESS_FORMAT = "fausth-resolved-harness/v0.1"
 
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|secret|password|token|credential|authorization)", re.I)
@@ -191,6 +192,45 @@ def load_file_manifest(harness_dir: Path, connector: dict[str, Any]) -> dict[str
     if not isinstance(provides_raw, list) or not provides_raw:
         raise ConnectorError("connectors_invalid", f"manifest at {rel} requires provides[]")
     provides = [as_provision(p, f"file:{rel}.provides[{i}]") for i, p in enumerate(provides_raw)]
+    return {"provides": provides, "sha256": digest, "path": rel}
+
+
+def load_module_manifest(harness_dir: Path, connector: dict[str, Any]) -> dict[str, Any]:
+    path = connector.get("path")
+    if not isinstance(path, str) or not path:
+        raise ConnectorError(
+            "connectors_invalid",
+            f"module connector '{connector.get('id')}' requires path",
+        )
+    abs_path, rel = resolve_under_harness(harness_dir, path)
+    content = abs_path.read_text(encoding="utf-8")
+    digest = sha256_hex(content)
+    if "sha256" in connector and connector["sha256"] is not None:
+        expected = str(connector["sha256"])
+        if not re.fullmatch(r"[a-f0-9]{64}", expected):
+            raise ConnectorError(
+                "connectors_invalid",
+                f"connector '{connector['id']}' sha256 must be a 64-char lowercase hex string",
+            )
+        if expected != digest:
+            raise ConnectorError(
+                "connectors_hash_mismatch",
+                f"sha256 mismatch for connector '{connector['id']}' at {rel}: "
+                f"expected {expected}, got {digest}",
+            )
+    raw = json.loads(content) if abs_path.suffix.lower() == ".json" else yaml.safe_load(content)
+    if not isinstance(raw, dict):
+        raise ConnectorError("connectors_invalid", f"module manifest at {rel} must be an object")
+    if raw.get("format") != MODULE_MANIFEST_FORMAT:
+        raise ConnectorError(
+            "connectors_unsupported",
+            f"unsupported module manifest format at {rel}: {raw.get('format')!r}",
+        )
+    assert_no_secrets(raw, f"module:{rel}")
+    provides_raw = raw.get("provides")
+    if not isinstance(provides_raw, list) or not provides_raw:
+        raise ConnectorError("connectors_invalid", f"module manifest at {rel} requires provides[]")
+    provides = [as_provision(p, f"module:{rel}.provides[{i}]") for i, p in enumerate(provides_raw)]
     return {"provides": provides, "sha256": digest, "path": rel}
 
 
@@ -411,14 +451,41 @@ def resolve_harness(harness_dir: str | Path) -> dict[str, Any]:
             continue
 
         if kind == "module":
-            raise ConnectorError(
-                "connectors_unsupported",
-                "unsupported connector kind 'module' (deferred; use mcp|inline|file)",
+            assert_no_secrets(raw, f"connector:{cid}")
+            loaded = load_module_manifest(d, raw)
+            selected = select_provides(cid, loaded["provides"], raw.get("select"))
+            entries.append(
+                {
+                    "id": cid,
+                    "kind": "module",
+                    "path": loaded["path"],
+                    "sha256": loaded["sha256"],
+                    "provides": sorted(p["id"] for p in loaded["provides"]),
+                    "selected": sorted(p["id"] for p in selected),
+                }
             )
+            lock.append(
+                {
+                    "connector": cid,
+                    "kind": "module",
+                    "path": loaded["path"],
+                    "sha256": loaded["sha256"],
+                }
+            )
+            for p in selected:
+                if p["id"] in selected_seen:
+                    raise ConnectorError(
+                        "connectors_duplicate",
+                        f"selected provision '{p['id']}' provided by multiple connectors",
+                    )
+                selected_seen.add(p["id"])
+                selected_provisions.append(p)
+                selected_ids.append(p["id"])
+            continue
 
         raise ConnectorError(
             "connectors_unsupported",
-            f"unsupported connector kind '{kind}' (supports inline|file|mcp)",
+            f"unsupported connector kind '{kind}' (supports inline|file|mcp|module)",
         )
 
     entries.sort(key=lambda e: e["id"])

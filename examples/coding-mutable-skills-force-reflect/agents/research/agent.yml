@@ -1,0 +1,139 @@
+spec: counterbalance-contract/v0.1
+name: coding-research-mutable-force-reflect
+
+# Research — REQUIRED harness.reflect_skills before phase.yield (no host skip-out).
+
+state:
+  researched: 0
+  plan_approved: 0
+  test_evidence_current: 0
+  open_todos: 1
+  out_of_scope_writes: 0
+  phase_yielded: 0
+
+mutable: [skills]
+
+limits:
+  max_steps: 16
+  max_tool_calls: 14
+  continue_after_deny: true
+
+tools:
+  - id: fs.read
+    description: Read a scoped source file
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: fs.list
+    description: List files under a scoped directory
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, entries, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { type: string } }
+        found: { type: integer }
+  - id: user.correct
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        request: { type: string }
+        reason: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+  - id: harness.reflect_skills
+    description: >
+      Required end-of-phase skills reflection before phase.yield.
+      Call once with disposition=decline (preferred when nothing durable to learn)
+      or disposition=propose with ops=[{op:set_tool_description,tool_id,description}]
+      for an existing tool only. Do not use this to write files or clear todos.
+    input:
+      type: object
+      required: [disposition]
+      additionalProperties: false
+      properties:
+        disposition: { type: string, enum: [decline, propose] }
+        reason:
+          type: string
+          enum:
+            - no_new_heuristic
+            - insufficient_evidence
+            - would_overfit_task
+            - skills_already_adequate
+        note: { type: string }
+        ops:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: object
+            required: [op, tool_id, description]
+            additionalProperties: false
+            properties:
+              op: { type: string, enum: [set_tool_description] }
+              tool_id: { type: string }
+              description: { type: string }
+    output:
+      type: object
+      required: [ok, disposition]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+        disposition: { type: string }
+        proposed: { type: integer }
+        declined: { type: integer }
+  - id: phase.yield
+    input: { type: object, additionalProperties: false, properties: {} }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - fs.read
+    - fs.list
+    - user.correct
+    - harness.reflect_skills
+    - phase.yield
+  filesystem:
+    write_scopes: [src/]
+    read_scopes: [src/]
+
+counterbalance:
+  sequences:
+    - id: reflect-before-yield
+      action: phase.yield
+      require_prior_tools: [harness.reflect_skills]
+  checkpoints:
+    - tool: user.correct
+      allow_set_keys: [open_todos]
+  orientation:
+    emit_each_step: true

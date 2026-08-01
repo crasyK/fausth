@@ -47,6 +47,7 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 - M14 `fausth audit` deny-log sensor (TS + Python)
 - M15 intervention budgets / triggers + host demo runner
 - Theory drafts: control timing, deny-as-sensor, evidence independence ([`docs/notion-hub/`](docs/notion-hub/))
+- M16 mutable-cell self-editing (`mutable`, `harness.propose_skills_patch`, `fausth select`) — Track A fixtures; example [`examples/mutable-skills/`](examples/mutable-skills/)
 
 ## What 0.1.3 proves (short)
 
@@ -60,8 +61,9 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
   [`examples/coding-counterbalance/CASE-STUDY.md`](examples/coding-counterbalance/CASE-STUDY.md)
   · [`docs/case-studies/`](docs/case-studies/)
 
-Still **not** claimed: production isolation, model-adaptive scaffolding, `kind: module` plugins,
-universal live-model task completion, or agent safety outside the published case-study bounds.
+Still **not** claimed: production isolation, universal live-model task completion,
+or agent safety outside the published case-study bounds.
+See [`docs/production-isolation.md`](docs/production-isolation.md) and PROTOCOL P2 expansion.
 
 ## Security (alpha)
 

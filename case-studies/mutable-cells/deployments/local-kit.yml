@@ -1,0 +1,50 @@
+# Mutable-cells case-study KIT deployment (includes skills reflection tools).
+
+platform: case-study-mutable-kit
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.gemma4-31b-it
+  temperature: 0.7
+  max_tokens: 2048
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+world:
+  shell_timeout_ms: 60000
+  max_read_bytes: 256000
+  max_output_bytes: 64000
+  commands:
+    test: ["node", "--test", "src/app.test.js"]
+  scopes:
+    read: [src/]
+    write: [src/]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve_auto
+  user.correct:
+    native: local.user_correct_auto
+  task.complete:
+    native: local.task_complete
+  phase.yield:
+    native: local.phase_yield
+  harness.propose_skills_patch:
+    native: harness.propose_skills_patch
+  harness.decline_skills_patch:
+    native: harness.decline_skills_patch
+  harness.reflect_skills:
+    native: harness.reflect_skills

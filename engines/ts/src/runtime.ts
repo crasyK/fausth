@@ -1,6 +1,7 @@
 import { canonicalJson, deepEq, stateHash } from "./canonical.js";
 import {
   buildCheckpointKeyFailure,
+  buildMissingPriorAnyOfFailure,
   buildMissingPriorToolsFailure,
   buildPredicateFailure,
 } from "./deny-failure.js";
@@ -24,6 +25,24 @@ import type {
   VerifyOutput,
 } from "./types.js";
 import { buildMessageSnapshot } from "./types.js";
+import {
+  applyHarnessPatch,
+  harnessIrHash,
+  parseHarnessPatch,
+  parseSkillsPatchDecline,
+  parseSkillsReflect,
+  validatePatchSecurity,
+} from "./harness-patch.js";
+
+const SKILLS_REFLECTION_TOOLS = new Set([
+  "harness.propose_skills_patch",
+  "harness.decline_skills_patch",
+  "harness.reflect_skills",
+]);
+
+function isSkillsReflectionTool(name: string): boolean {
+  return SKILLS_REFLECTION_TOOLS.has(name);
+}
 
 export type ToolHandler = (
   args: Record<string, unknown>,
@@ -83,6 +102,12 @@ export class FaustRuntime {
   private recovering = false;
   private depth: number;
   private spawnId?: string;
+  /** Cap propose thrash: one attempt (allow or deny) then must decline. */
+  private skillsProposeAttempts = 0;
+  /** Cap decline thrash: one attempt (allow or deny). */
+  private skillsDeclineAttempts = 0;
+  /** Cap unified reflect thrash: one attempt (allow or deny). */
+  private skillsReflectAttempts = 0;
 
   constructor(opts: RuntimeOptions) {
     this.agent = structuredClone(opts.agent);
@@ -118,6 +143,8 @@ export class FaustRuntime {
     if (this.spawnId) ev.spawn_id = this.spawnId;
     if (partial.depth !== undefined) ev.depth = partial.depth;
     if (partial.spawn_id !== undefined) ev.spawn_id = partial.spawn_id;
+    if (partial.harness_hash_before !== undefined) ev.harness_hash_before = partial.harness_hash_before;
+    if (partial.harness_hash_after !== undefined) ev.harness_hash_after = partial.harness_hash_after;
     this.events.push(ev);
     return ev;
   }
@@ -192,12 +219,25 @@ export class FaustRuntime {
     const permitted = this.agent.tools.map((t) => t.id).sort();
     const done = this.successfulExecutes();
     const sequence_blockers = (cb.sequences ?? [])
-      .filter((s) => s.action && (s.require_prior_tools?.length ?? 0) > 0)
-      .map((s) => ({
-        action: s.action,
-        missing_prior_tools: (s.require_prior_tools ?? []).filter((t) => !done.has(t)).sort(),
-      }))
-      .filter((x) => x.missing_prior_tools.length > 0);
+      .filter(
+        (s) =>
+          s.action &&
+          ((s.require_prior_tools?.length ?? 0) > 0 || (s.require_prior_any_of?.length ?? 0) > 0),
+      )
+      .map((s) => {
+        const missing_prior_tools = (s.require_prior_tools ?? []).filter((t) => !done.has(t)).sort();
+        const options = s.require_prior_any_of ?? [];
+        const missing_prior_any_of =
+          options.length > 0 && !options.some((t) => done.has(t))
+            ? [...options].sort()
+            : [];
+        return {
+          action: s.action,
+          ...(missing_prior_tools.length ? { missing_prior_tools } : {}),
+          ...(missing_prior_any_of.length ? { missing_prior_any_of } : {}),
+        };
+      })
+      .filter((x) => (x.missing_prior_tools?.length ?? 0) > 0 || (x.missing_prior_any_of?.length ?? 0) > 0);
     const freshness: Record<string, number> = {};
     for (const rule of cb.invalidate_after ?? []) {
       for (const key of rule.memory_keys ?? []) {
@@ -242,6 +282,14 @@ export class FaustRuntime {
           failure: buildMissingPriorToolsFailure(missing),
         };
       }
+      const anyOf = seq.require_prior_any_of ?? [];
+      if (anyOf.length > 0 && !anyOf.some((t) => done.has(t))) {
+        return {
+          ok: false,
+          reason: "sequence_requirement_failed",
+          failure: buildMissingPriorAnyOfFailure(anyOf),
+        };
+      }
       if (seq.require_state && !evalPredicate(seq.require_state, snap)) {
         return {
           ok: false,
@@ -253,6 +301,53 @@ export class FaustRuntime {
           ),
         };
       }
+    }
+    return { ok: true };
+  }
+
+  /** End-of-phase skills reflection is XOR: propose, decline, or reflect once. */
+  private reflectionAlreadyDone(): boolean {
+    const done = this.successfulExecutes();
+    return (
+      done.has("harness.propose_skills_patch") ||
+      done.has("harness.decline_skills_patch") ||
+      done.has("harness.reflect_skills")
+    );
+  }
+
+  private noteReflectionAttempt(tool: string): void {
+    if (tool === "harness.propose_skills_patch") this.skillsProposeAttempts += 1;
+    if (tool === "harness.decline_skills_patch") this.skillsDeclineAttempts += 1;
+    if (tool === "harness.reflect_skills") this.skillsReflectAttempts += 1;
+  }
+
+  private reflectionGate(
+    actionName: string,
+  ): { ok: true } | { ok: false; error: string } {
+    if (this.reflectionAlreadyDone()) {
+      return {
+        ok: false,
+        error: "skills reflection already completed this phase (propose XOR decline)",
+      };
+    }
+    if (actionName === "harness.propose_skills_patch" && this.skillsProposeAttempts >= 1) {
+      return {
+        ok: false,
+        error:
+          "propose already attempted this phase; call harness.decline_skills_patch with a reason instead",
+      };
+    }
+    if (actionName === "harness.decline_skills_patch" && this.skillsDeclineAttempts >= 1) {
+      return {
+        ok: false,
+        error: "decline already attempted this phase",
+      };
+    }
+    if (actionName === "harness.reflect_skills" && this.skillsReflectAttempts >= 1) {
+      return {
+        ok: false,
+        error: "reflect_skills already attempted this phase",
+      };
     }
     return { ok: true };
   }
@@ -1057,6 +1152,9 @@ export class FaustRuntime {
 
       const inCheck = validateAgainstSchema(tool.input, action.args);
       if (!inCheck.ok) {
+        if (isSkillsReflectionTool(action.name)) {
+          this.noteReflectionAttempt(action.name);
+        }
         this.emit({
           stage: "validate",
           verdict: "deny",
@@ -1102,6 +1200,106 @@ export class FaustRuntime {
           });
           if (this.denyIsTerminal()) break;
           continue;
+        }
+      }
+
+      if (isSkillsReflectionTool(action.name)) {
+        const gate = this.reflectionGate(action.name);
+        if (!gate.ok) {
+          this.noteReflectionAttempt(action.name);
+          this.emit({
+            stage: "authorize",
+            verdict: "deny",
+            reason: "harness_patch_invalid",
+            tool: action.name,
+            args: action.args,
+            error: gate.error,
+          });
+          if (this.denyIsTerminal()) break;
+          continue;
+        }
+      }
+
+      if (action.name === "harness.propose_skills_patch") {
+        const patch = parseHarnessPatch(action.args);
+        if (!patch) {
+          this.noteReflectionAttempt(action.name);
+          this.emit({
+            stage: "authorize",
+            verdict: "deny",
+            reason: "harness_patch_invalid",
+            tool: action.name,
+            args: action.args,
+            error: "patch requires exactly one op in ops array",
+          });
+          if (this.denyIsTerminal()) break;
+          continue;
+        }
+        const patchCheck = validatePatchSecurity(this.agent, patch);
+        if (!patchCheck.ok) {
+          this.noteReflectionAttempt(action.name);
+          this.emit({
+            stage: "authorize",
+            verdict: "deny",
+            reason: patchCheck.reason,
+            tool: action.name,
+            args: action.args,
+            error: patchCheck.error,
+          });
+          if (this.denyIsTerminal()) break;
+          continue;
+        }
+      }
+
+      if (action.name === "harness.decline_skills_patch") {
+        const decline = parseSkillsPatchDecline(action.args);
+        if (!decline) {
+          this.noteReflectionAttempt(action.name);
+          this.emit({
+            stage: "authorize",
+            verdict: "deny",
+            reason: "harness_patch_invalid",
+            tool: action.name,
+            args: action.args,
+            error:
+              "decline requires reason in {no_new_heuristic,insufficient_evidence,would_overfit_task,skills_already_adequate}",
+          });
+          if (this.denyIsTerminal()) break;
+          continue;
+        }
+      }
+
+      if (action.name === "harness.reflect_skills") {
+        const reflect = parseSkillsReflect(action.args);
+        if (!reflect) {
+          this.noteReflectionAttempt(action.name);
+          this.emit({
+            stage: "authorize",
+            verdict: "deny",
+            reason: "harness_patch_invalid",
+            tool: action.name,
+            args: action.args,
+            error:
+              "reflect_skills requires disposition decline|propose; decline needs reason; propose needs exactly one op",
+          });
+          if (this.denyIsTerminal()) break;
+          continue;
+        }
+        if (reflect.disposition === "propose") {
+          const patchCheck = validatePatchSecurity(this.agent, reflect.patch);
+          if (!patchCheck.ok) {
+            this.noteReflectionAttempt(action.name);
+            this.emit({
+              stage: "authorize",
+              verdict: "deny",
+              reason: patchCheck.reason,
+              tool: action.name,
+              args: action.args,
+              error: patchCheck.error,
+            });
+            if (this.denyIsTerminal()) break;
+            continue;
+          }
         }
       }
 
@@ -1201,6 +1399,74 @@ export class FaustRuntime {
           if (execEv && execEv.stage === "execute" && execEv.tool === "agent.spawn") {
             execEv.result = { ...envelope.output, child_events: nested.child_steps };
           }
+        }
+      }
+
+      if (action.name === "harness.propose_skills_patch") {
+        const patch = parseHarnessPatch(action.args);
+        if (patch) {
+          const before = harnessIrHash(this.agent);
+          applyHarnessPatch(this.agent, patch);
+          const after = harnessIrHash(this.agent);
+          this.emit({
+            stage: "rebalance",
+            verdict: "allow",
+            reason: "harness_patch_applied",
+            tool: action.name,
+            args: action.args,
+            harness_hash_before: before,
+            harness_hash_after: after,
+            observation: { ops: patch.ops.length },
+          });
+        }
+      }
+
+      if (action.name === "harness.decline_skills_patch") {
+        const decline = parseSkillsPatchDecline(action.args);
+        if (decline) {
+          this.emit({
+            stage: "record",
+            verdict: "allow",
+            reason: "harness_patch_declined",
+            tool: action.name,
+            args: action.args,
+            observation: {
+              reason: decline.reason,
+              ...(decline.note !== undefined ? { note: decline.note } : {}),
+            },
+          });
+        }
+      }
+
+      if (action.name === "harness.reflect_skills") {
+        const reflect = parseSkillsReflect(action.args);
+        if (reflect?.disposition === "propose") {
+          const before = harnessIrHash(this.agent);
+          applyHarnessPatch(this.agent, reflect.patch);
+          const after = harnessIrHash(this.agent);
+          this.emit({
+            stage: "rebalance",
+            verdict: "allow",
+            reason: "harness_patch_applied",
+            tool: action.name,
+            args: action.args,
+            harness_hash_before: before,
+            harness_hash_after: after,
+            observation: { ops: reflect.patch.ops.length, disposition: "propose" },
+          });
+        } else if (reflect?.disposition === "decline") {
+          this.emit({
+            stage: "record",
+            verdict: "allow",
+            reason: "harness_patch_declined",
+            tool: action.name,
+            args: action.args,
+            observation: {
+              reason: reflect.reason,
+              disposition: "decline",
+              ...(reflect.note !== undefined ? { note: reflect.note } : {}),
+            },
+          });
         }
       }
 

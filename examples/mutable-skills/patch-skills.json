@@ -1,0 +1,9 @@
+{
+  "ops": [
+    {
+      "op": "set_tool_description",
+      "tool_id": "fs.read",
+      "description": "Read a scoped source file carefully"
+    }
+  ]
+}

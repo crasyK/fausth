@@ -24,4 +24,4 @@
 | **Output verify** | `kind: output` — predicates on assistant/tool message content (`message.contains_code_fence`, …). Reason: `verify_output_failed`. Draft: [`spec-v0.3-draft.md`](spec-v0.3-draft.md). |
 | **Memory provenance** | Per-key status (`current` \| `stale` \| `contradicted` \| `unknown`), source, and `updated_at_step`. Enables mutation and TTL invalidation. |
 | **Intervention budget** | Max harness activations per window (`run` \| `host_day`). Host-persisted for cross-run; engine emits `budget_exceeded` record events. |
-| **Mutable cells** | Non-normative: which agent-side cells may be self-edited (`skills`); security remains immutable. See [`self-improving-harnesses.md`](self-improving-harnesses.md). |
+| **Mutable cells** | Agent-side cells that may be self-edited (`skills` → tool descriptions; optionally `memory` / `instincts`). Security and checkpoints remain immutable. See [`self-improving-harnesses.md`](self-improving-harnesses.md). |

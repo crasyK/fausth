@@ -1,0 +1,56 @@
+spec: counterbalance-contract/v0.1
+name: mutable-skills
+state:
+  open_todos: 1
+
+mutable: [skills]
+
+tools:
+  - id: fs.read
+    description: Read a file
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: harness.propose_skills_patch
+    description: Propose an allowlisted skills harness patch
+    input:
+      type: object
+      required: [ops]
+      additionalProperties: false
+      properties:
+        ops:
+          type: array
+          minItems: 1
+          items: { type: object, additionalProperties: true }
+    output:
+      type: object
+      required: [ok, proposed]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+        proposed: { type: integer }
+
+limits:
+  max_steps: 8
+  max_tool_calls: 4
+
+permissions:
+  tools:
+    - fs.read
+    - harness.propose_skills_patch
+
+counterbalance:
+  orientation:
+    emit_each_step: true

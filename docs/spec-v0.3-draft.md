@@ -137,19 +137,26 @@ counterbalance:
 
 ---
 
-## Appendix A — Mutable cells (non-normative)
+## Appendix A — Mutable cells
 
 Self-improving harnesses MAY declare which Counterbalance cells are editable:
 
 ```yaml
-# Non-normative sketch
 mutable: [skills]          # agent may propose harness edits here
 # security: always immutable by contract
 ```
 
-Fitness function: re-run Track A fixtures after mutation. Reproduction boundary: `fausth pack` + optional Ed25519 signature.
+Fitness function: re-run Track A fixtures after mutation (`fausth select`). Reproduction boundary: `fausth pack` + optional Ed25519 signature.
 
-Deferred from `0.3.0-alpha` engines. See [`self-improving-harnesses.md`](self-improving-harnesses.md).
+**Normative candidates** (promoted behind Track A fixtures):
+
+| Fixture | Expectation |
+|---------|-------------|
+| `cb-harness-patch-skills-ok` | skills description patch → `rebalance` / `harness_patch_applied` |
+| `cb-harness-patch-security-denied` | permissions/sequences ops → `harness_patch_denied` |
+| `cb-harness-patch-memory-cautious` | memory op without `mutable: [memory]` → deny |
+
+See [`self-improving-harnesses.md`](self-improving-harnesses.md).
 
 ---
 

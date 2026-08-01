@@ -75,6 +75,10 @@ export function buildMissingPriorToolsFailure(missing: string[]): DenyFailure {
   return { kind: "missing_prior_tools", missing_prior_tools: [...missing].sort() };
 }
 
+export function buildMissingPriorAnyOfFailure(options: string[]): DenyFailure {
+  return { kind: "missing_prior_any_of", options: [...options].sort() };
+}
+
 export function buildCheckpointKeyFailure(key: string): DenyFailure {
   return { kind: "checkpoint_key", checkpoint_key: key };
 }
@@ -83,6 +87,9 @@ export function buildCheckpointKeyFailure(key: string): DenyFailure {
 export function renderDenyFailureProse(failure: DenyFailure): string | null {
   if (failure.kind === "missing_prior_tools") {
     return `Call ${failure.missing_prior_tools.join(", ")} first.`;
+  }
+  if (failure.kind === "missing_prior_any_of") {
+    return `Call one of: ${failure.options.join(", ")} first.`;
   }
   if (failure.kind === "checkpoint_key") {
     return `Checkpoint tool may not set '${failure.checkpoint_key}'.`;

@@ -15,6 +15,11 @@ import {
   parseMcpNative,
 } from "./mcp.js";
 import {
+  createModuleHandlers,
+  deploymentUsesModule,
+  parseModuleNative,
+} from "./module.js";
+import {
   assertBindingFamilyConsistency,
   createLocalCodingTools,
   createLocalWorld,
@@ -25,6 +30,7 @@ import type { ResolvedHarnessIR } from "../types.js";
 
 export { AdapterError } from "./error.js";
 export type { AdapterErrorCode } from "./error.js";
+export { deploymentUsesModule, parseModuleNative } from "./module.js";
 
 /** Map deployment `native:` id → harness tool id. */
 export const NATIVE_TO_TOOL: Record<string, string> = {
@@ -77,6 +83,17 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "refund.request": "refund.request",
   "stub.spawn": "agent.spawn",
   "agent.spawn": "agent.spawn",
+  "stub.harness_patch": "harness.propose_skills_patch",
+  "sim.harness_patch": "harness.propose_skills_patch",
+  "harness.propose_skills_patch": "harness.propose_skills_patch",
+  "stub.harness_decline": "harness.decline_skills_patch",
+  "sim.harness_decline": "harness.decline_skills_patch",
+  "local.harness_decline": "harness.decline_skills_patch",
+  "harness.decline_skills_patch": "harness.decline_skills_patch",
+  "stub.harness_reflect": "harness.reflect_skills",
+  "sim.harness_reflect": "harness.reflect_skills",
+  "local.harness_reflect": "harness.reflect_skills",
+  "harness.reflect_skills": "harness.reflect_skills",
   "stub.temperature": "sensor.temperature.read",
   "sensor.temperature.read": "sensor.temperature.read",
   "stub.fan_read": "sensor.fan.read_percent",
@@ -144,9 +161,16 @@ export function resolveToolsFromDeployment(
       "deployment mixes local.* bindings with mcp.* — use a single binding family",
     );
   }
+  if (deploymentUsesLocal(deployment) && deploymentUsesModule(deployment)) {
+    throw new AdapterError(
+      "adapter_unresolved",
+      "deployment mixes local.* bindings with module.* — use a single binding family",
+    );
+  }
 
   let pool: Record<string, ToolHandler>;
   let mcpNativeToTool: Record<string, string> = {};
+  let moduleNativeToTool: Record<string, string> = {};
   if (deploymentUsesLocal(deployment)) {
     if (!opts.workspace) {
       throw new AdapterError(
@@ -184,6 +208,17 @@ export function resolveToolsFromDeployment(
       pool = { ...pool, ...mcp.handlers };
       mcpNativeToTool = mcp.nativeToTool;
     }
+    if (deploymentUsesModule(deployment)) {
+      if (!opts.harnessDir) {
+        throw new AdapterError(
+          "adapter_unresolved",
+          "adapter failure: module.* bindings require harness directory context",
+        );
+      }
+      const mod = createModuleHandlers(deployment, { harnessDir: opts.harnessDir });
+      pool = { ...pool, ...mod.handlers };
+      moduleNativeToTool = mod.nativeToTool;
+    }
   }
 
   const bindings = deployment.bindings ?? {};
@@ -199,9 +234,13 @@ export function resolveToolsFromDeployment(
       );
     }
     const native = binding.native;
-    let mapped = NATIVE_TO_TOOL[native] ?? mcpNativeToTool[native];
+    let mapped = NATIVE_TO_TOOL[native] ?? mcpNativeToTool[native] ?? moduleNativeToTool[native];
     if (!mapped && native.startsWith("mcp.")) {
       const parsed = parseMcpNative(native);
+      if (parsed && parsed.toolId === id) mapped = id;
+    }
+    if (!mapped && native.startsWith("module.")) {
+      const parsed = parseModuleNative(native);
       if (parsed && parsed.toolId === id) mapped = id;
     }
     if (!mapped) {

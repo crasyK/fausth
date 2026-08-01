@@ -136,6 +136,32 @@ From v0.3.1, live runs inject a canonical loop into the CLI system prompt:
 
 Contract text is **on by default**; a contract A/B matrix dimension is deferred.
 
+## Expansion roadmap (P2 — evidence, not features)
+
+Universal live-model task completion and agent safety beyond the coding pilot are **evidence programs**. Do not remove README disclaimers until each bound is crossed with published results.
+
+### Universal live-model task completion
+
+Current Track B (`fausth live`) measures `completion_reached` / `e2e_pass_rate` on ≤8 scenarios; the coding pilot measures held-out `ground_truth_pass` on 8 tasks × 2 models. Expanding the claim requires:
+
+1. Pre-register a larger matrix (models × tasks × domains) with frozen protocol version
+2. Keep `false_completion` / `missed_completion` as first-class (see `scripts/case-study-score.mjs`)
+3. Report Wilson/bootstrap intervals; no cherry-picking after unblinding
+4. Separate infrastructure engagement failures (`engaged`) from task success
+
+### Agent safety beyond case-study bounds
+
+The coding pilot proves phased capability provisioning vs permissive ablation under disposable worktrees. Broader safety claims need:
+
+1. New domains with their own PROTOCOL + held-out graders (support-bot policy, CI review)
+2. Stronger oracles (multi-file integration, tampering, optional human eval)
+3. Additional baselines beyond permissive-control
+4. Explicit threat model (Counterbalance ≠ OS security)
+
+### Contract A/B (still deferred)
+
+Per-model contract teaching / scaffolding overlays (M18) may be used as a **host** dimension, but must not redefine Track A goldens. Overlay matrices are opt-in and pre-registered separately.
+
 ## Historical note
 
 `live-kit-v2` / `live-kit-all-v2` used in-YAML modes with advertise-then-deny

@@ -22,6 +22,7 @@ import type {
 export const CONNECTORS_FORMAT = "fausth-connectors/v0.1";
 export const CONNECTOR_MANIFEST_FORMAT = "fausth-connector-manifest/v0.1";
 export const MCP_DESCRIPTOR_FORMAT = "fausth-mcp-descriptor/v0.1";
+export const MODULE_MANIFEST_FORMAT = "fausth-module-manifest/v0.1";
 export const RESOLVED_HARNESS_FORMAT = "fausth-resolved-harness/v0.1";
 
 export type ConnectorErrorCode =
@@ -230,6 +231,53 @@ function loadFileManifest(
     throw new ConnectorError("connectors_invalid", `manifest at ${rel} requires provides[]`);
   }
   const provides = obj.provides.map((p, i) => asProvision(p, `file:${rel}.provides[${i}]`));
+  return { provides, sha256: digest, path: rel };
+}
+
+function loadModuleManifest(
+  harnessDir: string,
+  connector: Extract<ConnectorSource, { kind: "module" }>,
+): { provides: ConnectorProvision[]; sha256: string; path: string } {
+  if (typeof connector.path !== "string" || !connector.path) {
+    throw new ConnectorError(
+      "connectors_invalid",
+      `module connector '${connector.id}' requires path`,
+    );
+  }
+  const { abs, rel } = resolveUnderHarness(harnessDir, connector.path);
+  const content = readFileSync(abs, "utf8");
+  const digest = sha256Hex(content);
+  if (connector.sha256 !== undefined) {
+    const expected = String(connector.sha256);
+    if (!/^[a-f0-9]{64}$/.test(expected)) {
+      throw new ConnectorError(
+        "connectors_invalid",
+        `connector '${connector.id}' sha256 must be a 64-char lowercase hex string`,
+      );
+    }
+    if (expected !== digest) {
+      throw new ConnectorError(
+        "connectors_hash_mismatch",
+        `sha256 mismatch for connector '${connector.id}' at ${rel}: expected ${expected}, got ${digest}`,
+      );
+    }
+  }
+  const raw = abs.endsWith(".json") ? JSON.parse(content) : parseYaml(content);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ConnectorError("connectors_invalid", `module manifest at ${rel} must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.format !== MODULE_MANIFEST_FORMAT) {
+    throw new ConnectorError(
+      "connectors_unsupported",
+      `unsupported module manifest format at ${rel}: ${String(obj.format)}`,
+    );
+  }
+  assertNoSecrets(obj, `module:${rel}`);
+  if (!Array.isArray(obj.provides) || obj.provides.length === 0) {
+    throw new ConnectorError("connectors_invalid", `module manifest at ${rel} requires provides[]`);
+  }
+  const provides = obj.provides.map((p, i) => asProvision(p, `module:${rel}.provides[${i}]`));
   return { provides, sha256: digest, path: rel };
 }
 
@@ -468,15 +516,40 @@ export function resolveHarness(harnessDir: string): ResolvedHarnessIR {
     }
 
     if (c.kind === "module") {
-      throw new ConnectorError(
-        "connectors_unsupported",
-        `unsupported connector kind 'module' (deferred; use mcp|inline|file)`,
-      );
+      assertNoSecrets(c, `connector:${c.id}`);
+      const loaded = loadModuleManifest(dir, c);
+      const selected = selectProvides(c.id, loaded.provides, c.select);
+      entries.push({
+        id: c.id,
+        kind: "module",
+        path: loaded.path,
+        sha256: loaded.sha256,
+        provides: loaded.provides.map((p) => p.id).sort(),
+        selected: selected.map((p) => p.id).sort(),
+      });
+      lock.push({
+        connector: c.id,
+        kind: "module",
+        path: loaded.path,
+        sha256: loaded.sha256,
+      });
+      for (const p of selected) {
+        if (selectedSeen.has(p.id)) {
+          throw new ConnectorError(
+            "connectors_duplicate",
+            `selected provision '${p.id}' provided by multiple connectors`,
+          );
+        }
+        selectedSeen.add(p.id);
+        selectedProvisions.push(p);
+        selectedIds.push(p.id);
+      }
+      continue;
     }
 
     throw new ConnectorError(
       "connectors_unsupported",
-      `unsupported connector kind '${String((c as { kind?: string }).kind)}' (supports inline|file|mcp)`,
+      `unsupported connector kind '${String((c as { kind?: string }).kind)}' (supports inline|file|mcp|module)`,
     );
   }
 

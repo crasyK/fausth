@@ -96,6 +96,117 @@ const codingToolDefs: Record<string, ToolDef> = {
       properties: { ok: { type: "integer" } },
     },
   },
+  "harness.propose_skills_patch": {
+    id: "harness.propose_skills_patch",
+    description:
+      "Propose an allowlisted skills/memory/instincts harness patch (fixtures keep a loose ops schema)",
+    input: {
+      type: "object",
+      required: ["ops"],
+      additionalProperties: false,
+      properties: {
+        ops: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: true } },
+      },
+    },
+    output: {
+      type: "object",
+      required: ["ok", "proposed"],
+      additionalProperties: false,
+      properties: { ok: { type: "integer" }, proposed: { type: "integer" } },
+    },
+  },
+  "harness.decline_skills_patch": {
+    id: "harness.decline_skills_patch",
+    description:
+      "Decline proposing a skills patch and record a structured reason (end-of-phase reflection)",
+    input: {
+      type: "object",
+      required: ["reason"],
+      additionalProperties: false,
+      properties: {
+        reason: {
+          type: "string",
+          enum: [
+            "no_new_heuristic",
+            "insufficient_evidence",
+            "would_overfit_task",
+            "skills_already_adequate",
+          ],
+        },
+        note: { type: "string" },
+      },
+    },
+    output: {
+      type: "object",
+      required: ["ok", "declined"],
+      additionalProperties: false,
+      properties: { ok: { type: "integer" }, declined: { type: "integer" } },
+    },
+  },
+  "harness.reflect_skills": {
+    id: "harness.reflect_skills",
+    description:
+      "End-of-phase skills reflection: disposition decline (reason) or propose (exactly one set_tool_description op)",
+    input: {
+      type: "object",
+      required: ["disposition"],
+      additionalProperties: false,
+      properties: {
+        disposition: { type: "string", enum: ["decline", "propose"] },
+        reason: {
+          type: "string",
+          enum: [
+            "no_new_heuristic",
+            "insufficient_evidence",
+            "would_overfit_task",
+            "skills_already_adequate",
+          ],
+        },
+        note: { type: "string" },
+        ops: {
+          type: "array",
+          minItems: 1,
+          maxItems: 1,
+          items: { type: "object", additionalProperties: true },
+        },
+      },
+    },
+    output: {
+      type: "object",
+      required: ["ok", "disposition"],
+      additionalProperties: false,
+      properties: {
+        ok: { type: "integer" },
+        disposition: { type: "string" },
+        proposed: { type: "integer" },
+        declined: { type: "integer" },
+      },
+    },
+  },
+  "phase.yield": {
+    id: "phase.yield",
+    input: { type: "object", additionalProperties: false, properties: {} },
+    output: {
+      type: "object",
+      required: ["ok"],
+      additionalProperties: false,
+      properties: { ok: { type: "integer" } },
+    },
+  },
+  "echo.ping": {
+    id: "echo.ping",
+    input: {
+      type: "object",
+      additionalProperties: false,
+      properties: { message: { type: "string" } },
+    },
+    output: {
+      type: "object",
+      required: ["ok", "echo"],
+      additionalProperties: false,
+      properties: { ok: { type: "integer" }, echo: { type: "string" } },
+    },
+  },
 };
 
 function codingTools(ids: string[]): ToolDef[] {
@@ -642,6 +753,263 @@ async function main(): Promise<void> {
         },
       },
     ],
+  );
+
+  // Mutable cells: skills-only description patch succeeds → rebalance
+  const patchToolIds = ["fs.read", "harness.propose_skills_patch"];
+  await materialize(
+    "cb-harness-patch-skills-ok",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "mutable-skills-slice",
+      state: { open_todos: 1 },
+      tools: codingTools(patchToolIds).map((t) =>
+        t.id === "fs.read" ? { ...t, description: "Read a file" } : t,
+      ),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: { tools: [...patchToolIds] },
+      mutable: ["skills"],
+      counterbalance: { orientation: { emit_each_step: true } },
+    },
+    [
+      {
+        type: "tool",
+        name: "harness.propose_skills_patch",
+        args: {
+          ops: [
+            {
+              op: "set_tool_description",
+              tool_id: "fs.read",
+              description: "Read a scoped source file carefully",
+            },
+          ],
+        },
+      },
+    ],
+    [
+      {
+        call_seq: 1,
+        tool: "harness.propose_skills_patch",
+        args: {
+          ops: [
+            {
+              op: "set_tool_description",
+              tool_id: "fs.read",
+              description: "Read a scoped source file carefully",
+            },
+          ],
+        },
+        result: { output: { ok: 1, proposed: 1 } },
+      },
+    ],
+  );
+
+  // Mutable cells: security surface patch always denied
+  await materialize(
+    "cb-harness-patch-security-denied",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "mutable-skills-slice",
+      state: { open_todos: 1 },
+      tools: codingTools(patchToolIds),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: { tools: [...patchToolIds] },
+      mutable: ["skills"],
+      counterbalance: {
+        sequences: [{ id: "plan-before-write", action: "fs.write_scoped", require_prior_tools: ["user.approve"] }],
+        orientation: { emit_each_step: true },
+      },
+    },
+    [
+      {
+        type: "tool",
+        name: "harness.propose_skills_patch",
+        args: {
+          ops: [{ op: "set_permissions_tools", tools: ["fs.read", "fs.write_scoped", "shell.run_allowlisted"] }],
+        },
+      },
+    ],
+    [],
+  );
+
+  // Mutable cells: memory note denied when memory not declared mutable
+  await materialize(
+    "cb-harness-patch-memory-cautious",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "mutable-skills-slice",
+      state: { open_todos: 1 },
+      tools: codingTools(patchToolIds),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: { tools: [...patchToolIds] },
+      mutable: ["skills"],
+      counterbalance: { orientation: { emit_each_step: true } },
+    },
+    [
+      {
+        type: "tool",
+        name: "harness.propose_skills_patch",
+        args: {
+          ops: [{ op: "set_memory_note", key: "lesson", note: "always re-test after writes" }],
+        },
+      },
+    ],
+    [],
+  );
+
+  // End-of-phase reflection: unified reflect_skills (decline)
+  const reflectToolIds = ["fs.read", "harness.reflect_skills", "phase.yield"];
+  await materialize(
+    "cb-decline-skills-ok",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "mutable-skills-slice",
+      state: { open_todos: 1, phase_yielded: 0 },
+      tools: codingTools(reflectToolIds),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: { tools: [...reflectToolIds] },
+      mutable: ["skills"],
+      counterbalance: {
+        sequences: [
+          {
+            id: "reflect-before-yield",
+            action: "phase.yield",
+            require_prior_any_of: ["harness.reflect_skills"],
+          },
+        ],
+        orientation: { emit_each_step: true },
+      },
+    },
+    [
+      {
+        type: "tool",
+        name: "harness.reflect_skills",
+        args: {
+          disposition: "decline",
+          reason: "no_new_heuristic",
+          note: "research found nothing new",
+        },
+      },
+      { type: "tool", name: "phase.yield", args: {} },
+    ],
+    [
+      {
+        call_seq: 1,
+        tool: "harness.reflect_skills",
+        args: {
+          disposition: "decline",
+          reason: "no_new_heuristic",
+          note: "research found nothing new",
+        },
+        result: { output: { ok: 1, disposition: "decline", declined: 1 } },
+      },
+      {
+        call_seq: 2,
+        tool: "phase.yield",
+        args: {},
+        result: {
+          output: { ok: 1 },
+          state_transition: { set: { phase_yielded: 1, researched: 1 } },
+        },
+      },
+    ],
+  );
+
+  // Missing reflection before yield → sequence deny
+  await materialize(
+    "cb-reflect-before-yield-denied",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "mutable-skills-slice",
+      state: { open_todos: 1, phase_yielded: 0 },
+      tools: codingTools(reflectToolIds),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: { tools: [...reflectToolIds] },
+      mutable: ["skills"],
+      counterbalance: {
+        sequences: [
+          {
+            id: "reflect-before-yield",
+            action: "phase.yield",
+            require_prior_any_of: ["harness.reflect_skills"],
+          },
+        ],
+        orientation: { emit_each_step: true },
+      },
+    },
+    [{ type: "tool", name: "phase.yield", args: {} }],
+    [],
+  );
+
+  // Module connector happy path (recorded-style tool surface)
+  await materialize(
+    "cb-module-connector-ok",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "module-connectors-slice",
+      state: { pings: 0 },
+      tools: codingTools(["echo.ping"]),
+      limits: { max_steps: 4, max_tool_calls: 2 },
+      permissions: { tools: ["echo.ping"] },
+      counterbalance: { orientation: { emit_each_step: true } },
+    },
+    [{ type: "tool", name: "echo.ping", args: { message: "hello" } }],
+    [
+      {
+        call_seq: 1,
+        tool: "echo.ping",
+        args: { message: "hello" },
+        result: { output: { ok: 1, echo: "hello" } },
+      },
+    ],
+  );
+
+  // Module connector: unknown tool / not provisioned when only echo is declared
+  await materialize(
+    "cb-module-connector-deny-unsigned",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "module-connectors-slice",
+      state: { pings: 0 },
+      tools: codingTools(["echo.ping"]),
+      limits: { max_steps: 4, max_tool_calls: 2 },
+      permissions: { tools: ["echo.ping"] },
+      counterbalance: { orientation: { emit_each_step: true } },
+    },
+    [{ type: "tool", name: "fs.write_scoped", args: { path: "src/x.ts", content: "x" } }],
+    [],
+  );
+
+  // Overlay selects variant: narrowed tools (post-overlay IR) — write not provisioned
+  await materialize(
+    "cb-overlay-selects-variant",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "overlay-narrow-slice",
+      state: { open_todos: 1 },
+      tools: codingTools(["fs.read"]),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: { tools: ["fs.read"] },
+      counterbalance: { orientation: { emit_each_step: true } },
+    },
+    [{ type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } }],
+    [],
+  );
+
+  // Overlay falls back: full tool surface still enforces sequences
+  await materialize(
+    "cb-overlay-falls-back",
+    baseAgent({
+      state: {
+        researched: 1,
+        plan_approved: 0,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [{ type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } }],
+    [],
   );
 }
 

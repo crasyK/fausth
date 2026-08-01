@@ -1,0 +1,1 @@
+{"args":{"ops":[{"key":"lesson","note":"always re-test after writes","op":"set_memory_note"}]},"name":"harness.propose_skills_patch","type":"tool"}

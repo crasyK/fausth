@@ -1,0 +1,1 @@
+{"tool":"echo.ping","args":{"message":"hello"},"result":{"output":{"ok":1,"echo":"hello"}}}

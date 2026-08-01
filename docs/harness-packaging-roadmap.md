@@ -137,7 +137,7 @@ pnpm ci:resolve
 - Live stdio proof (toy server, recorded model): `node scripts/live-mcp-stdio.mjs`
 - Live model + MCP: `node scripts/live-mcp-model.mjs` (`deployment.stdio-kit.yml` / `deployment.stdio-openrouter.yml`)
 
-**Deferred (later PRs):** real `module` plugins, HTTP MCP, registries, Agent Skills loading, Reaction Trace.
+**Deferred (later PRs):** HTTP MCP, registries, Agent Skills loading, Reaction Trace, production isolation (see [`production-isolation.md`](production-isolation.md)).
 
 ## M12 — Output-surface verifies (shipped in `0.3.0-alpha`)
 
@@ -154,3 +154,15 @@ Deny-log sensor: aggregates `capability_missing`, structured `failure`, near-mis
 ## M15 — Triggers + intervention budgets (shipped in `0.3.0-alpha`)
 
 `intervention_budget` + declarative `triggers` (host interprets). Engine emits `budget_exceeded` record events for `window: run`. Demo: `scripts/intervention-host.mjs`.
+
+## M16 — Mutable-cell self-editing (implemented)
+
+`mutable: [skills|memory|instincts]`, tool `harness.propose_skills_patch`, runtime `rebalance` stage, `fausth select --candidate-patch`. Skills map to tool `description` only. Fixtures: `cb-harness-patch-*`. Example: `examples/mutable-skills/`.
+
+## M17 — `kind: module` connectors (subprocess)
+
+Resolve/lock module connectors offline; execute via argv-allowlisted subprocess (MCP-like). No in-process JS/WASM in this milestone.
+
+## M18 — Model-adaptive scaffolding overlays
+
+Declarative per-model overlays that **narrow** (never widen) capability surfaces. Model remains a deployment concern.

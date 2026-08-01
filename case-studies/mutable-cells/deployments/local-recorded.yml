@@ -1,0 +1,39 @@
+# Recorded transport for mutable-cells plumbing (CI-safe once traces exist).
+
+platform: case-study-mutable-recorded
+model:
+  transport: recorded
+
+world:
+  shell_timeout_ms: 30000
+  max_read_bytes: 256000
+  max_output_bytes: 64000
+  commands:
+    test: ["node", "--test", "src/app.test.js"]
+  scopes:
+    read: [src/]
+    write: [src/]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve_auto
+  user.correct:
+    native: local.user_correct_auto
+  task.complete:
+    native: local.task_complete
+  phase.yield:
+    native: local.phase_yield
+  harness.propose_skills_patch:
+    native: harness.propose_skills_patch
+  harness.decline_skills_patch:
+    native: harness.decline_skills_patch
+  harness.reflect_skills:
+    native: harness.reflect_skills

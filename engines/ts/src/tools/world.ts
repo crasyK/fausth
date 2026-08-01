@@ -147,6 +147,21 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
     "refund.request": (): ToolResultEnvelope => ({
       output: { ok: 1 },
     }),
+    "harness.propose_skills_patch": (): ToolResultEnvelope => ({
+      output: { ok: 1, proposed: 1 },
+    }),
+    "harness.decline_skills_patch": (): ToolResultEnvelope => ({
+      output: { ok: 1, declined: 1 },
+    }),
+    "harness.reflect_skills": (args): ToolResultEnvelope => {
+      if (args.disposition === "propose") {
+        return { output: { ok: 1, disposition: "propose", proposed: 1 } };
+      }
+      return { output: { ok: 1, disposition: "decline", declined: 1 } };
+    },
+    "echo.ping": (args): ToolResultEnvelope => ({
+      output: { ok: 1, echo: String(args.message ?? "pong") },
+    }),
   };
 }
 

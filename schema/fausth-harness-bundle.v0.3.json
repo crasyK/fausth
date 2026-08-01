@@ -23,7 +23,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 200,
-        "pattern": "^(agent\\.(yml|yaml|json)|README\\.md|smoke\\.(model|expected)\\.jsonl|mcp\\.recorded\\.jsonl|deployment\\.[A-Za-z0-9._-]+\\.ya?ml|connectors\\.(yml|yaml|json)|connectors/[A-Za-z0-9._-]+\\.(yml|yaml|json)|connectors/mcp/[A-Za-z0-9._-]+\\.json)$"
+        "pattern": "^(agent\\.(yml|yaml|json)|README\\.md|smoke\\.(model|expected)\\.jsonl|mcp\\.recorded\\.jsonl|module\\.recorded\\.jsonl|deployment\\.[A-Za-z0-9._-]+\\.ya?ml|connectors\\.(yml|yaml|json)|connectors/[A-Za-z0-9._-]+\\.(yml|yaml|json)|connectors/mcp/[A-Za-z0-9._-]+\\.json|connectors/module/[A-Za-z0-9._-]+\\.(json|mjs))$"
       },
       "additionalProperties": {
         "type": "string",

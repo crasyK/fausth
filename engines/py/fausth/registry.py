@@ -31,10 +31,13 @@ NATIVE_TO_TOOL: dict[str, str] = {
     "stub.user_correct": "user.correct",
     "sim.user_correct": "user.correct",
   "user.correct": "user.correct",
-  "stub.task_complete": "task.complete",
-  "sim.task_complete": "task.complete",
-  "task.complete": "task.complete",
-  "stub.kb_lookup": "kb.lookup",
+    "stub.task_complete": "task.complete",
+    "sim.task_complete": "task.complete",
+    "task.complete": "task.complete",
+    "stub.phase_yield": "phase.yield",
+    "sim.phase_yield": "phase.yield",
+    "phase.yield": "phase.yield",
+    "stub.kb_lookup": "kb.lookup",
     "sim.kb_lookup": "kb.lookup",
     "kb.lookup": "kb.lookup",
     "stub.answer_send": "answer.send",
@@ -47,6 +50,15 @@ NATIVE_TO_TOOL: dict[str, str] = {
     "refund.request": "refund.request",
     "stub.spawn": "agent.spawn",
     "agent.spawn": "agent.spawn",
+    "stub.harness_patch": "harness.propose_skills_patch",
+    "sim.harness_patch": "harness.propose_skills_patch",
+    "harness.propose_skills_patch": "harness.propose_skills_patch",
+    "stub.harness_decline": "harness.decline_skills_patch",
+    "sim.harness_decline": "harness.decline_skills_patch",
+    "harness.decline_skills_patch": "harness.decline_skills_patch",
+    "stub.harness_reflect": "harness.reflect_skills",
+    "sim.harness_reflect": "harness.reflect_skills",
+    "harness.reflect_skills": "harness.reflect_skills",
     "stub.temperature": "sensor.temperature.read",
     "sensor.temperature.read": "sensor.temperature.read",
     "stub.fan_read": "sensor.fan.read_percent",
@@ -63,6 +75,36 @@ def load_yaml(path: str) -> Any:
         return yaml.safe_load(f)
 
 
+def agent_yaml_to_ir(raw: Any) -> dict[str, Any]:
+    """Mirror TS agentYamlToIr — keep only known AgentIR fields."""
+    a = raw if isinstance(raw, dict) else {}
+    ir: dict[str, Any] = {
+        "spec": str(a.get("spec") or "counterbalance-contract/v0.1"),
+        "name": str(a.get("name") or "unnamed"),
+        "state": dict(a.get("state") or {}),
+        "tools": list(a.get("tools") or []),
+    }
+    for key in (
+        "gates",
+        "limits",
+        "fallback_state",
+        "recovery",
+        "permissions",
+        "spawn",
+        "counterbalance",
+        "mutable",
+        "instinct_text",
+        "overlays",
+    ):
+        if key in a and a[key] is not None:
+            ir[key] = a[key]
+    if a.get("safe_state"):
+        ir["safe_state"] = a["safe_state"]
+        if "fallback_state" not in ir:
+            ir["fallback_state"] = a["safe_state"]
+    return ir
+
+
 def load_agent_dir(dir_path: str) -> dict[str, Any]:
     from pathlib import Path
 
@@ -70,15 +112,15 @@ def load_agent_dir(dir_path: str) -> dict[str, Any]:
     yml = d / "agent.yml"
     js = d / "agent.json"
     if yml.exists():
-        agent = load_yaml(str(yml))
+        agent = agent_yaml_to_ir(load_yaml(str(yml)))
     elif js.exists():
         import json
 
         agent = json.loads(js.read_text(encoding="utf-8"))
+        if agent.get("safe_state") and not agent.get("fallback_state"):
+            agent["fallback_state"] = agent["safe_state"]
     else:
         raise FileNotFoundError(f"No agent.yml or agent.json in {dir_path}")
-    if agent.get("safe_state") and not agent.get("fallback_state"):
-        agent["fallback_state"] = agent["safe_state"]
     return agent
 
 

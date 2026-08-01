@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, replay_fixture
-from .packaging import inspect_harness, pack_harness, test_harness
+from .packaging import inspect_harness, pack_harness, test_harness, select_harness
 from .bundle import BundleError, load_bundle_file, resolve_harness_ref, unpack_bundle
 from .bundle_signature import BundleSignatureError
 from .connectors import (
@@ -162,6 +162,11 @@ def main(argv: list[str] | None = None) -> None:
     p_audit = sub.add_parser("audit")
     p_audit.add_argument("events")
     p_audit.add_argument("--json", action="store_true", dest="as_json")
+    p_select = sub.add_parser("select")
+    p_select.add_argument("agent", nargs="?", default=None)
+    p_select.add_argument("--candidate-patch", required=True, dest="candidate_patch")
+    p_select.add_argument("--skip-fixtures", action="store_true")
+    p_select.add_argument("--out-agent", default=None, dest="out_agent")
     args = parser.parse_args(argv)
     default_agent = str(repo_root() / "examples" / "coding-counterbalance")
     if args.cmd == "audit":
@@ -328,6 +333,36 @@ def main(argv: list[str] | None = None) -> None:
         except BundleError as e:
             print(str(e), file=sys.stderr)
             raise SystemExit(1)
+    if args.cmd == "select":
+        target = args.agent or default_agent
+        patch = json.loads(Path(args.candidate_patch).read_text(encoding="utf-8"))
+        result = select_harness(
+            target,
+            patch,
+            fixtures_root=str(repo_root() / "conformance" / "fixtures"),
+            skip_fixtures=args.skip_fixtures,
+        )
+        for d in result["details"]:
+            print(d)
+        if args.out_agent and result.get("patched_agent"):
+            outp = Path(args.out_agent)
+            outp.parent.mkdir(parents=True, exist_ok=True)
+            from .canonical import canonical_json
+
+            outp.write_text(
+                canonical_json(result["patched_agent"]) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            print(f"wrote patched agent → {outp.resolve()}")
+        if not result["ok"]:
+            for e in result["errors"]:
+                print(e, file=sys.stderr)
+            raise SystemExit(1)
+        print(
+            f"select OK ({result['harness_hash_before'][:12]}… → {result['harness_hash_after'][:12]}…)"
+        )
+        raise SystemExit(0)
     parser.print_help()
     raise SystemExit(0)
 

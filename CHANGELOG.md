@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Mutable cells, module connectors, overlays (M16–M18)
+
+### Added
+
+- Mutable-cell self-editing: `mutable: [skills|memory|instincts]`, `harness.propose_skills_patch`, `harness.decline_skills_patch`, unified `harness.reflect_skills`, `require_prior_any_of`, `rebalance` stage, `fausth select`.
+- Track A fixtures: `cb-harness-patch-skills-ok`, `cb-harness-patch-security-denied`, `cb-harness-patch-memory-cautious`, `cb-decline-skills-ok`, `cb-reflect-before-yield-denied`.
+- Example: [`examples/mutable-skills/`](examples/mutable-skills/); coding fork [`examples/coding-mutable-skills/`](examples/coding-mutable-skills/) (research/plan baseline-like; implementation reflect-after-tests; host auto-decline).
+- Case study: [`case-studies/mutable-cells/`](case-studies/mutable-cells/) (host: `--manifest`); mid-v3 parity Δ = 0 on task_success.
+- `kind: module` connectors: offline resolve via `fausth-module-manifest/v0.1` (subprocess execution model; no in-process JS/WASM). Example: [`examples/primitives/module-connectors/`](examples/primitives/module-connectors/).
+- Model-adaptive overlays (`overlays` / `resolveOverlay`) — narrow-only tools/limits.
+- Docs: [`docs/production-isolation.md`](docs/production-isolation.md) (deferred scope); PROTOCOL P2 expansion section.
+
+### Notes
+
+- Skills patches may only change tool `description` (v0.1 IR). Security/checkpoints remain immutable.
+- README still excludes production isolation, universal live completion, and safety beyond case-study bounds.
+
 ## 0.3.0-alpha — Output verifies, memory TTL, audit, budgets (M12–M15)
 
 ### Added
@@ -9,15 +26,14 @@
 - `fausth audit` / `fausth-py audit` — deny-log sensor (capability_missing, structured failures, near-misses, output/TTL/budget counters).
 - `intervention_budget` + declarative `triggers`; engine emits `budget_exceeded` record events for `window: run`. Host demo: `scripts/intervention-host.mjs`.
 - Spec draft / schema: [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md), [`schema/counterbalance-contract.v0.3.json`](schema/counterbalance-contract.v0.3.json).
-- Theory hub drafts: [`docs/notion-hub/`](docs/notion-hub/) (control timing, deny-as-sensor); design doc [`docs/self-improving-harnesses.md`](docs/self-improving-harnesses.md) (mutable cells — not implemented).
+- Theory hub drafts: [`docs/notion-hub/`](docs/notion-hub/) (control timing, deny-as-sensor); design doc [`docs/self-improving-harnesses.md`](docs/self-improving-harnesses.md) (mutable cells — implemented in Unreleased/M16).
 - Fixtures: `cb-chat-*`, `cb-stale-after-ttl`, `cb-memory-provenance-status`, `cb-budget-exceeded`.
 
 ### Notes
 
 - Normative promotion of v0.3 sections rides on Track A fixtures; v0.1/v0.2 goldens remain immutable.
 - Unsigned coding `v0.1` pack size pin remains **15411** bytes.
-- Mutable-cell self-editing harnesses remain design-only.
-
+- Mutable-cell self-editing was design-only at the `0.3.0-alpha` cut; see Unreleased.
 ## 0.2.0-alpha — Normative structured denies (contract v0.2)
 
 ### Added

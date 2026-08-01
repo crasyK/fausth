@@ -156,6 +156,42 @@ describe("aggregateAttempts", () => {
       1,
     );
   });
+
+  it("pairs baseline vs mutable-skills for mutable-cells studies", () => {
+    const attempts = [
+      {
+        status: "scored",
+        condition: "baseline",
+        task_id: "01-fix-add",
+        score: {
+          task_success: true,
+          false_completion: false,
+          blocked_false_completion: false,
+          missed_completion: false,
+          engaged: true,
+        },
+      },
+      {
+        status: "scored",
+        condition: "mutable-skills",
+        task_id: "01-fix-add",
+        score: {
+          task_success: false,
+          false_completion: false,
+          blocked_false_completion: false,
+          missed_completion: false,
+          engaged: true,
+        },
+      },
+    ];
+    const agg = aggregateAttempts(attempts);
+    assert.deepEqual(agg.arms, { treatment: "mutable-skills", control: "baseline" });
+    assert.equal(agg.by_condition.baseline.n, 1);
+    assert.equal(agg.by_condition["mutable-skills"].n, 1);
+    assert.equal(agg.paired_deltas.task_success.absolute, -1);
+    assert.equal(agg.paired_deltas.task_success.baseline.p, 1);
+    assert.equal(agg.paired_deltas.task_success.mutable_skills.p, 0);
+  });
 });
 
 describe("clusteredBootstrapRate", () => {
