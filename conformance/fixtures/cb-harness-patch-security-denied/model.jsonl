@@ -1,0 +1,1 @@
+{"args":{"ops":[{"op":"set_permissions_tools","tools":["fs.read","fs.write_scoped","shell.run_allowlisted"]}]},"name":"harness.propose_skills_patch","type":"tool"}

@@ -8,6 +8,7 @@ from typing import Any, Callable
 from .canonical import canonical_json, deep_eq, state_hash
 from .deny_failure import (
     build_checkpoint_key_failure,
+    build_missing_prior_any_of_failure,
     build_missing_prior_tools_failure,
     build_predicate_failure,
 )
@@ -65,6 +66,9 @@ class FaustRuntime:
         self.recovering = False
         self.depth = depth
         self.spawn_id = spawn_id
+        self.skills_propose_attempts = 0
+        self.skills_decline_attempts = 0
+        self.skills_reflect_attempts = 0
 
     def emit(self, partial: dict[str, Any]) -> dict[str, Any]:
         self.seq += 1
@@ -74,7 +78,18 @@ class FaustRuntime:
             "state_hash": partial.get("state_hash") or state_hash(self.agent["state"]),
             "stage": partial["stage"],
         }
-        for k in ("verdict", "reason", "tool", "args", "result", "observation", "error", "failure"):
+        for k in (
+            "verdict",
+            "reason",
+            "tool",
+            "args",
+            "result",
+            "observation",
+            "error",
+            "failure",
+            "harness_hash_before",
+            "harness_hash_after",
+        ):
             if k in partial and partial[k] is not None:
                 ev[k] = partial[k]
         if self.depth > 0:
@@ -224,12 +239,22 @@ class FaustRuntime:
         sequence_blockers: list[dict[str, Any]] = []
         for seq in cb.get("sequences") or []:
             action = seq.get("action")
-            priors = seq.get("require_prior_tools") or []
-            if not action or not priors:
+            if not action:
                 continue
-            missing = sorted([t for t in priors if t not in done])
+            priors = seq.get("require_prior_tools") or []
+            any_of = seq.get("require_prior_any_of") or []
+            missing = sorted([t for t in priors if t not in done]) if priors else []
+            missing_any = (
+                sorted(any_of) if any_of and not any(t in done for t in any_of) else []
+            )
+            if not missing and not missing_any:
+                continue
+            blocker: dict[str, Any] = {"action": action}
             if missing:
-                sequence_blockers.append({"action": action, "missing_prior_tools": missing})
+                blocker["missing_prior_tools"] = missing
+            if missing_any:
+                blocker["missing_prior_any_of"] = missing_any
+            sequence_blockers.append(blocker)
         freshness: dict[str, int] = {}
         for rule in cb.get("invalidate_after") or []:
             for key in rule.get("memory_keys") or []:
@@ -269,6 +294,13 @@ class FaustRuntime:
                     "sequence_requirement_failed",
                     build_missing_prior_tools_failure(missing),
                 )
+            any_of = seq.get("require_prior_any_of") or []
+            if any_of and not any(t in done for t in any_of):
+                return (
+                    False,
+                    "sequence_requirement_failed",
+                    build_missing_prior_any_of_failure(any_of),
+                )
             req = seq.get("require_state")
             if req and not eval_predicate(req, snap):
                 return (
@@ -277,6 +309,39 @@ class FaustRuntime:
                     build_predicate_failure(req, snap, checkpoints),
                 )
         return True, None, None
+
+    def reflection_already_done(self) -> bool:
+        done = self.successful_executes()
+        return (
+            "harness.propose_skills_patch" in done
+            or "harness.decline_skills_patch" in done
+            or "harness.reflect_skills" in done
+        )
+
+    def note_reflection_attempt(self, tool: str) -> None:
+        if tool == "harness.propose_skills_patch":
+            self.skills_propose_attempts += 1
+        if tool == "harness.decline_skills_patch":
+            self.skills_decline_attempts += 1
+        if tool == "harness.reflect_skills":
+            self.skills_reflect_attempts += 1
+
+    def reflection_gate(self, action_name: str) -> tuple[bool, str | None]:
+        if self.reflection_already_done():
+            return (
+                False,
+                "skills reflection already completed this phase (propose XOR decline)",
+            )
+        if action_name == "harness.propose_skills_patch" and self.skills_propose_attempts >= 1:
+            return (
+                False,
+                "propose already attempted this phase; call harness.decline_skills_patch with a reason instead",
+            )
+        if action_name == "harness.decline_skills_patch" and self.skills_decline_attempts >= 1:
+            return False, "decline already attempted this phase"
+        if action_name == "harness.reflect_skills" and self.skills_reflect_attempts >= 1:
+            return False, "reflect_skills already attempted this phase"
+        return True, None
 
     def apply_invalidate_after(self, action_name: str) -> None:
         rules = (self.agent.get("counterbalance") or {}).get("invalidate_after") or []
@@ -915,6 +980,12 @@ class FaustRuntime:
                 continue
             ok, errs = validate_against_schema(tool.get("input"), action["args"])
             if not ok:
+                if action["name"] in (
+                    "harness.propose_skills_patch",
+                    "harness.decline_skills_patch",
+                    "harness.reflect_skills",
+                ):
+                    self.note_reflection_attempt(action["name"])
                 self.emit(
                     {
                         "stage": "validate",
@@ -971,6 +1042,117 @@ class FaustRuntime:
                     if self.deny_is_terminal():
                         break
                     continue
+            if action["name"] in (
+                "harness.propose_skills_patch",
+                "harness.decline_skills_patch",
+                "harness.reflect_skills",
+            ):
+                rok, rerr = self.reflection_gate(action["name"])
+                if not rok:
+                    self.note_reflection_attempt(action["name"])
+                    self.emit(
+                        {
+                            "stage": "authorize",
+                            "verdict": "deny",
+                            "reason": "harness_patch_invalid",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "error": rerr,
+                        }
+                    )
+                    if self.deny_is_terminal():
+                        break
+                    continue
+            if action["name"] == "harness.propose_skills_patch":
+                from .harness_patch import parse_harness_patch, validate_patch_security
+
+                patch = parse_harness_patch(action["args"])
+                if not patch:
+                    self.note_reflection_attempt(action["name"])
+                    self.emit(
+                        {
+                            "stage": "authorize",
+                            "verdict": "deny",
+                            "reason": "harness_patch_invalid",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "error": "patch requires exactly one op in ops array",
+                        }
+                    )
+                    if self.deny_is_terminal():
+                        break
+                    continue
+                pok, preason, perr = validate_patch_security(self.agent, patch)
+                if not pok:
+                    self.note_reflection_attempt(action["name"])
+                    self.emit(
+                        {
+                            "stage": "authorize",
+                            "verdict": "deny",
+                            "reason": preason,
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "error": perr,
+                        }
+                    )
+                    if self.deny_is_terminal():
+                        break
+                    continue
+            if action["name"] == "harness.decline_skills_patch":
+                from .harness_patch import parse_skills_patch_decline
+
+                decline = parse_skills_patch_decline(action["args"])
+                if not decline:
+                    self.note_reflection_attempt(action["name"])
+                    self.emit(
+                        {
+                            "stage": "authorize",
+                            "verdict": "deny",
+                            "reason": "harness_patch_invalid",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "error": "decline requires reason in {no_new_heuristic,insufficient_evidence,would_overfit_task,skills_already_adequate}",
+                        }
+                    )
+                    if self.deny_is_terminal():
+                        break
+                    continue
+            if action["name"] == "harness.reflect_skills":
+                from .harness_patch import parse_skills_reflect, validate_patch_security
+
+                reflect = parse_skills_reflect(action["args"])
+                if not reflect:
+                    self.note_reflection_attempt(action["name"])
+                    self.emit(
+                        {
+                            "stage": "authorize",
+                            "verdict": "deny",
+                            "reason": "harness_patch_invalid",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "error": "reflect_skills requires disposition decline|propose; decline needs reason; propose needs exactly one op",
+                        }
+                    )
+                    if self.deny_is_terminal():
+                        break
+                    continue
+                if reflect["disposition"] == "propose":
+                    pok, preason, perr = validate_patch_security(self.agent, reflect["patch"])
+                    if not pok:
+                        self.note_reflection_attempt(action["name"])
+                        self.emit(
+                            {
+                                "stage": "authorize",
+                                "verdict": "deny",
+                                "reason": preason,
+                                "tool": action["name"],
+                                "args": action["args"],
+                                "error": perr,
+                            }
+                        )
+                        if self.deny_is_terminal():
+                            break
+                        continue
             sok, sreason, sfail = self.check_sequences(action)
             if not sok:
                 ev_seq: dict[str, Any] = {
@@ -1083,6 +1265,93 @@ class FaustRuntime:
                             **envelope["output"],
                             "child_events": child_steps,
                         }
+            if action["name"] == "harness.propose_skills_patch":
+                from .harness_patch import (
+                    apply_harness_patch,
+                    harness_ir_hash,
+                    parse_harness_patch,
+                )
+
+                patch = parse_harness_patch(action["args"])
+                if patch:
+                    before = harness_ir_hash(self.agent)
+                    apply_harness_patch(self.agent, patch)
+                    after = harness_ir_hash(self.agent)
+                    self.emit(
+                        {
+                            "stage": "rebalance",
+                            "verdict": "allow",
+                            "reason": "harness_patch_applied",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "harness_hash_before": before,
+                            "harness_hash_after": after,
+                            "observation": {"ops": len(patch["ops"])},
+                        }
+                    )
+            if action["name"] == "harness.decline_skills_patch":
+                from .harness_patch import parse_skills_patch_decline
+
+                decline = parse_skills_patch_decline(action["args"])
+                if decline:
+                    obs: dict[str, Any] = {"reason": decline["reason"]}
+                    if "note" in decline:
+                        obs["note"] = decline["note"]
+                    self.emit(
+                        {
+                            "stage": "record",
+                            "verdict": "allow",
+                            "reason": "harness_patch_declined",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "observation": obs,
+                        }
+                    )
+            if action["name"] == "harness.reflect_skills":
+                from .harness_patch import (
+                    apply_harness_patch,
+                    harness_ir_hash,
+                    parse_skills_reflect,
+                )
+
+                reflect = parse_skills_reflect(action["args"])
+                if reflect and reflect["disposition"] == "propose":
+                    patch = reflect["patch"]
+                    before = harness_ir_hash(self.agent)
+                    apply_harness_patch(self.agent, patch)
+                    after = harness_ir_hash(self.agent)
+                    self.emit(
+                        {
+                            "stage": "rebalance",
+                            "verdict": "allow",
+                            "reason": "harness_patch_applied",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "harness_hash_before": before,
+                            "harness_hash_after": after,
+                            "observation": {
+                                "ops": len(patch["ops"]),
+                                "disposition": "propose",
+                            },
+                        }
+                    )
+                elif reflect and reflect["disposition"] == "decline":
+                    obs = {
+                        "reason": reflect["reason"],
+                        "disposition": "decline",
+                    }
+                    if "note" in reflect:
+                        obs["note"] = reflect["note"]
+                    self.emit(
+                        {
+                            "stage": "record",
+                            "verdict": "allow",
+                            "reason": "harness_patch_declined",
+                            "tool": action["name"],
+                            "args": action["args"],
+                            "observation": obs,
+                        }
+                    )
             if not self.run_verifies(tool, action, envelope["output"]):
                 break
             self.apply_invalidate_after(action["name"])
@@ -1257,11 +1526,23 @@ def default_tools(agent: dict[str, Any]) -> dict[str, ToolHandler]:
         "user.approve": lambda a, c: {"output": {"approved": 0}},
         "user.correct": user_correct,
         "task.complete": task_complete,
+        "phase.yield": lambda a, c: {
+            "output": {"ok": 1},
+            "state_transition": {"set": {"phase_yielded": 1, "researched": 1}},
+        },
         "kb.lookup": kb_lookup,
         "answer.send": answer_send,
         "human.handoff": human_handoff,
         "refund.request": refund_request,
         "agent.spawn": spawn,
+        "harness.propose_skills_patch": lambda a, c: {"output": {"ok": 1, "proposed": 1}},
+        "harness.decline_skills_patch": lambda a, c: {"output": {"ok": 1, "declined": 1}},
+        "harness.reflect_skills": lambda a, c: (
+            {"output": {"ok": 1, "disposition": "propose", "proposed": 1}}
+            if a.get("disposition") == "propose"
+            else {"output": {"ok": 1, "disposition": "decline", "declined": 1}}
+        ),
+        "echo.ping": lambda a, c: {"output": {"ok": 1, "echo": str(a.get("message", "pong"))}},
     }
 
 

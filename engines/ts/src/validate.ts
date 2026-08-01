@@ -56,6 +56,15 @@ function structuralChecks(agent: AgentIR): { errors: string[]; warnings: string[
     }
   }
 
+  if (agent.mutable) {
+    const allowed = new Set(["skills", "memory", "instincts"]);
+    for (const cell of agent.mutable) {
+      if (!allowed.has(cell)) {
+        errors.push(`mutable cell '${cell}' is not allowed (skills|memory|instincts only)`);
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 

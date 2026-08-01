@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildCheckpointKeyFailure,
+  buildMissingPriorAnyOfFailure,
   buildMissingPriorToolsFailure,
   buildPredicateFailure,
 } from "./deny-failure.js";
@@ -56,6 +57,13 @@ describe("deny failure builders", () => {
     assert.deepEqual(failure, {
       kind: "missing_prior_tools",
       missing_prior_tools: ["fs.read", "user.approve"],
+    });
+  });
+
+  it("buildMissingPriorAnyOfFailure sorts options", () => {
+    assert.deepEqual(buildMissingPriorAnyOfFailure(["b", "a"]), {
+      kind: "missing_prior_any_of",
+      options: ["a", "b"],
     });
   });
 

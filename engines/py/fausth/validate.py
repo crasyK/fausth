@@ -48,6 +48,12 @@ def structural_checks(agent: dict[str, Any]) -> tuple[list[str], list[str]]:
                 errors.append(f"recovery.verify observe '{obs_id}' not declared")
             elif obs.get("read_only") is not True:
                 errors.append(f"recovery observer '{obs_id}' must have read_only: true")
+    mutable = agent.get("mutable")
+    if mutable:
+        allowed = {"skills", "memory", "instincts"}
+        for cell in mutable:
+            if cell not in allowed:
+                errors.append(f"mutable cell '{cell}' is not allowed (skills|memory|instincts only)")
     return errors, warnings
 
 

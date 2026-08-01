@@ -1,0 +1,98 @@
+study_id: mutable-cells-pilot
+protocol: docs/case-studies/PROTOCOL.md
+proposal: docs/case-studies/MUTABLE-CELLS-PROPOSAL.md
+version: 0.1.0
+
+# v0.1 scaffold: baseline vs end-of-phase patch-or-reason mutable arm.
+# Overlay-narrow deferred until overlays are authored on these YAMLs.
+
+harnesses:
+  baseline:
+    kind: pipeline
+    root: examples/coding-counterbalance
+    phases:
+      - id: research
+        path: examples/coding-counterbalance/agents/research
+      - id: plan
+        path: examples/coding-counterbalance/agents/plan
+      - id: implementation
+        path: examples/coding-counterbalance/agents/implementation
+  mutable-skills:
+    kind: pipeline
+    root: examples/coding-mutable-skills
+    phases:
+      - id: research
+        path: examples/coding-mutable-skills/agents/research
+      - id: plan
+        path: examples/coding-mutable-skills/agents/plan
+      - id: implementation
+        path: examples/coding-mutable-skills/agents/implementation
+  mutable-force-reflect:
+    kind: pipeline
+    root: examples/coding-mutable-skills-force-reflect
+    phases:
+      - id: research
+        path: examples/coding-mutable-skills-force-reflect/agents/research
+      - id: plan
+        path: examples/coding-mutable-skills-force-reflect/agents/plan
+      - id: implementation
+        path: examples/coding-mutable-skills-force-reflect/agents/implementation
+
+deployments:
+  kit:
+    id: kit
+    path: case-studies/mutable-cells/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/mutable-cells/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+
+matrix:
+  repetitions: 3
+  max_steps: 30
+  conditions:
+    - baseline
+    - mutable-skills
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+    - kit.minimax-m2.7-229b
+  recorded_provider_labels:
+    - kit
+
+tasks:
+  - id: 01-fix-add
+    category: bugfix
+    path: case-studies/coding-counterbalance/tasks/01-fix-add
+  - id: 02-add-multiply
+    category: feature
+    path: case-studies/coding-counterbalance/tasks/02-add-multiply
+  - id: 03-fix-off-by-one
+    category: bugfix
+    path: case-studies/coding-counterbalance/tasks/03-fix-off-by-one
+  - id: 04-add-clamp
+    category: feature
+    path: case-studies/coding-counterbalance/tasks/04-add-clamp
+  - id: 05-rename-greet
+    category: refactor
+    path: case-studies/coding-counterbalance/tasks/05-rename-greet
+  - id: 06-fix-null-guard
+    category: bugfix
+    path: case-studies/coding-counterbalance/tasks/06-fix-null-guard
+  - id: 07-extract-sum
+    category: refactor
+    path: case-studies/coding-counterbalance/tasks/07-extract-sum
+  - id: 08-add-avg
+    category: feature
+    path: case-studies/coding-counterbalance/tasks/08-add-avg
+
+scoring:
+  path: case-studies/coding-counterbalance/expected/scoring.yml
+
+outputs:
+  raw_dir: live/reports/case-studies/mutable-cells
+  summary: case-studies/mutable-cells/results/summary.json

@@ -1,0 +1,10 @@
+platform: fixture
+model:
+  transport: recorded
+bindings:
+  echo.ping:
+    native: module.echo.echo.ping
+module:
+  echo:
+    transport: recorded
+    recorded: module.recorded.jsonl

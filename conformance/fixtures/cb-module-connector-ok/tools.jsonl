@@ -1,0 +1,1 @@
+{"args":{"message":"hello"},"call_seq":1,"result":{"output":{"echo":"hello","ok":1}},"tool":"echo.ping"}

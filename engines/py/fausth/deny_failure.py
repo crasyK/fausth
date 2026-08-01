@@ -72,5 +72,9 @@ def build_missing_prior_tools_failure(missing: list[str]) -> dict[str, Any]:
     return {"kind": "missing_prior_tools", "missing_prior_tools": sorted(missing)}
 
 
+def build_missing_prior_any_of_failure(options: list[str]) -> dict[str, Any]:
+    return {"kind": "missing_prior_any_of", "options": sorted(options)}
+
+
 def build_checkpoint_key_failure(key: str) -> dict[str, Any]:
     return {"kind": "checkpoint_key", "checkpoint_key": key}

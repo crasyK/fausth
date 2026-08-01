@@ -1,0 +1,23 @@
+spec: counterbalance-contract/v0.1
+name: module-connectors
+state:
+  pings: 0
+tools:
+  - id: echo.ping
+    input:
+      type: object
+      additionalProperties: false
+      properties:
+        message: { type: string }
+    output:
+      type: object
+      required: [ok, echo]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+        echo: { type: string }
+limits:
+  max_steps: 4
+  max_tool_calls: 2
+permissions:
+  tools: [echo.ping]

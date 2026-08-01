@@ -6,6 +6,7 @@ Bounded empirical studies of Fausth harnesses. Method:
 | Study | Domain | Status | Evidence |
 |-------|--------|--------|----------|
 | Coding Counterbalance | Local coding agent | Live pilot published (`live-kit-v2`, 80 attempts) | [`examples/coding-counterbalance/CASE-STUDY.md`](../examples/coding-counterbalance/CASE-STUDY.md) · [`VERIFICATION.md`](../examples/coding-counterbalance/VERIFICATION.md) |
+| Mutable cells + overlays | Self-edit skills + model overlays | Scaffolded (not yet run) | [`MUTABLE-CELLS-PROPOSAL.md`](MUTABLE-CELLS-PROPOSAL.md) · [`case-studies/mutable-cells/`](../case-studies/mutable-cells/) |
 | Support bot | Policy sequences | Deferred until coding protocol stabilizes | — |
 | Greenhouse | Effect / budget verify | Mechanism demo (not a field case study) | [`examples/greenhouse/`](../examples/greenhouse/) |
 | SLOPATHON CI gate | PR quality host surface | Existing field trial | [`examples/slopathon-review/VERIFICATION.md`](../examples/slopathon-review/VERIFICATION.md) |

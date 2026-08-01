@@ -1,0 +1,6 @@
+format: fausth-connectors/v0.1
+connectors:
+  - id: echo
+    kind: module
+    path: connectors/module/echo.json
+    select: [echo.ping]

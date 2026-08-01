@@ -1,0 +1,8 @@
+platform: fixture
+model:
+  transport: recorded
+bindings:
+  fs.read:
+    native: stub.fs_read
+  harness.propose_skills_patch:
+    native: stub.harness_patch

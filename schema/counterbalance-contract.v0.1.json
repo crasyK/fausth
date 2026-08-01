@@ -72,6 +72,47 @@
       "type": "object",
       "description": "Executable Counterbalance bridge (sequences, invalidate_after, completion, checkpoints). Capability surface = tools list; see docs/spec-v0.2.md.",
       "additionalProperties": true
+    },
+    "mutable": {
+      "type": "array",
+      "description": "Cells the agent may propose edits to (never security/checkpoints).",
+      "items": { "type": "string", "enum": ["skills", "memory", "instincts"] },
+      "uniqueItems": true
+    },
+    "instinct_text": {
+      "type": "string",
+      "description": "Optional instinct disposition text; editable only when mutable includes instincts."
+    },
+    "overlays": {
+      "type": "array",
+      "description": "Model-adaptive scaffolding overlays (narrow-only).",
+      "items": {
+        "type": "object",
+        "required": ["when_model"],
+        "additionalProperties": false,
+        "properties": {
+          "when_model": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "max_steps": { "type": "integer", "minimum": 0 },
+              "max_tool_calls": { "type": "integer", "minimum": 0 },
+              "timeout_ms": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "prompt_hint": { "type": "string" }
+        }
+      }
     }
   },
   "$defs": {

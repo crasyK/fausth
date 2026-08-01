@@ -237,16 +237,72 @@ export function scoreAttempt(events, report, rules = DEFAULT_RULES) {
 /**
  * Aggregate scored attempts (excluding infrastructure failures).
  * Primary table is per-task exact counts; pooled rates use clustered bootstrap.
+ * Supports coding arms (`counterbalanced` / `permissive-control`) and
+ * mutable-cells arms (`baseline` / `mutable-skills`).
  * @param {Array<Record<string, unknown>>} attempts
  */
 export function aggregateAttempts(attempts) {
   const valid = attempts.filter((a) => a.status === "scored");
-  const byCondition = { counterbalanced: [], "permissive-control": [] };
+  /** @type {Record<string, Array<Record<string, unknown>>>} */
+  const byCondition = {};
   for (const a of valid) {
     const c = String(a.condition);
     if (!byCondition[c]) byCondition[c] = [];
     byCondition[c].push(a);
   }
+
+  /**
+   * treatment − control. Prefer known study pairs; else first two sorted names.
+   * @returns {{ treatment: string, control: string, treatmentLabel: string, controlLabel: string }}
+   */
+  function resolveArms() {
+    const present = Object.keys(byCondition);
+    if (present.includes("counterbalanced") || present.includes("permissive-control")) {
+      return {
+        treatment: "counterbalanced",
+        control: "permissive-control",
+        treatmentLabel: "counterbalanced",
+        controlLabel: "permissive_control",
+      };
+    }
+    if (present.includes("mutable-force-reflect") && present.includes("mutable-skills")) {
+      return {
+        treatment: "mutable-force-reflect",
+        control: "mutable-skills",
+        treatmentLabel: "mutable_force_reflect",
+        controlLabel: "mutable_skills",
+      };
+    }
+    if (present.includes("frozen-mutable") || present.includes("baseline")) {
+      if (present.includes("frozen-mutable")) {
+        return {
+          treatment: "frozen-mutable",
+          control: "baseline",
+          treatmentLabel: "frozen_mutable",
+          controlLabel: "baseline",
+        };
+      }
+    }
+    if (present.includes("baseline") || present.includes("mutable-skills")) {
+      return {
+        treatment: "mutable-skills",
+        control: "baseline",
+        treatmentLabel: "mutable_skills",
+        controlLabel: "baseline",
+      };
+    }
+    const sorted = [...present].sort();
+    const control = sorted[0] ?? "control";
+    const treatment = sorted[1] ?? sorted[0] ?? "treatment";
+    return {
+      treatment,
+      control,
+      treatmentLabel: treatment.replace(/-/g, "_"),
+      controlLabel: control.replace(/-/g, "_"),
+    };
+  }
+
+  const arms = resolveArms();
 
   /** @param {Array<Record<string, unknown>>} rows @param {string} key */
   function rate(rows, key) {
@@ -333,14 +389,31 @@ export function aggregateAttempts(attempts) {
     };
   }
 
-  const cb = bundle(byCondition.counterbalanced ?? [], "counterbalanced");
-  const perm = bundle(byCondition["permissive-control"] ?? [], "permissive-control");
+  /** @type {Record<string, ReturnType<typeof bundle>>} */
+  const byConditionBundles = {};
+  for (const [name, rows] of Object.entries(byCondition)) {
+    byConditionBundles[name] = bundle(rows, name);
+  }
+  // Keep coding keys present (possibly empty) for older consumers / tests.
+  if (!byConditionBundles.counterbalanced) {
+    byConditionBundles.counterbalanced = bundle([], "counterbalanced");
+  }
+  if (!byConditionBundles["permissive-control"]) {
+    byConditionBundles["permissive-control"] = bundle([], "permissive-control");
+  }
+
+  const treatmentRows = byCondition[arms.treatment] ?? [];
+  const controlRows = byCondition[arms.control] ?? [];
+  const treatment = byConditionBundles[arms.treatment] ?? bundle([], arms.treatment);
+  const control = byConditionBundles[arms.control] ?? bundle([], arms.control);
 
   /** @type {Record<string, { cb: { n: number, success: number }, pc: { n: number, success: number } }>} */
   const taskCross = {};
   for (const r of valid) {
     const tid = String(r.task_id);
-    const arm = String(r.condition) === "counterbalanced" ? "cb" : "pc";
+    const cond = String(r.condition);
+    const arm = cond === arms.treatment ? "cb" : cond === arms.control ? "pc" : null;
+    if (!arm) continue;
     if (!taskCross[tid]) taskCross[tid] = { cb: { n: 0, success: 0 }, pc: { n: 0, success: 0 } };
     taskCross[tid][arm].n += 1;
     if (r.score?.task_success === true) taskCross[tid][arm].success += 1;
@@ -366,31 +439,34 @@ export function aggregateAttempts(attempts) {
   }
 
   const excludeFromHeadline = [...new Set([...floorTasks, ...ceilingTasks])];
-  const headlineCb = rateExcluding(byCondition.counterbalanced ?? [], "task_success", excludeFromHeadline);
-  const headlinePc = rateExcluding(byCondition["permissive-control"] ?? [], "task_success", excludeFromHeadline);
+  const headlineTreatment = rateExcluding(treatmentRows, "task_success", excludeFromHeadline);
+  const headlineControl = rateExcluding(controlRows, "task_success", excludeFromHeadline);
 
   /** @param {{ p: number }} a @param {{ p: number }} b */
   function delta(a, b) {
     return {
       absolute: a.p - b.p,
-      counterbalanced: a,
-      permissive_control: b,
+      treatment: arms.treatment,
+      control: arms.control,
+      [arms.treatmentLabel]: a,
+      [arms.controlLabel]: b,
     };
   }
 
   return {
     n_scored: valid.length,
     n_infrastructure: attempts.filter((a) => a.status === "infrastructure_failure").length,
-    by_condition: {
-      counterbalanced: cb,
-      "permissive-control": perm,
-    },
+    arms: { treatment: arms.treatment, control: arms.control },
+    by_condition: byConditionBundles,
     paired_deltas: {
-      task_success: delta(cb.task_success, perm.task_success),
-      task_success_headline: delta(headlineCb, headlinePc),
-      false_completion: delta(cb.false_completion, perm.false_completion),
-      blocked_false_completion: delta(cb.blocked_false_completion, perm.blocked_false_completion),
-      missed_completion: delta(cb.missed_completion, perm.missed_completion),
+      task_success: delta(treatment.task_success, control.task_success),
+      task_success_headline: delta(headlineTreatment, headlineControl),
+      false_completion: delta(treatment.false_completion, control.false_completion),
+      blocked_false_completion: delta(
+        treatment.blocked_false_completion,
+        control.blocked_false_completion,
+      ),
+      missed_completion: delta(treatment.missed_completion, control.missed_completion),
     },
     task_flags: taskFlags,
     floor_tasks: floorTasks,

@@ -1,0 +1,6 @@
+{"args":{"message":"hello"},"seq":1,"stage":"propose","state_hash":"9de8c0e70d6f608c86c750fba88b8e5c017cb09c2e2633076e4809c89708abff","tool":"echo.ping","ts_logical":1}
+{"args":{"message":"hello"},"seq":2,"stage":"validate","state_hash":"9de8c0e70d6f608c86c750fba88b8e5c017cb09c2e2633076e4809c89708abff","tool":"echo.ping","ts_logical":2,"verdict":"allow"}
+{"args":{"message":"hello"},"seq":3,"stage":"authorize","state_hash":"9de8c0e70d6f608c86c750fba88b8e5c017cb09c2e2633076e4809c89708abff","tool":"echo.ping","ts_logical":3,"verdict":"allow"}
+{"args":{"message":"hello"},"result":{"echo":"hello","ok":1},"seq":4,"stage":"execute","state_hash":"9de8c0e70d6f608c86c750fba88b8e5c017cb09c2e2633076e4809c89708abff","tool":"echo.ping","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"9de8c0e70d6f608c86c750fba88b8e5c017cb09c2e2633076e4809c89708abff","ts_logical":5,"verdict":"allow"}
+{"seq":6,"stage":"propose","state_hash":"9de8c0e70d6f608c86c750fba88b8e5c017cb09c2e2633076e4809c89708abff","ts_logical":6,"verdict":"allow"}

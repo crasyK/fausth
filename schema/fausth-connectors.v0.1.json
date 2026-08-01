@@ -100,12 +100,16 @@
     },
     "moduleConnector": {
       "type": "object",
-      "required": ["id", "kind"],
+      "required": ["id", "kind", "path"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": { "const": "module" },
         "path": { "type": "string", "minLength": 1 },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
         "select": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }

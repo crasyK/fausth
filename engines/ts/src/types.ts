@@ -23,13 +23,52 @@ export type ReasonCode =
   | "completion_gate_failed"
   | "checkpoint_authority_failed"
   | "user_checkpoint_required"
-  | "empty_proposal";
+  | "empty_proposal"
+  | "harness_patch_denied"
+  | "harness_patch_applied"
+  | "harness_patch_invalid"
+  | "harness_patch_declined";
+
+/** Cells the agent may propose harness edits to (never security / checkpoints). */
+export type MutableCell = "skills" | "memory" | "instincts";
+
+/** Structured harness self-edit ops (v0.1 IR maps skills → tool descriptions). */
+export type HarnessPatchOp =
+  | { op: "set_tool_description"; tool_id: string; description: string }
+  | { op: "set_memory_note"; key: string; note: string }
+  | { op: "set_instinct_text"; text: string }
+  | { op: "set_permissions_tools"; tools: string[] }
+  | { op: "set_sequences"; sequences: unknown[] }
+  | { op: "set_checkpoints"; checkpoints: unknown[] }
+  | { op: "set_tool_id"; tool_id: string; new_id: string }
+  | { op: "set_tool_verify"; tool_id: string; verify: unknown[] }
+  | { op: "set_tool_input"; tool_id: string; input: Record<string, unknown> }
+  | { op: "set_tool_output"; tool_id: string; output: Record<string, unknown> };
+
+export type HarnessPatch = {
+  ops: HarnessPatchOp[];
+};
 
 export type CounterbalanceSequence = {
   id?: string;
   action: string;
+  /** All listed tools must have succeeded earlier (AND). */
   require_prior_tools?: string[];
+  /** At least one listed tool must have succeeded earlier (OR). */
+  require_prior_any_of?: string[];
   require_state?: Predicate;
+};
+
+/** Closed reason codes for `harness.decline_skills_patch`. */
+export type SkillsPatchDeclineReason =
+  | "no_new_heuristic"
+  | "insufficient_evidence"
+  | "would_overfit_task"
+  | "skills_already_adequate";
+
+export type SkillsPatchDecline = {
+  reason: SkillsPatchDeclineReason;
+  note?: string;
 };
 
 export type CounterbalanceInvalidateAfter = {
@@ -86,6 +125,8 @@ export type CounterbalanceExt = {
   memory_provenance?: Record<string, MemoryProvenanceEntry>;
   intervention_budget?: InterventionBudget;
   triggers?: CounterbalanceTrigger[];
+  /** Optional memory notes (mutable when `mutable` includes memory). */
+  memory_notes?: Record<string, string>;
 };
 export type Stage =
   | "orient"
@@ -127,6 +168,7 @@ export type DenyFailureItem = {
 export type DenyFailure =
   | { kind: "predicate"; failed: DenyFailureItem[] }
   | { kind: "missing_prior_tools"; missing_prior_tools: string[] }
+  | { kind: "missing_prior_any_of"; options: string[] }
   | { kind: "checkpoint_key"; checkpoint_key: string };
 
 export type Gate = {
@@ -231,6 +273,15 @@ export type AgentIR = {
   };
   /** Counterbalance bridge — sequences, invalidate_after, completion (see spec-v0.2). */
   counterbalance?: CounterbalanceExt;
+  /** Non-normative → normative candidate: cells agent may propose edits to. */
+  mutable?: MutableCell[];
+  /** Optional instinct disposition text (mutable when `mutable` includes instincts). */
+  instinct_text?: string;
+  /**
+   * Model-adaptive scaffolding overlays (M18).
+   * May only narrow tools/limits; never widen. Stripped after resolveOverlay.
+   */
+  overlays?: import("./overlays.js").HarnessOverlay[];
 };
 
 export type DeploymentModel = {
@@ -299,6 +350,17 @@ export type DeploymentMcpServer = {
   timeout_ms?: number;
 };
 
+/** Module connector execution (M17) — subprocess only; resolve stays offline. */
+export type DeploymentModuleServer = {
+  transport: "recorded" | "stdio";
+  /** Harness-relative path to recorded module responses (jsonl). */
+  recorded?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  timeout_ms?: number;
+};
+
 export type Deployment = {
   platform?: string;
   model: DeploymentModel;
@@ -314,6 +376,8 @@ export type Deployment = {
   world?: DeploymentWorld;
   /** Host-side MCP server configs keyed by connector/server id. */
   mcp?: Record<string, DeploymentMcpServer>;
+  /** Host-side module server configs keyed by connector/server id. */
+  module?: Record<string, DeploymentModuleServer>;
 };
 
 export type Event = {
@@ -334,6 +398,10 @@ export type Event = {
   depth?: number;
   /** Id of the parent spawn that produced this event (child log only). */
   spawn_id?: string;
+  /** Harness IR hash before a successful patch (rebalance stage). */
+  harness_hash_before?: string;
+  /** Harness IR hash after a successful patch (rebalance stage). */
+  harness_hash_after?: string;
 };
 
 export type ModelProposal =
@@ -411,7 +479,8 @@ export type McpConnectorSource = {
 export type ModuleConnectorSource = {
   id: string;
   kind: "module";
-  path?: string;
+  path: string;
+  sha256?: string;
   select?: string[];
 };
 
@@ -436,9 +505,16 @@ export type McpDescriptor = {
   provides: ConnectorProvision[];
 };
 
+export type ModuleManifest = {
+  format: "fausth-module-manifest/v0.1";
+  provides: ConnectorProvision[];
+  /** Documented subprocess argv; deployment owns live execution. */
+  command?: string[];
+};
+
 export type ResolvedConnectorEntry = {
   id: string;
-  kind: "inline" | "file" | "mcp";
+  kind: "inline" | "file" | "mcp" | "module";
   path?: string;
   sha256: string | null;
   provides: string[];
@@ -449,7 +525,7 @@ export type ResolvedConnectorEntry = {
 
 export type ResolvedConnectorLockEntry = {
   connector: string;
-  kind: "inline" | "file" | "mcp";
+  kind: "inline" | "file" | "mcp" | "module";
   path?: string;
   sha256: string;
 };

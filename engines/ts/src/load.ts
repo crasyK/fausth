@@ -29,6 +29,9 @@ export function agentYamlToIr(raw: unknown): AgentIR {
   if (a.permissions) ir.permissions = a.permissions as AgentIR["permissions"];
   if (a.spawn) ir.spawn = a.spawn as AgentIR["spawn"];
   if (a.counterbalance) ir.counterbalance = a.counterbalance as AgentIR["counterbalance"];
+  if (a.mutable) ir.mutable = a.mutable as AgentIR["mutable"];
+  if (typeof a.instinct_text === "string") ir.instinct_text = a.instinct_text;
+  if (a.overlays) ir.overlays = a.overlays as AgentIR["overlays"];
   canonicalJson(ir.state);
   return ir;
 }

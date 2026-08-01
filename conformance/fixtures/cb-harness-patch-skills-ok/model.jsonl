@@ -1,0 +1,1 @@
+{"args":{"ops":[{"description":"Read a scoped source file carefully","op":"set_tool_description","tool_id":"fs.read"}]},"name":"harness.propose_skills_patch","type":"tool"}

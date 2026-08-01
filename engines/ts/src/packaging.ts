@@ -21,7 +21,7 @@ import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
-import type { AgentIR, Deployment, ModelProposal, RecordedToolCall } from "./types.js";
+import type { AgentIR, Deployment, HarnessPatch, ModelProposal, RecordedToolCall } from "./types.js";
 import { canonicalJson } from "./canonical.js";
 import {
   ConnectorError,
@@ -29,6 +29,7 @@ import {
   resolvedHarnessHash,
 } from "./connectors/resolve.js";
 import { signBundle, loadSignKeyFromPath } from "./bundle-signature.js";
+import { applyCandidatePatch, harnessIrHash } from "./harness-patch.js";
 
 // load.ts may not export loadFixtureAgent — inline
 function loadFixtureAgentLocal(dir: string): AgentIR {
@@ -79,6 +80,7 @@ export type InspectReport = {
   tools: string[];
   permissions_tools?: string[];
   sequences?: string[];
+  mutable?: string[];
   spawn?: AgentIR["spawn"];
   deployments: { file: string; platform?: string; transport?: string; binding_count: number }[];
   smoke: { model: boolean; expected: boolean };
@@ -169,6 +171,7 @@ export function inspectHarness(
     tools: agent.tools.map((t) => t.id),
     permissions_tools: agent.permissions?.tools,
     sequences: agent.counterbalance?.sequences?.map((s) => s.id ?? s.action),
+    mutable: agent.mutable,
     spawn: agent.spawn,
     deployments,
     smoke: {
@@ -295,8 +298,9 @@ async function runSmoke(
 
 function fixturePrefixesForHarness(harnessName: string): string[] {
   if (harnessName === "coding-counterbalance") {
-    return ["cb-coding-", "cb-write-", "cb-stale-", "cb-completion-", "cb-user-"];
+    return ["cb-coding-", "cb-write-", "cb-stale-", "cb-completion-", "cb-user-", "cb-harness-patch-"];
   }
+  if (harnessName === "mutable-skills") return ["cb-harness-patch-"];
   if (harnessName === "support-bot") return ["cb-support-"];
   if (harnessName === "coding") return ["code-", "spawn-"];
   if (harnessName === "greenhouse") {
@@ -483,7 +487,7 @@ export function packHarness(
 
   const files = collectPackSourceFiles(dir);
   // Optional MCP recorded fixture for Track A packs
-  for (const extra of ["mcp.recorded.jsonl"]) {
+  for (const extra of ["mcp.recorded.jsonl", "module.recorded.jsonl"]) {
     const p = join(dir, extra);
     if (existsSync(p) && statSync(p).isFile() && !files.some((f) => f.path === extra)) {
       files.push({ path: extra, content: readFileSync(p, "utf8") });
@@ -494,6 +498,7 @@ export function packHarness(
   if (hasConnectors) {
     const resolved = resolveHarness(dir);
     const hasMcp = resolved.resolution.lock.some((l) => l.kind === "mcp");
+    const hasModule = resolved.resolution.lock.some((l) => l.kind === "module");
     for (const n of CONNECTOR_MANIFEST_NAMES) {
       const p = join(dir, n);
       if (existsSync(p) && statSync(p).isFile()) {
@@ -501,7 +506,7 @@ export function packHarness(
       }
     }
     for (const lock of resolved.resolution.lock) {
-      if ((lock.kind !== "file" && lock.kind !== "mcp") || !lock.path) continue;
+      if ((lock.kind !== "file" && lock.kind !== "mcp" && lock.kind !== "module") || !lock.path) continue;
       const p = join(dir, lock.path);
       if (!existsSync(p) || !statSync(p).isFile()) {
         throw new ConnectorError(
@@ -515,7 +520,7 @@ export function packHarness(
     }
     files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     bundle = {
-      format: hasMcp ? "fausth-harness-bundle/v0.3" : "fausth-harness-bundle/v0.2",
+      format: hasMcp || hasModule ? "fausth-harness-bundle/v0.3" : "fausth-harness-bundle/v0.2",
       name,
       files: Object.fromEntries(files.map((f) => [f.path, f.content])),
       resolved,
@@ -554,3 +559,95 @@ export function packHarness(
     signed,
   };
 }
+
+export type SelectResult = {
+  ok: boolean;
+  harness_hash_before: string;
+  harness_hash_after: string;
+  fixtures_ok: boolean;
+  details: string[];
+  errors: string[];
+  patched_agent?: AgentIR;
+};
+
+/**
+ * Selection gate: apply a candidate patch, then re-run matching Track A fixtures.
+ * Any golden failure rejects the mutation. Reproduction is `fausth pack` of the patched harness.
+ */
+export async function selectHarness(
+  harnessDir: string,
+  patch: HarnessPatch,
+  opts: { fixturesRoot?: string; skipFixtures?: boolean } = {},
+): Promise<SelectResult> {
+  const dir = resolve(harnessDir);
+  const { agent } = loadAgentDir(dir);
+  const before = harnessIrHash(agent);
+  const details: string[] = [];
+  const errors: string[] = [];
+
+  let patched: AgentIR;
+  try {
+    patched = applyCandidatePatch(agent, patch);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      harness_hash_before: before,
+      harness_hash_after: before,
+      fixtures_ok: false,
+      details,
+      errors: [msg],
+    };
+  }
+  const after = harnessIrHash(patched);
+  details.push(`patch applied ${before.slice(0, 12)}… → ${after.slice(0, 12)}…`);
+
+  if (opts.skipFixtures) {
+    return {
+      ok: true,
+      harness_hash_before: before,
+      harness_hash_after: after,
+      fixtures_ok: true,
+      details: [...details, "fixtures skipped"],
+      errors,
+      patched_agent: patched,
+    };
+  }
+
+  const fixturesRoot =
+    opts.fixturesRoot ?? join(dir, "../../conformance/fixtures");
+  let prefixes = fixturePrefixesForHarness(basename(dir));
+  if (!prefixes.length && agent.mutable?.length) prefixes = ["cb-harness-patch-"];
+
+  let fixturesOk = true;
+  if (!prefixes.length) {
+    details.push("no fixture prefixes; selection accepted on patch validation alone");
+  } else if (!existsSync(fixturesRoot)) {
+    errors.push(`fixtures root missing: ${fixturesRoot}`);
+    fixturesOk = false;
+  } else {
+    const dirs = listFixtureDirs(fixturesRoot).filter((d) =>
+      prefixes.some((p) => basename(d).startsWith(p)),
+    );
+    for (const fd of dirs) {
+      const r = await replayFixtureDir(fd);
+      if (!r.ok) {
+        fixturesOk = false;
+        errors.push(`${r.name}: golden mismatch`);
+      } else {
+        details.push(`${r.name}: OK`);
+      }
+    }
+  }
+
+  return {
+    ok: fixturesOk && errors.length === 0,
+    harness_hash_before: before,
+    harness_hash_after: after,
+    fixtures_ok: fixturesOk,
+    details,
+    errors,
+    patched_agent: patched,
+  };
+}
+

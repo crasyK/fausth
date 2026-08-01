@@ -13,7 +13,7 @@ import {
 import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
 import { deploymentUsesLocal } from "./adapters/local.js";
-import { inspectHarness, packHarness, testHarness } from "./packaging.js";
+import { inspectHarness, packHarness, testHarness, selectHarness } from "./packaging.js";
 import { BundleError, loadBundleFile, unpackBundle, withHarnessRef } from "./bundle.js";
 import { BundleSignatureError } from "./bundle-signature.js";
 import {
@@ -33,7 +33,8 @@ import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./too
 import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
 import { auditJsonlFile, formatAuditHuman } from "./audit.js";
-import type { AgentIR, Deployment, Event, ModelProposal, RecordedToolCall } from "./types.js";
+import type { AgentIR, Deployment, Event, HarnessPatch, ModelProposal, RecordedToolCall } from "./types.js";
+import { resolveOverlay } from "./overlays.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
 import {
   buildAdvisoryPrompt,
@@ -426,6 +427,7 @@ async function cmdRun(
     taskFile?: string;
     report?: string;
     expectComplete?: boolean;
+    applyOverlays?: boolean;
     embeddedResolved?: import("./types.js").ResolvedHarnessIR;
   } = {},
 ): Promise<number> {
@@ -440,7 +442,6 @@ async function cmdRun(
     }
     throw e;
   }
-  const agent = resolvedHarness.agent;
   const depFile =
     opts.deployment ??
     (existsSync(join(dir, "deployment.fixture.yml"))
@@ -452,13 +453,27 @@ async function cmdRun(
           : defaultDeploymentPath(dir, "openrouter"));
   const deployment = loadDeployment(depFile) as Deployment;
 
+  let agent = resolvedHarness.agent;
+  if (opts.applyOverlays) {
+    try {
+      const overlayed = resolveOverlay(agent, deployment);
+      agent = overlayed.agent;
+      if (overlayed.overlay) {
+        console.error(`overlay: ${overlayed.reason}`);
+      }
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      return 2;
+    }
+  }
+
   let tools;
   try {
     tools = resolveToolsFromDeployment(agent, deployment, {
       workspace: opts.workspace,
       interactive: Boolean(process.stdin.isTTY) && !String(depFile).includes("local-fixture"),
       harnessDir: dir,
-      resolved: resolvedHarness,
+      resolved: { ...resolvedHarness, agent },
     });
   } catch (e) {
     if (e instanceof AdapterError) {
@@ -493,14 +508,51 @@ async function cmdRun(
   } else {
     const { adapter } = createAdapterFromDeployment(deployment);
     const toolIds = agent.tools.map((t) => t.id).sort();
+    const has = (id: string) => agent.tools.some((t) => t.id === id);
     const toolHint =
       toolIds.length > 0 ? ` Available tools: ${toolIds.join(", ")}.` : "";
-    const shellHint =
-      agent.tools.some((t) => t.id === "shell.run_allowlisted")
-        ? ' For tests call shell.run_allowlisted with cmd "test" (not npm/node directly).'
-        : "";
-    const contractHint =
-      " Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd=\"test\" → user.correct → task.complete. Never invent shell commands or mode.enter.";
+    const shellHint = has("shell.run_allowlisted")
+      ? ' For tests call shell.run_allowlisted with cmd "test" (not npm/node directly).'
+      : "";
+    // Phase-aware contract: never tell research/plan to write/test/complete.
+    let contractHint =
+      " Use only listed tools; never invent tools, shell commands, or mode.enter.";
+    if (has("task.complete") && has("fs.write_scoped") && has("shell.run_allowlisted")) {
+      contractHint +=
+        ' Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd="test" → user.correct → task.complete.';
+      if (has("harness.reflect_skills")) {
+        contractHint +=
+          " After tests pass and todos are clear, call harness.reflect_skills once, then task.complete.";
+      }
+    } else if (has("user.approve") && has("phase.yield")) {
+      if (has("harness.reflect_skills")) {
+        const mustReflect = (agent.counterbalance?.sequences ?? []).some(
+          (s) =>
+            s.action === "phase.yield" &&
+            (s.require_prior_tools ?? []).includes("harness.reflect_skills"),
+        );
+        contractHint += mustReflect
+          ? " This is the plan phase: read as needed, call user.approve with a short plan, then harness.reflect_skills (decline or propose), then phase.yield. Do not write files or run tests here."
+          : " This is the plan phase: read as needed, call user.approve with a short plan, optionally harness.reflect_skills, then phase.yield. Do not write files or run tests here.";
+      } else {
+        contractHint +=
+          " This is the plan phase: read as needed, call user.approve with a short plan, then phase.yield. Do not write files or run tests here.";
+      }
+    } else if (has("phase.yield")) {
+      if (has("harness.reflect_skills")) {
+        const mustReflect = (agent.counterbalance?.sequences ?? []).some(
+          (s) =>
+            s.action === "phase.yield" &&
+            (s.require_prior_tools ?? []).includes("harness.reflect_skills"),
+        );
+        contractHint += mustReflect
+          ? " This is the research phase: read/list, optionally user.correct, then harness.reflect_skills (decline or propose), then phase.yield. Do not write files or run tests here."
+          : " This is the research phase: read/list, optionally user.correct and harness.reflect_skills, then phase.yield. Do not write files or run tests here.";
+      } else {
+        contractHint +=
+          " This is the research phase: read/list, optionally user.correct, then phase.yield. Do not write files or run tests here.";
+      }
+    }
     const conv = createConversationalPropose({
       adapter,
       tools: toolsFromAgent(agent.tools),
@@ -801,8 +853,9 @@ Usage:
   fausth verify <bundle.fausth.json>
   fausth run <harness|bundle> [--deployment <yml>] [--model <jsonl>] [--dump <jsonl>]
            [--workspace <linked-worktree>] [--prompt <text>|--task-file <path>]
-           [--max-steps <n>] [--report <json>] [--expect-complete]
+           [--max-steps <n>] [--report <json>] [--expect-complete] [--apply-overlays]
   fausth replay [fixturesDir] [--dump-dir <dir>]
+  fausth select <harness> --candidate-patch <patch.json> [--skip-fixtures] [--out-agent <json>]
   fausth live --scenarios <dir> --deployment <yml> [--report <json>] [--catch-rate-min <n>]
   fausth capture --from <events> --scenario <id> --out <dir>
   fausth provider probe --deployment <yml>
@@ -971,6 +1024,46 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     const fixturesRoot = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
     process.exit(await cmdReplay(fixturesRoot, a["dump-dir"]));
   }
+  if (cmd === "select") {
+    const a = parseArgs(rest);
+    const target =
+      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ?? "";
+    const patchPath = a["candidate-patch"];
+    if (!target || !patchPath) {
+      console.error(
+        "Usage: fausth select <harness> --candidate-patch <patch.json> [--skip-fixtures] [--out-agent <json>]",
+      );
+      process.exit(1);
+    }
+    try {
+      const raw = JSON.parse(readFileSync(resolve(patchPath), "utf8")) as HarnessPatch;
+      const result = await selectHarness(resolve(target), raw, {
+        skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+        fixturesRoot: join(repoRoot(), "conformance/fixtures"),
+      });
+      for (const d of result.details) console.log(d);
+      if (a["out-agent"] && result.patched_agent) {
+        mkdirSync(dirname(resolve(a["out-agent"])), { recursive: true });
+        writeFileSync(
+          resolve(a["out-agent"]),
+          toCanonicalIrJson(result.patched_agent),
+          "utf8",
+        );
+        console.log(`wrote patched agent → ${resolve(a["out-agent"])}`);
+      }
+      if (!result.ok) {
+        for (const e of result.errors) console.error(e);
+        process.exit(1);
+      }
+      console.log(
+        `select OK (${result.harness_hash_before.slice(0, 12)}… → ${result.harness_hash_after.slice(0, 12)}…)`,
+      );
+      process.exit(0);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
+  }
   if (cmd === "live") {
     const a = parseArgs(rest);
     process.exit(
@@ -1002,6 +1095,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
           taskFile: a["task-file"],
           report: a.report,
           expectComplete: a["expect-complete"] === "1" || a["expect-complete"] === "true",
+          applyOverlays: a["apply-overlays"] === "1" || a["apply-overlays"] === "true",
           embeddedResolved: ref.embeddedResolved,
         }),
       ).catch((e) => {

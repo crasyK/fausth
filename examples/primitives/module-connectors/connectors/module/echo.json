@@ -1,0 +1,25 @@
+{
+  "format": "fausth-module-manifest/v0.1",
+  "command": ["node", "connectors/module/echo-server.mjs"],
+  "provides": [
+    {
+      "id": "echo.ping",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "message": { "type": "string" }
+        }
+      },
+      "output": {
+        "type": "object",
+        "required": ["ok", "echo"],
+        "additionalProperties": false,
+        "properties": {
+          "ok": { "type": "integer" },
+          "echo": { "type": "string" }
+        }
+      }
+    }
+  ]
+}

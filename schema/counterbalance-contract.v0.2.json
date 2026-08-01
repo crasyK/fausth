@@ -103,6 +103,12 @@
         "id": { "type": "string" },
         "action": { "type": "string" },
         "require_prior_tools": { "type": "array", "items": { "type": "string" } },
+        "require_prior_any_of": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "At least one listed tool must have succeeded earlier (OR)."
+        },
         "require_state": { "type": "object" }
       }
     },
@@ -166,6 +172,19 @@
             "missing_prior_tools": {
               "type": "array",
               "items": { "type": "string" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "options"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "missing_prior_any_of" },
+            "options": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
             }
           }
         },
