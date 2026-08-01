@@ -15,6 +15,13 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+// Run-id prefix: --run-prefix <v> or OPT_ARMS_RUN_PREFIX env, default v2.
+const RUN_PREFIX = (() => {
+  const i = process.argv.indexOf("--run-prefix");
+  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
+  return process.env.OPT_ARMS_RUN_PREFIX || "v2";
+})();
+
 const ARMS = [
   {
     track: "swe",
@@ -81,6 +88,10 @@ const ARMS = [
     extra: ["--max-task-tries", "5", "--optimize-on-fail"],
   },
 ];
+
+for (const arm of ARMS) {
+  arm.runId = arm.runId.replace("opt-arms-v1-", `opt-arms-${RUN_PREFIX}-`);
+}
 
 function parseArgs(argv) {
   const cmd = argv[0] ?? "help";
@@ -176,7 +187,7 @@ function main() {
   else if (args.cmd === "status") status();
   else {
     console.log(`Usage:
-  node scripts/opt-arms-tmux.mjs launch [--dry-run]
+  node scripts/opt-arms-tmux.mjs launch [--dry-run] [--run-prefix v2]
   node scripts/opt-arms-tmux.mjs status`);
     process.exit(args.cmd === "help" ? 0 : 1);
   }
