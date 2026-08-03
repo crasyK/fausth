@@ -1,0 +1,37 @@
+id: "retail-074"
+title: "retail-074"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 74
+  task_id: "retail-074"
+  user_id: "lei_li_6575"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W3189752"
+        reason: "no longer needed"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W5166363"
+        item_ids:
+          - "3334537816"
+        new_item_ids:
+          - "3265035808"
+        payment_method_id: "credit_card_4466831"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

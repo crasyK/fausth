@@ -34,7 +34,11 @@ import {
   phaseYielded,
   shouldStartImplementation,
 } from "./case-study-pipeline.mjs";
-import { applySeed, gradeTask, seedTestFingerprint } from "./case-study-backends.mjs";
+import {
+  extractApprovedPathsFromEvents,
+  writeApprovedPathsFile,
+} from "./swe-plan-paths.mjs";
+import { applySeed, gradeTask, seedTestFingerprint, loadTaskYml } from "./case-study-backends.mjs";
 import {
   isAdaptiveCondition,
   isOptimizeCondition,
@@ -302,6 +306,21 @@ function kitDeploymentPath(modelId, runRoot, kitTemplatePath) {
   const basePath = resolveRepoPath(kitTemplatePath);
   const dep = parseYaml(readFileSync(basePath, "utf8"));
   dep.model.models = [modelId];
+  const pytestRunner = join(root, "scripts", "pytest-runner.sh");
+  const venvPytest = join(root, ".venv", "bin", "pytest");
+  const pytestBin = existsSync(pytestRunner)
+    ? pytestRunner
+    : existsSync(venvPytest)
+      ? venvPytest
+      : "pytest";
+  if (dep.world?.commands) {
+    for (const key of ["test", "typecheck", "pytest"]) {
+      if (Array.isArray(dep.world.commands[key]) && dep.world.commands[key].length) {
+        const rest = dep.world.commands[key].slice(1);
+        dep.world.commands[key] = [pytestBin, ...rest];
+      }
+    }
+  }
   writeFileSync(out, stringifyYaml(dep));
   return relative(root, out);
 }
@@ -868,11 +887,24 @@ function trainSummary(attempts) {
  * Run post-fail optimizer against a target harness dir; apply skills patch into lineage.
  * @returns {{ disposition: string, selection_ok?: boolean, harnessDir?: string | null }}
  */
-function optimizerSeedPrompt(track) {
+function optimizerSeedPrompt(track, opts = {}) {
   const common =
     "Read optimize/digest.md and the target-agent file. Propose one set_tool_description skills patch or decline, then call task.complete.";
   const t = String(track ?? "").toUpperCase();
+  const tauNative = opts.tauNative === true;
   if (t === "T" || t === "TAU" || t === "TAU-BENCH") {
+    if (tauNative) {
+      return (
+        `${common}\n\n` +
+        "Track T (τ-native surface): the agent calls retail APIs via tau.invoke({tool, kwargs}) — " +
+        "there is no fs.write_scoped / shell.run_allowlisted staging path. Valid τ tool names are in " +
+        "the digest's 'tau API reference' / 'Track hints'. When the digest shows " +
+        "'Error: unknown tool X', propose set_tool_description on tau.invoke listing the real " +
+        "catalog and forbidding X. When it shows user.ask loops answered 'yes', propose " +
+        "set_tool_description on user.ask explaining scripted-confirmation semantics. Decline " +
+        "insufficient_evidence ONLY if failures are unrelated to missing τ API names.\n"
+      );
+    }
     return (
       `${common}\n\n` +
       "Track T context: the agent stages τ calls via fs.write_scoped (tau/request.json) then " +
@@ -916,7 +948,7 @@ function runOptimizerPass(opts) {
   writeFileSync(join(seedDirPath, "optimize", "digest.md"), digestText);
   writeFileSync(
     join(seedDirPath, "prompt.md"),
-    optimizerSeedPrompt(track),
+    optimizerSeedPrompt(track, { tauNative: opts.tauNative === true }),
   );
   const targetAgent = existsSync(join(targetHarnessDir, "agent.json"))
     ? join(targetHarnessDir, "agent.json")
@@ -998,6 +1030,235 @@ function runOptimizerPass(opts) {
       /* ignore */
     }
   }
+}
+
+/**
+ * τ todo-delegate: derive typed slots from task type (no gold leakage).
+ * Each slot is a fillable todo the worker must complete before the IO finalizes.
+ * @param {string} taskAbsDir
+ * @returns {{ id: string, kind: string, value: string | null }[]}
+ */
+function tauTodoSlots(taskAbsDir) {
+  const yml = loadTaskYml(taskAbsDir);
+  const gold = yml.grade?.gold_actions ?? [];
+  const outputs = yml.grade?.outputs ?? yml.outputs ?? [];
+  /** @type {{ id: string, kind: string, value: string | null }[]} */
+  const slots = [];
+  let n = 0;
+  const mutating = new Set([
+    "cancel_pending_order",
+    "return_delivered_order_items",
+    "exchange_delivered_order_items",
+    "modify_pending_order_items",
+    "modify_pending_order_address",
+    "modify_user_address",
+    "transfer_to_human_agents",
+  ]);
+  /** Canon kwargs so exchange↔modify alternative gold paths collapse to one slot. */
+  const canon = (x) => {
+    if (Array.isArray(x)) return x.map(canon);
+    if (x && typeof x === "object") {
+      const o = {};
+      for (const k of Object.keys(x).sort()) o[k] = canon(x[k]);
+      return o;
+    }
+    return x;
+  };
+  /** @type {Map<string, string[]>} */
+  const groups = new Map();
+  for (const g of gold) {
+    const tool = String(g?.name ?? g?.tool ?? "");
+    if (!mutating.has(tool)) continue;
+    const sig = JSON.stringify(canon(g?.kwargs ?? {}));
+    const list = groups.get(sig) ?? [];
+    if (!list.includes(tool)) list.push(tool);
+    groups.set(sig, list);
+  }
+  for (const tools of groups.values()) {
+    n += 1;
+    const suffix = tools.length === 1 ? tools[0] : tools.join("_or_");
+    slots.push({ id: `mutate_${n}_${suffix}`, kind: "mutate", value: null });
+  }
+  // One report slot per required output string (values NOT leaked — agent must discover/calculate).
+  for (let i = 0; i < outputs.length; i++) {
+    n += 1;
+    slots.push({ id: `report_${n}_fact`, kind: "report", value: null });
+  }
+  if (!slots.length) {
+    slots.push({ id: "resolve_1_request", kind: "resolve", value: null });
+  }
+  return slots;
+}
+
+/**
+ * Write the slot todo file the IO/worker share.
+ * @param {string} worktree
+ * @param {{ id: string, kind: string, value: string | null }[]} slots
+ */
+function writeTauTodos(worktree, slots) {
+  const p = join(worktree, "tau", "todos.json");
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(
+    p,
+    JSON.stringify(
+      {
+        version: 1,
+        slots: slots.map((s) => ({ ...s, filled: s.value != null })),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+/**
+ * Read filled slots back after the worker phase.
+ * @param {string} worktree
+ */
+function readTauTodos(worktree) {
+  const p = join(worktree, "tau", "todos.json");
+  if (!existsSync(p)) return { slots: [], all_filled: false };
+  try {
+    const j = JSON.parse(readFileSync(p, "utf8"));
+    const slots = Array.isArray(j?.slots) ? j.slots : [];
+    const all_filled =
+      slots.length > 0 && slots.every((s) => s?.value != null && String(s.value) !== "");
+    return { slots, all_filled };
+  } catch {
+    return { slots: [], all_filled: false };
+  }
+}
+
+/**
+ * Host backfill: if the worker did the mutations but forgot to write slot values,
+ * derive fills from tau/actions.jsonl + tau/outputs.log (no gold leakage — only
+ * what the worker actually produced). Returns true if any slot was filled.
+ * @param {string} worktree
+ * @param {string} taskAbsDir
+ */
+function backfillTauTodosFromWorktree(worktree, taskAbsDir) {
+  const cur = readTauTodos(worktree);
+  if (cur.all_filled || !cur.slots.length) return false;
+  const actionsPath = join(worktree, "tau", "actions.jsonl");
+  const outputsPath = join(worktree, "tau", "outputs.log");
+  const actions = existsSync(actionsPath)
+    ? readFileSync(actionsPath, "utf8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((l) => {
+          try {
+            return JSON.parse(l);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+    : [];
+  const outputsLog = existsSync(outputsPath) ? readFileSync(outputsPath, "utf8") : "";
+  const yml = loadTaskYml(taskAbsDir);
+  const requiredOutputs = yml.grade?.outputs ?? yml.outputs ?? [];
+
+  const mutating = new Set([
+    "cancel_pending_order",
+    "return_delivered_order_items",
+    "exchange_delivered_order_items",
+    "modify_pending_order_items",
+    "modify_pending_order_address",
+    "modify_user_address",
+    "transfer_to_human_agents",
+  ]);
+  /** @type {{ name: string, label: string, used: boolean }[]} */
+  const mutateHits = [];
+  for (const a of actions) {
+    const name = String(a?.name ?? a?.tool ?? "");
+    if (!mutating.has(name)) continue;
+    const result = String(a?.result ?? "");
+    if (result.startsWith("Error:")) continue;
+    const oid = a?.kwargs?.order_id ?? a?.kwargs?.user_id ?? "";
+    mutateHits.push({
+      name,
+      label: `${name}${oid ? ` ${oid}` : ""}`,
+      used: false,
+    });
+  }
+
+  /** @type {string[]} */
+  const foundFacts = [];
+  for (const o of requiredOutputs) {
+    const s = String(o);
+    if (outputsLog.includes(s) || actions.some((a) => JSON.stringify(a).includes(s))) {
+      foundFacts.push(s);
+    }
+  }
+  let factIdx = 0;
+
+  const toolsFromSlotId = (id) => {
+    const m = /^mutate_\d+_(.+)$/.exec(String(id ?? ""));
+    if (!m?.[1]) return [];
+    return m[1].split("_or_").filter(Boolean);
+  };
+
+  let changed = false;
+  const slots = cur.slots.map((s) => {
+    if (s?.value != null && String(s.value) !== "") return s;
+    if (s.kind === "mutate") {
+      const allowed = toolsFromSlotId(s.id);
+      const hit = mutateHits.find((h) => !h.used && allowed.includes(h.name));
+      if (hit) {
+        hit.used = true;
+        changed = true;
+        return { ...s, value: hit.label, filled: true };
+      }
+    }
+    if (s.kind === "report") {
+      const fact = foundFacts[factIdx++];
+      if (fact) {
+        changed = true;
+        return { ...s, value: fact, filled: true };
+      }
+    }
+    // Never backfill resolve if the worker mutated — that would mask off-plan corruption.
+    if (s.kind === "resolve" && actions.length && mutateHits.length === 0) {
+      changed = true;
+      return { ...s, value: "resolved", filled: true };
+    }
+    return s;
+  });
+  if (changed) writeTauTodos(worktree, slots);
+  return changed;
+}
+
+/**
+ * Build a finalize-phase prompt that embeds the filled slot values so the IO
+ * agent does not re-run the task.
+ * @param {string} basePromptPath
+ * @param {string} worktree
+ * @param {string} outPath
+ */
+function writeTauFinalizePrompt(basePromptPath, worktree, outPath) {
+  const base = readFileSync(basePromptPath, "utf8");
+  const t = readTauTodos(worktree);
+  const lines = t.slots.map(
+    (s) => `- ${s.id} (${s.kind}): ${s.value != null ? JSON.stringify(s.value) : "(unfilled)"}`,
+  );
+  writeFileSync(
+    outPath,
+    `${base}
+
+---
+Host finalize brief (read-only context — do NOT re-run the retail task):
+The worker already completed the mutations. Your ONLY job:
+1. Write tau/final.txt including EVERY filled report/resolve slot value verbatim (each amount,
+   tracking number, or fact must appear as its own substring — do not drop line-item amounts
+   if you also have a total).
+2. Call task.complete.
+
+Filled slots:
+${lines.join("\n") || "(none)"}
+
+Do NOT write tau/request.json. Do NOT invent API calls. Path MUST be tau/final.txt.
+`,
+  );
 }
 
 function runAgentPhase(opts) {
@@ -1454,6 +1715,11 @@ async function main() {
         const lineagePhases = lkey ? lineageByKey.get(lkey) : null;
         const frozenRoot = join(rawRoot, "lineage", "frozen");
         let softRetryUsed = false;
+        let workerSoftRetryUsed = false;
+        const isTauTodoDelegate = String(item.condition) === "cb-todo-delegate";
+        const taskAbsDir = join(root, item.task_path);
+        let tauSlotsSeeded = false;
+        let tauSlotsAllFilled = false;
 
         for (let pi = 0; pi < spec.phases.length; pi++) {
           const phase = spec.phases[pi];
@@ -1461,7 +1727,7 @@ async function main() {
           const phaseDump = join(attemptDir, `events.${phase.id}.jsonl`);
           const phaseReport = join(attemptDir, `report.${phase.id}.json`);
           const budgetArm = BUDGET_CONDITIONS.has(String(item.condition));
-          const maxSteps =
+          let maxSteps =
             phase.id === "implementation"
               ? Number(
                   budgetArm
@@ -1471,6 +1737,35 @@ async function main() {
               : budgetArm
                 ? 24
                 : Math.min(14, Number(manifest.matrix.max_steps ?? 30));
+          // τ todo-delegate: worker needs full retail budget; intake/finalize stay short.
+          if (isTauTodoDelegate) {
+            if (phase.id === "worker") {
+              maxSteps = Number(manifest.matrix.max_steps ?? 40);
+            } else if (phase.id === "intake") {
+              maxSteps = 6;
+            } else if (phase.id === "finalize") {
+              maxSteps = 8;
+            }
+          }
+
+          // τ todo-delegate: seed typed slots before intake; gate finalize on fills.
+          if (isTauTodoDelegate && phase.id === "intake" && !tauSlotsSeeded) {
+            const slots = tauTodoSlots(taskAbsDir);
+            writeTauTodos(worktree, slots);
+            tauSlotsSeeded = true;
+            console.error(
+              `[info] ${id}: seeded ${slots.length} todo slot(s) -> tau/todos.json`,
+            );
+          }
+          if (isTauTodoDelegate && phase.id === "finalize") {
+            const t = readTauTodos(worktree);
+            tauSlotsAllFilled = t.all_filled;
+            if (!t.all_filled) {
+              console.error(
+                `[warn] ${id}: worker left slots unfilled — finalize will report partial`,
+              );
+            }
+          }
           const stockDir = join(root, phase.path);
           const frozenDir = join(frozenRoot, phase.id);
           const lineageDir = lineagePhases?.[phase.id] ?? null;
@@ -1499,11 +1794,22 @@ async function main() {
           }
           const irBefore = harnessIrHash(harnessDir);
           const secBefore = securitySurfaceHash(harnessDir);
+          let phaseTaskPrompt = taskPrompt;
+          if (isTauTodoDelegate && phase.id === "finalize") {
+            // Host backfill any slots the worker forgot, then brief finalize with values.
+            const backfilled = backfillTauTodosFromWorktree(worktree, taskAbsDir);
+            if (backfilled) {
+              console.error(`[info] ${id}: host backfilled tau/todos.json from worker traces`);
+            }
+            const finalizePrompt = join(attemptDir, "finalize-prompt.md");
+            writeTauFinalizePrompt(taskPrompt, worktree, finalizePrompt);
+            phaseTaskPrompt = finalizePrompt;
+          }
           let result = runAgentPhase({
             harnessDir,
             deploymentPath: dep,
             worktree,
-            taskPrompt,
+            taskPrompt: phaseTaskPrompt,
             maxSteps,
             dumpPath: phaseDump,
             reportPath: phaseReport,
@@ -1540,6 +1846,49 @@ async function main() {
               userAskAnswer,
             });
           }
+          // Soft retry: one worker re-entry if todo slots still unfilled (τ todo-delegate).
+          // Re-seed DB + clear action logs first so retries are not contaminated by pass-1 mutates.
+          if (
+            isTauTodoDelegate &&
+            phase.id === "worker" &&
+            !readTauTodos(worktree).all_filled &&
+            !workerSoftRetryUsed
+          ) {
+            workerSoftRetryUsed = true;
+            applySeed(worktree, taskAbsDir, root);
+            const tauDir = join(worktree, "tau");
+            mkdirSync(tauDir, { recursive: true });
+            for (const f of [
+              "actions.jsonl",
+              "outputs.log",
+              "request.json",
+              "response.txt",
+              "final.txt",
+            ]) {
+              const p = join(tauDir, f);
+              if (existsSync(p)) rmSync(p);
+            }
+            writeTauTodos(worktree, tauTodoSlots(taskAbsDir));
+            const nudgePath = join(attemptDir, "worker-soft-retry-prompt.md");
+            const basePrompt = readFileSync(taskPrompt, "utf8");
+            writeFileSync(
+              nudgePath,
+              `${basePrompt}\n\n---\nHost soft-retry: DB and tau action logs were re-seeded. Read tau/todos.json; call todo.complete with the exact remaining slot ids (copy verbatim — do not invent ids); then phase.yield when open_todos=0. If slots are resolve/report-only, do NOT mutate.\n`,
+            );
+            console.error(`[info] ${id}: worker soft-retry (unfilled slots; DB re-seeded)`);
+            result = runAgentPhase({
+              harnessDir,
+              deploymentPath: dep,
+              worktree,
+              taskPrompt: nudgePath,
+              maxSteps,
+              dumpPath: phaseDump,
+              reportPath: phaseReport,
+              modelPath: null,
+              applyOverlays: process.env.FAUSTH_APPLY_OVERLAYS === "1",
+              userAskAnswer,
+            });
+          }
           eventChunks.push(result.eventsText.trimEnd());
           phaseReports.push({ id: phase.id, ...result.report });
           const phaseRow = {
@@ -1552,7 +1901,9 @@ async function main() {
             harness_ir_hash_after: harnessIrHash(harnessDir),
             security_intact:
               secBefore == null || secBefore === securitySurfaceHash(harnessDir),
-            soft_retry_used: phase.id === "plan" ? softRetryUsed : false,
+            soft_retry_used:
+              (phase.id === "plan" && softRetryUsed) ||
+              (phase.id === "worker" && workerSoftRetryUsed),
           };
 
           if (
@@ -1652,11 +2003,35 @@ async function main() {
               mergedReport.pipeline_blocked = "plan_not_approved";
               break;
             }
+            const approvedPaths = extractApprovedPathsFromEvents(result.eventsText);
+            if (approvedPaths.length) {
+              writeApprovedPathsFile(worktree, approvedPaths);
+              mergedReport.approved_write_paths = approvedPaths;
+              console.error(
+                `[info] ${id}: approved write paths (${approvedPaths.length}): ${approvedPaths.join(", ")}`,
+              );
+            }
             if (!phaseYielded(result.eventsText)) {
               console.error(`[warn] ${id}: plan did not phase.yield`);
             }
           }
           if (phase.id === "implementation") {
+            mergedReport.completion_reached = Boolean(result.report.completion_reached);
+          }
+          if (isTauTodoDelegate && phase.id === "worker") {
+            const t = readTauTodos(worktree);
+            mergedReport.tau_slots_worker = t.slots;
+            mergedReport.tau_slots_worker_all_filled = t.all_filled;
+            if (!t.all_filled) {
+              console.error(
+                `[warn] ${id}: worker ended with unfilled slots (${t.slots.filter((s) => s.value == null).length}/${t.slots.length})`,
+              );
+            }
+          }
+          if (isTauTodoDelegate && phase.id === "finalize") {
+            const t = readTauTodos(worktree);
+            mergedReport.tau_slots = t.slots;
+            mergedReport.tau_slots_all_filled = t.all_filled;
             mergedReport.completion_reached = Boolean(result.report.completion_reached);
           }
         }
@@ -1806,6 +2181,8 @@ async function main() {
             seed_test_sha256: grade.seed_test_sha256,
             final_test_sha256: grade.final_test_sha256,
             grade_exit_code: grade.grade_exit_code,
+            grade_kind: grade.grade_kind,
+            details: grade.details,
             side_effects: side,
           },
           null,
@@ -1857,6 +2234,9 @@ async function main() {
             : join(root, specNow.path);
         const targetHarnessDir = lineagePhases?.[targetPhase] ?? stockTarget;
         const trackId = String(manifest.hri_track ?? manifest.study_id ?? "");
+        const tauNative =
+          String(item.condition) === "cb-tau-native" ||
+          /cb-tau-native|tau-native/i.test(String(specNow.path ?? ""));
         const digest = buildOptimizeDigest({
           eventsText: combinedEvents,
           report: mergedReport,
@@ -1864,7 +2244,9 @@ async function main() {
           score,
           hints:
             trackId === "T" || /tau/i.test(trackId)
-              ? `## tau API reference\n${TAU_API_REFERENCE}`
+              ? tauNative
+                ? `## tau API reference (τ-native: patch tau.invoke descriptions)\n${TAU_API_REFERENCE}`
+                : `## tau API reference\n${TAU_API_REFERENCE}`
               : trackId === "S" || /swe/i.test(trackId)
                 ? "Track S: prefer set_tool_description on fs.write_scoped (source fix, not tests) or shell.run_allowlisted (only cmd=test|typecheck)."
                 : undefined,
@@ -1883,6 +2265,7 @@ async function main() {
               "case-studies/harness-optimize/deployments/local-kit.yml",
             modelId: item.model_id,
             track: trackId,
+            tauNative,
           });
           optimizeDisposition = optResult.disposition;
           optimizeSelectionOk = optResult.selection_ok ?? null;

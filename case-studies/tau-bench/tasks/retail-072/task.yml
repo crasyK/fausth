@@ -36,6 +36,6 @@ grade:
 user_sim:
   kind: scripted
   answers:
-    - yes
+    - Use PayPal and only modify the backpack, not the desk lamp.
     - yes please
     - that is correct

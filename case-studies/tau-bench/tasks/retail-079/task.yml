@@ -1,0 +1,33 @@
+id: "retail-079"
+title: "retail-079"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 79
+  task_id: "retail-079"
+  user_id: "emma_kovacs_9839"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W8661412"
+        item_ids:
+          - "3453331371"
+        new_item_ids:
+          - "2439754078"
+        payment_method_id: "credit_card_7239357"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

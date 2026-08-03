@@ -1,0 +1,78 @@
+id: "retail-023"
+title: "retail-023"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 23
+  task_id: "retail-023"
+  user_id: "sofia_hernandez_5364"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Sofia"
+        last_name: "Hernandez"
+        zip: "98193"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "sofia_hernandez_5364"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3561391"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W6876713"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9609649"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3947049"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "7765186836"
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W3947049"
+        item_ids:
+          - "3358616356"
+        new_item_ids:
+          - "8573379326"
+        payment_method_id: "credit_card_7901829"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "5426915165"
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W6876713"
+        item_ids:
+          - "6301799585"
+        new_item_ids:
+          - "8926329222"
+        payment_method_id: "credit_card_7901829"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "6819683148"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W3561391"
+        item_ids:
+          - "5946177616"
+        new_item_ids:
+          - "7082455361"
+        payment_method_id: "credit_card_7901829"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

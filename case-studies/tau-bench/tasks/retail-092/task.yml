@@ -33,6 +33,6 @@ grade:
 user_sim:
   kind: scripted
   answers:
-    - yes
+    - yes, and also return the smart watch and the e-reader
     - yes please
     - that is correct

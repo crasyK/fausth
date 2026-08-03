@@ -1,0 +1,45 @@
+id: "retail-025"
+title: "retail-025"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 25
+  task_id: "retail-025"
+  user_id: "isabella_johansson_2152"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Isabella"
+        last_name: "Johansson"
+        zip: "32286"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "isabella_johansson_2152"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3792453"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7181492"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5565470"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W2575533"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

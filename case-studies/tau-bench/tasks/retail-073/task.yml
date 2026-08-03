@@ -1,0 +1,34 @@
+id: "retail-073"
+title: "retail-073"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 73
+  task_id: "retail-073"
+  user_id: "fatima_wilson_7472"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W5272531"
+        item_ids:
+          - "7228247242"
+          - "2698416822"
+          - "8098621301"
+          - "3320557165"
+        payment_method_id: "credit_card_6824399"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

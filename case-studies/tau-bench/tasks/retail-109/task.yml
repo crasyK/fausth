@@ -1,0 +1,34 @@
+id: "retail-109"
+title: "retail-109"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 109
+  task_id: "retail-109"
+  user_id: "yusuf_gonzalez_8900"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W1679211"
+        item_ids:
+          - "9612497925"
+          - "7127170374"
+          - "6268080249"
+        payment_method_id: "paypal_3022415"
+  outputs:
+    - "346.93"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

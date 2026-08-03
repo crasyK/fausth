@@ -6,6 +6,19 @@ harnesses:
   counterbalanced:
     kind: single
     path: case-studies/tau-bench/harnesses/counterbalanced
+  cb-tau-native:
+    kind: single
+    path: case-studies/tau-bench/harnesses/cb-tau-native
+  cb-todo-delegate:
+    kind: pipeline
+    root: case-studies/tau-bench/harnesses/cb-todo-delegate
+    phases:
+      - id: intake
+        path: case-studies/tau-bench/harnesses/cb-todo-delegate/agents/intake
+      - id: worker
+        path: case-studies/tau-bench/harnesses/cb-todo-delegate/agents/worker
+      - id: finalize
+        path: case-studies/tau-bench/harnesses/cb-todo-delegate/agents/finalize
   permissive-control:
     kind: single
     path: case-studies/tau-bench/harnesses/permissive-control

@@ -1,0 +1,54 @@
+id: "retail-035"
+title: "retail-035"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 35
+  task_id: "retail-035"
+  user_id: "aarav_santos_2259"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "aarav.santos8321@example.com"
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "aarav.santos8320@example.com"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "aarav_santos_2259"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9672333"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "4760268021"
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W8528674"
+        item_ids:
+          - "6704763132"
+        payment_method_id: "paypal_7664977"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W9672333"
+        item_ids:
+          - "1684786391"
+        new_item_ids:
+          - "5052031638"
+        payment_method_id: "paypal_7664977"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

@@ -39,6 +39,59 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Resolve pytest binary: .venv first, then PATH.
+ * @returns {string}
+ */
+export function resolvePytestBinary() {
+  const venvPytest = join(repoRoot, ".venv", "bin", "pytest");
+  if (existsSync(venvPytest)) return venvPytest;
+  const runner = join(repoRoot, "scripts", "pytest-runner.sh");
+  if (existsSync(runner)) return runner;
+  try {
+    return run("bash", ["-lc", "command -v pytest"]).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Capture worktree diff for seeded SWE repos (untracked files vs empty index).
+ * @param {string} worktree
+ */
+export function captureSweWorktreeDiff(worktree) {
+  const seedMeta = join(worktree, ".fausth-swe-seed.json");
+  if (existsSync(seedMeta)) {
+    try {
+      const meta = JSON.parse(readFileSync(seedMeta, "utf8"));
+      if (meta.mirror && meta.base_commit) {
+        return run("git", [
+          "--git-dir",
+          meta.mirror,
+          "--work-tree",
+          worktree,
+          "diff",
+          meta.base_commit,
+        ]);
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    run("git", ["-C", worktree, "add", "-A"]);
+    return run("git", ["-C", worktree, "diff", "--cached"]);
+  } catch {
+    try {
+      return run("git", ["-C", worktree, "diff"]);
+    } catch {
+      return "";
+    }
+  }
+}
+
 /**
  * Ensure a bare/cached clone exists and return a path checked out at commit.
  * @param {{ repo: string, base_commit: string, cacheRoot: string, worktree: string }} opts
@@ -228,12 +281,7 @@ export function gradeSweBench(worktree, taskAbsDir) {
     skip_reason: null,
   };
 
-  let diff = "";
-  try {
-    diff = run("git", ["-C", worktree, "diff"]);
-  } catch {
-    diff = "";
-  }
+  let diff = captureSweWorktreeDiff(worktree);
 
   // Prefer explicit eval script in task grade dir
   const evalSh = join(taskAbsDir, grade.script ?? "grade/eval.sh");
@@ -261,12 +309,7 @@ export function gradeSweBench(worktree, taskAbsDir) {
   }
 
   // Pytest path selection
-  let pytest;
-  try {
-    pytest = run("bash", ["-lc", "command -v pytest"]).trim();
-  } catch {
-    pytest = "";
-  }
+  const pytest = resolvePytestBinary();
   if (!pytest) {
     details.grade_skipped = true;
     details.skip_reason = "pytest_not_found";
@@ -371,7 +414,13 @@ export function gradeTauPolicy(worktree, taskAbsDir) {
     const actionsLog = existsSync(join(worktree, "tau", "actions.jsonl"))
       ? readFileSync(join(worktree, "tau", "actions.jsonl"), "utf8")
       : "";
-    const blob = resp + "\n" + actionsLog;
+    const outputsLog = existsSync(join(worktree, "tau", "outputs.log"))
+      ? readFileSync(join(worktree, "tau", "outputs.log"), "utf8")
+      : "";
+    const finalTxt = existsSync(join(worktree, "tau", "final.txt"))
+      ? readFileSync(join(worktree, "tau", "final.txt"), "utf8")
+      : "";
+    const blob = resp + "\n" + actionsLog + "\n" + outputsLog + "\n" + finalTxt;
     for (const o of outputs) {
       const hit = blob.includes(String(o));
       outputHits[o] = hit;

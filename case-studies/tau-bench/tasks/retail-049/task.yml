@@ -1,0 +1,62 @@
+id: "retail-049"
+title: "retail-049"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 49
+  task_id: "retail-049"
+  user_id: "aarav_anderson_8794"
+  annotator: "1"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Aarav"
+        last_name: "Anderson"
+        zip: "19031"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "aarav_anderson_8794"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4316152"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9311069"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9300146"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3220203"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3470184"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9924732112"
+    - name: "calculate"
+      kwargs:
+        expression: "258.97 - 232.49"
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W3470184"
+        item_ids:
+          - "2757705742"
+        new_item_ids:
+          - "1646531091"
+        payment_method_id: "gift_card_7245904"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

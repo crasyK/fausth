@@ -1,0 +1,47 @@
+id: "retail-061"
+title: "retail-061"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 61
+  task_id: "retail-061"
+  user_id: "chen_johnson_4204"
+  annotator: "2"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Chen"
+        last_name: "Johnson"
+        zip: "77004"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5061109"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9924732112"
+    - name: "calculate"
+      kwargs:
+        expression: "256.67 - 226.49"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W5061109"
+        item_ids:
+          - "3694871183"
+        new_item_ids:
+          - "8555936349"
+        payment_method_id: "paypal_3742148"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

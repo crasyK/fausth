@@ -1,0 +1,29 @@
+id: "retail-090"
+title: "retail-090"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 90
+  task_id: "retail-090"
+  user_id: "emma_kovacs_9839"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W9284598"
+        reason: "ordered by mistake"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

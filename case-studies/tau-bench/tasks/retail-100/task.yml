@@ -1,0 +1,43 @@
+id: "retail-100"
+title: "retail-100"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 100
+  task_id: "retail-100"
+  user_id: "sofia_li_9219"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W4689314"
+        item_ids:
+          - "5996159312"
+        new_item_ids:
+          - "8363011723"
+        payment_method_id: "credit_card_3951670"
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W3916020"
+        item_ids:
+          - "7758198585"
+          - "4068787148"
+        new_item_ids:
+          - "5606522780"
+          - "5546244844"
+        payment_method_id: "credit_card_3951670"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

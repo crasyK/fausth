@@ -1,0 +1,36 @@
+id: "retail-065"
+title: "retail-065"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 65
+  task_id: "retail-065"
+  user_id: "james_kovacs_9247"
+  annotator: "3"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "James"
+        last_name: "Kovacs"
+        zip: "95190"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "james_kovacs_9247"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5362037"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

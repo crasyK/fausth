@@ -1,0 +1,91 @@
+spec: counterbalance-contract/v0.1
+name: tau-finalize
+
+# τ todo-delegate FINALIZE (IO): the worker has ALREADY done every mutation and
+# captured the required facts. Your ONLY job is to write the customer-facing answer.
+# STEP 1: fs.read tau/todos.json (the filled slots hold the facts, e.g. tracking numbers).
+# STEP 2: fs.write_scoped tau/final.txt with the final answer including every required fact verbatim.
+# STEP 3: task.complete.
+# DO NOT write tau/request.json, DO NOT call the τ API, DO NOT re-run the task —
+# that is the worker's job and it is already done. You have very few steps; spend them on final.txt.
+
+state:
+  open_todos: 1
+  finalized: 0
+
+limits:
+  max_steps: 10
+  max_tool_calls: 8
+  continue_after_deny: true
+
+tools:
+  - id: fs.read
+    read_only: true
+    description: >
+      Read tau/todos.json FIRST to get the filled slot values (tracking numbers,
+      confirmations). Do NOT read tau/request.json or tau/response.txt — those are
+      the worker's scratch files, not your input.
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: fs.write_scoped
+    description: >
+      Write the final customer answer to tau/final.txt (path MUST be "tau/final.txt").
+      Include every filled report/resolve slot value verbatim (each amount and tracking number
+      as its own substring — if slots have both line-item amounts and a total, write ALL of them).
+      Do NOT write tau/request.json — that is the worker's old protocol.
+    input:
+      type: object
+      required: [path, content]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        content: { type: string }
+    output:
+      type: object
+      required: [ok, path]
+      additionalProperties: true
+      properties:
+        ok: { type: integer }
+        path: { type: string }
+  - id: task.complete
+    description: >
+      Call ONCE after tau/final.txt is written with all required facts.
+      If orientation shows completion.ready=1, STOP — do not call again.
+    input: { type: object, additionalProperties: false, properties: {} }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - fs.read
+    - fs.write_scoped
+    - task.complete
+  filesystem:
+    write_scopes: ["tau/", "data/"]
+    read_scopes: ["."]
+
+counterbalance:
+  completion:
+    tool: task.complete
+    require:
+      all:
+        - { path: state.finalized, eq: 1 }
+  orientation:
+    emit_each_step: true
+

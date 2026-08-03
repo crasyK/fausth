@@ -1,0 +1,71 @@
+id: "retail-021"
+title: "retail-021"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 21
+  task_id: "retail-021"
+  user_id: "ethan_garcia_1261"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Ethan"
+        last_name: "Garcia"
+        zip: "80280"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "ethan_garcia_1261"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4967593"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9911714"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5733668"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "4107812777"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "1421289881"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "1656367028"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "4107812777"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "6938111410"
+    - name: "calculate"
+      kwargs:
+        expression: "155.33 - 147.05 + 268.77 - 235.13"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W9911714"
+        item_ids:
+          - "9791469541"
+          - "1340995114"
+        new_item_ids:
+          - "4107812777"
+          - "1421289881"
+        payment_method_id: "gift_card_4332117"
+  outputs:
+    - "44.08"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

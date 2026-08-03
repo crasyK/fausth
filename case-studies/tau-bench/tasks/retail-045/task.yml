@@ -1,0 +1,48 @@
+id: "retail-045"
+title: "retail-045"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 45
+  task_id: "retail-045"
+  user_id: "daiki_johnson_9523"
+  annotator: "2"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Daiki"
+        last_name: "Johnson"
+        zip: "80273"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9502127"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "1762337868"
+    - name: "calculate"
+      kwargs:
+        expression: "652.61 - 642.72"
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W9502127"
+        item_ids:
+          - "6259501109"
+        new_item_ids:
+          - "7958300294"
+        payment_method_id: "paypal_2433177"
+  outputs:
+    - "9.89"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

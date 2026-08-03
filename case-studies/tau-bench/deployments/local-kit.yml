@@ -33,12 +33,18 @@ bindings:
     native: local.fs_write
   shell.run_allowlisted:
     native: local.shell
+  tau.invoke:
+    native: local.tau_invoke
+  todo.complete:
+    native: local.todo_complete
   user.ask:
     native: local.user_ask_auto
   user.correct:
     native: local.user_correct_auto
   task.complete:
     native: local.task_complete
+  phase.yield:
+    native: local.phase_yield
   harness.reflect_skills:
     native: local.harness_reflect
   harness.propose_skills_patch:

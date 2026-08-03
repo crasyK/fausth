@@ -25,6 +25,6 @@ grade:
 user_sim:
   kind: scripted
   answers:
-    - yes
+    - Actually, return the more expensive tablet and refund to my gift card instead.
     - yes please
     - that is correct

@@ -1,0 +1,55 @@
+id: "retail-026"
+title: "retail-026"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 26
+  task_id: "retail-026"
+  user_id: "isabella_johansson_2152"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Isabella"
+        last_name: "Johansson"
+        zip: "32286"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "isabella_johansson_2152"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3792453"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7181492"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5565470"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W2575533"
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W5565470"
+        item_ids:
+          - "7602931732"
+          - "9570044148"
+        payment_method_id: "paypal_3024827"
+    - name: "transfer_to_human_agents"
+      kwargs:
+        summary: "The user wants to refund to the amex credit card, but the agent cannot help."
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

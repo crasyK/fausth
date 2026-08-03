@@ -1,0 +1,33 @@
+id: "retail-077"
+title: "retail-077"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 77
+  task_id: "retail-077"
+  user_id: "ivan_johnson_6036"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W1671835"
+        item_ids:
+          - "5081446110"
+        new_item_ids:
+          - "3399869890"
+        payment_method_id: "paypal_6918118"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

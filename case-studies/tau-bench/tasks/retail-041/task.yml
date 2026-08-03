@@ -1,0 +1,80 @@
+id: "retail-041"
+title: "retail-041"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 41
+  task_id: "retail-041"
+  user_id: "mei_patel_7272"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Mei"
+        last_name: "Patel"
+        zip: "76165"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "mei_patel_7272"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9583042"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4082615"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W9583042"
+        address1: "445 Maple Drive"
+        address2: "Suite 394"
+        city: "Fort Worth"
+        state: "TX"
+        country: "USA"
+        zip: "76165"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W4082615"
+        address1: "445 Maple Drive"
+        address2: "Suite 394"
+        city: "Fort Worth"
+        state: "TX"
+        country: "USA"
+        zip: "76165"
+    - name: "modify_user_address"
+      kwargs:
+        user_id: "mei_patel_7272"
+        address1: "445 Maple Drive"
+        address2: "Suite 394"
+        city: "Fort Worth"
+        state: "TX"
+        country: "USA"
+        zip: "76165"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "1808611083"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4082615"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W4082615"
+        item_ids:
+          - "9779102705"
+        new_item_ids:
+          - "1096508426"
+        payment_method_id: "paypal_4768213"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

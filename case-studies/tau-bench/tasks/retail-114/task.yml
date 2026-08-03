@@ -1,0 +1,33 @@
+id: "retail-114"
+title: "retail-114"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 114
+  task_id: "retail-114"
+  user_id: "yara_muller_8652"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W5056519"
+        reason: "ordered by mistake"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W5995614"
+        reason: "ordered by mistake"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

@@ -1,0 +1,51 @@
+id: "retail-110"
+title: "retail-110"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 110
+  task_id: "retail-110"
+  user_id: "sophia_martin_8570"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W1603792"
+        address1: "592 Elm Avenue"
+        address2: "Suite 978"
+        city: "Houston"
+        country: "USA"
+        state: "TX"
+        zip: "77242"
+    - name: "modify_user_address"
+      kwargs:
+        user_id: "sophia_martin_8570"
+        address1: "592 Elm Avenue"
+        address2: "Suite 978"
+        city: "Houston"
+        country: "USA"
+        state: "TX"
+        zip: "77242"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W1603792"
+        item_ids:
+          - "6501071631"
+        new_item_ids:
+          - "2106335193"
+        payment_method_id: "credit_card_5694100"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

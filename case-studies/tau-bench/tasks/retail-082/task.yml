@@ -1,0 +1,34 @@
+id: "retail-082"
+title: "retail-082"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 82
+  task_id: "retail-082"
+  user_id: "chen_silva_7485"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W9571698"
+        item_ids:
+          - "5952720925"
+          - "9973034634"
+          - "7381052709"
+          - "6065192424"
+        payment_method_id: "gift_card_7250692"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

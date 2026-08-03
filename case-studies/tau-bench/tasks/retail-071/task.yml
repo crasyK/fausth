@@ -1,0 +1,42 @@
+id: "retail-071"
+title: "retail-071"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 71
+  task_id: "retail-071"
+  user_id: "ivan_khan_7475"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W5270061"
+        address1: "159 Hickory Lane"
+        address2: "Suite 995"
+        city: "Charlotte"
+        country: "USA"
+        state: "NC"
+        zip: "28243"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W5270061"
+        item_ids:
+          - "2492465580"
+        new_item_ids:
+          - "5917587651"
+        payment_method_id: "paypal_7729105"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

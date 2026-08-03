@@ -1,0 +1,56 @@
+id: "retail-104"
+title: "retail-104"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 104
+  task_id: "retail-104"
+  user_id: "lucas_brown_6720"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W6239298"
+        item_ids:
+          - "4900661478"
+          - "3614853563"
+        payment_method_id: "credit_card_2112420"
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W9218746"
+        item_ids:
+          - "7824298782"
+        payment_method_id: "credit_card_2112420"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W4860251"
+        address1: "921 Park Avenue"
+        address2: "Suite 892"
+        city: "Chicago"
+        country: "USA"
+        state: "IL"
+        zip: "60612"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W4860251"
+        item_ids:
+          - "5209958006"
+        new_item_ids:
+          - "8964750292"
+        payment_method_id: "credit_card_2112420"
+  outputs:
+    - "286422338955"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

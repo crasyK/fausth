@@ -1,0 +1,51 @@
+id: "retail-017"
+title: "retail-017"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 17
+  task_id: "retail-017"
+  user_id: "fatima_johnson_7581"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Fatima"
+        last_name: "Johnson"
+        zip: "78712"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "fatima_johnson_7581"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5199551"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W8665881"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9389413"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W8665881"
+        address1: "123 Elm Street"
+        address2: "Suite 641"
+        city: "Austin"
+        state: "TX"
+        country: "USA"
+        zip: "78712"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"
