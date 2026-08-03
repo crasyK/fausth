@@ -1,0 +1,198 @@
+{
+  "seed": 42,
+  "n": 48,
+  "cases": [
+    {
+      "id": "fuzz-000",
+      "path": "cases/fuzz-000.json"
+    },
+    {
+      "id": "fuzz-001",
+      "path": "cases/fuzz-001.json"
+    },
+    {
+      "id": "fuzz-002",
+      "path": "cases/fuzz-002.json"
+    },
+    {
+      "id": "fuzz-003",
+      "path": "cases/fuzz-003.json"
+    },
+    {
+      "id": "fuzz-004",
+      "path": "cases/fuzz-004.json"
+    },
+    {
+      "id": "fuzz-005",
+      "path": "cases/fuzz-005.json"
+    },
+    {
+      "id": "fuzz-006",
+      "path": "cases/fuzz-006.json"
+    },
+    {
+      "id": "fuzz-007",
+      "path": "cases/fuzz-007.json"
+    },
+    {
+      "id": "fuzz-008",
+      "path": "cases/fuzz-008.json"
+    },
+    {
+      "id": "fuzz-009",
+      "path": "cases/fuzz-009.json"
+    },
+    {
+      "id": "fuzz-010",
+      "path": "cases/fuzz-010.json"
+    },
+    {
+      "id": "fuzz-011",
+      "path": "cases/fuzz-011.json"
+    },
+    {
+      "id": "fuzz-012",
+      "path": "cases/fuzz-012.json"
+    },
+    {
+      "id": "fuzz-013",
+      "path": "cases/fuzz-013.json"
+    },
+    {
+      "id": "fuzz-014",
+      "path": "cases/fuzz-014.json"
+    },
+    {
+      "id": "fuzz-015",
+      "path": "cases/fuzz-015.json"
+    },
+    {
+      "id": "fuzz-016",
+      "path": "cases/fuzz-016.json"
+    },
+    {
+      "id": "fuzz-017",
+      "path": "cases/fuzz-017.json"
+    },
+    {
+      "id": "fuzz-018",
+      "path": "cases/fuzz-018.json"
+    },
+    {
+      "id": "fuzz-019",
+      "path": "cases/fuzz-019.json"
+    },
+    {
+      "id": "fuzz-020",
+      "path": "cases/fuzz-020.json"
+    },
+    {
+      "id": "fuzz-021",
+      "path": "cases/fuzz-021.json"
+    },
+    {
+      "id": "fuzz-022",
+      "path": "cases/fuzz-022.json"
+    },
+    {
+      "id": "fuzz-023",
+      "path": "cases/fuzz-023.json"
+    },
+    {
+      "id": "fuzz-024",
+      "path": "cases/fuzz-024.json"
+    },
+    {
+      "id": "fuzz-025",
+      "path": "cases/fuzz-025.json"
+    },
+    {
+      "id": "fuzz-026",
+      "path": "cases/fuzz-026.json"
+    },
+    {
+      "id": "fuzz-027",
+      "path": "cases/fuzz-027.json"
+    },
+    {
+      "id": "fuzz-028",
+      "path": "cases/fuzz-028.json"
+    },
+    {
+      "id": "fuzz-029",
+      "path": "cases/fuzz-029.json"
+    },
+    {
+      "id": "fuzz-030",
+      "path": "cases/fuzz-030.json"
+    },
+    {
+      "id": "fuzz-031",
+      "path": "cases/fuzz-031.json"
+    },
+    {
+      "id": "fuzz-032",
+      "path": "cases/fuzz-032.json"
+    },
+    {
+      "id": "fuzz-033",
+      "path": "cases/fuzz-033.json"
+    },
+    {
+      "id": "fuzz-034",
+      "path": "cases/fuzz-034.json"
+    },
+    {
+      "id": "fuzz-035",
+      "path": "cases/fuzz-035.json"
+    },
+    {
+      "id": "fuzz-036",
+      "path": "cases/fuzz-036.json"
+    },
+    {
+      "id": "fuzz-037",
+      "path": "cases/fuzz-037.json"
+    },
+    {
+      "id": "fuzz-038",
+      "path": "cases/fuzz-038.json"
+    },
+    {
+      "id": "fuzz-039",
+      "path": "cases/fuzz-039.json"
+    },
+    {
+      "id": "fuzz-040",
+      "path": "cases/fuzz-040.json"
+    },
+    {
+      "id": "fuzz-041",
+      "path": "cases/fuzz-041.json"
+    },
+    {
+      "id": "fuzz-042",
+      "path": "cases/fuzz-042.json"
+    },
+    {
+      "id": "fuzz-043",
+      "path": "cases/fuzz-043.json"
+    },
+    {
+      "id": "fuzz-044",
+      "path": "cases/fuzz-044.json"
+    },
+    {
+      "id": "fuzz-045",
+      "path": "cases/fuzz-045.json"
+    },
+    {
+      "id": "fuzz-046",
+      "path": "cases/fuzz-046.json"
+    },
+    {
+      "id": "fuzz-047",
+      "path": "cases/fuzz-047.json"
+    }
+  ]
+}

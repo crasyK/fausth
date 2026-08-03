@@ -33,6 +33,7 @@
     "hri:aggregate": "node scripts/hri-aggregate.mjs",
     "swe:import": "node scripts/import-swe-lite.mjs",
     "ci:swe-recorded": "node scripts/case-study-coding.mjs --manifest case-studies/swe-bench/manifest.yml --mode recorded --skip-conformance --tasks pallets__flask-4045 --reps 1 --run-id swe-recorded-ci",
-    "ci:tau-recorded": "node scripts/case-study-coding.mjs --manifest case-studies/tau-bench/manifest.yml --mode recorded --skip-conformance --tasks retail-000 --reps 1 --run-id tau-recorded-ci"
+    "ci:tau-recorded": "node scripts/case-study-coding.mjs --manifest case-studies/tau-bench/manifest.yml --mode recorded --skip-conformance --tasks retail-000 --reps 1 --run-id tau-recorded-ci",
+    "ci:fuzz": "node scripts/fuzz-ir.mjs"
   }
 }

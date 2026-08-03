@@ -1,0 +1,74 @@
+{
+  "id": "fuzz-039",
+  "seed": 42,
+  "index": 39,
+  "expect_valid_hint": true,
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "fuzz-case-039",
+    "state": {
+      "open_todos": 1,
+      "flag": 1
+    },
+    "tools": [
+      {
+        "id": "fs.read",
+        "read_only": true,
+        "input": {
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "path",
+            "found"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "found": {
+              "type": "integer"
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "limits": {
+      "max_steps": 9,
+      "max_tool_calls": 5,
+      "continue_after_deny": false
+    },
+    "permissions": {
+      "tools": [
+        "fs.read"
+      ],
+      "filesystem": {
+        "read_scopes": [
+          "src/"
+        ],
+        "write_scopes": [
+          "src/"
+        ]
+      }
+    },
+    "counterbalance": {
+      "orientation": {
+        "emit_each_step": true
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"args":{"question":"which file?"},"call_seq":1,"result":{"output":{"answer":"src/app.ts"},"state_transition":{"set":{"clarified":1}}},"tool":"user.ask"}

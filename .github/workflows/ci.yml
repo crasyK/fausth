@@ -30,6 +30,8 @@ jobs:
         run: pnpm ci:adversarial
       - name: Example library smoke
         run: pnpm ci:library-smoke
+      - name: IR fuzz validate agreement
+        run: pnpm ci:fuzz
 
   py:
     runs-on: ubuntu-latest

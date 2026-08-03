@@ -14,8 +14,16 @@ const agent: AgentIR = {
   name: "impl",
   state: { open_todos: 1, test_evidence_current: 1 },
   tools: [
-    { id: "user.correct", input: { type: "object" }, output: { type: "object" } },
-    { id: "task.complete", input: { type: "object" }, output: { type: "object" } },
+    {
+      id: "user.correct",
+      input: { type: "object", additionalProperties: true },
+      output: { type: "object", additionalProperties: true },
+    },
+    {
+      id: "task.complete",
+      input: { type: "object", additionalProperties: true },
+      output: { type: "object", additionalProperties: true },
+    },
   ],
   permissions: { tools: ["user.correct", "task.complete"] },
   counterbalance: {
@@ -93,5 +101,68 @@ describe("completion deny failure", () => {
     const openTodos = deny!.failure!.failed.find((f) => f.path === "state.open_todos");
     assert.ok(openTodos);
     assert.equal(openTodos!.unblock?.tool, "user.correct");
+  });
+
+  it("stops the run after the first successful task.complete", async () => {
+    const proposals: ModelProposal[] = [
+      { type: "tool", name: "task.complete", args: {} },
+      { type: "tool", name: "task.complete", args: {} },
+      { type: "tool", name: "task.complete", args: {} },
+    ];
+    const a = structuredClone(agent);
+    a.state.open_todos = 0;
+    a.state.test_evidence_current = 1;
+    const rt = new FaustRuntime({
+      agent: a,
+      propose: async () => proposals.shift() ?? { type: "stop" },
+      tools: createCodingTools(),
+    });
+    await rt.runLoop(10);
+    const completeExecs = rt.events.filter(
+      (e) => e.tool === "task.complete" && e.stage === "execute" && e.verdict === "allow",
+    );
+    assert.equal(completeExecs.length, 1);
+    const done = rt.events.find((e) => e.stage === "record" && e.reason === "run_complete");
+    assert.ok(done);
+    assert.equal(proposals.length, 2);
+  });
+
+  it("stops the run after the first successful phase.yield", async () => {
+    const proposals: ModelProposal[] = [
+      { type: "tool", name: "phase.yield", args: {} },
+      { type: "tool", name: "phase.yield", args: {} },
+      { type: "tool", name: "fs.read", args: { path: "README.md" } },
+    ];
+    const a: AgentIR = {
+      name: "research",
+      state: { researched: 0, phase_yielded: 0 },
+      tools: [
+        {
+          id: "fs.read",
+          input: { type: "object", additionalProperties: true },
+          output: { type: "object", additionalProperties: true },
+        },
+        {
+          id: "phase.yield",
+          input: { type: "object", additionalProperties: true },
+          output: { type: "object", additionalProperties: true },
+        },
+      ],
+      permissions: { tools: ["fs.read", "phase.yield"] },
+      limits: { max_steps: 10 },
+    };
+    const rt = new FaustRuntime({
+      agent: a,
+      propose: async () => proposals.shift() ?? { type: "stop" },
+      tools: createCodingTools(),
+    });
+    await rt.runLoop(10);
+    const yieldExecs = rt.events.filter(
+      (e) => e.tool === "phase.yield" && e.stage === "execute" && e.verdict === "allow",
+    );
+    assert.equal(yieldExecs.length, 1);
+    const done = rt.events.find((e) => e.stage === "record" && e.reason === "phase_yielded");
+    assert.ok(done);
+    assert.equal(proposals.length, 2);
   });
 });

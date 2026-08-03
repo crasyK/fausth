@@ -20,7 +20,7 @@ import { validateAgent } from "./validate.js";
 import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
-import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
+import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
 import type { AgentIR, Deployment, HarnessPatch, ModelProposal, RecordedToolCall } from "./types.js";
 import { canonicalJson } from "./canonical.js";
 import {
@@ -219,12 +219,7 @@ function buildTools(agent: AgentIR) {
       fan_percent: Number(agent.state.fan_percent ?? 0),
       sensor_healthy: Number(agent.state.sensor_healthy ?? 1),
     }),
-    ...createCodingTools({
-      files: { "src/app.ts": "export {}" },
-      write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
-      last_exit_code: 1,
-      out_of_scope_writes: 0,
-    }),
+    ...createCodingTools(codingWorldFromAgent(agent)),
     ...createSpawnTool(agent.permissions?.tools ?? []),
   };
 }

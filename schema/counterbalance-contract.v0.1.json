@@ -104,25 +104,23 @@
         "secrets": {
           "type": "object",
           "additionalProperties": false,
+          "description": "Labeled secret paths/values; deny writes containing them when deny_write_contains is true.",
           "properties": {
             "paths": {
               "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
+              "items": { "type": "string", "minLength": 1 }
             },
-            "deny_write_contains": {
-              "type": "boolean"
-            }
+            "values": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "deny_write_contains": { "type": "boolean" }
           }
         },
         "protected_paths": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "description": "Paths that must keep baseline content (absence of change).",
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },

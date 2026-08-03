@@ -1,0 +1,166 @@
+{
+  "id": "fuzz-035",
+  "seed": 42,
+  "index": 35,
+  "expect_valid_hint": true,
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "fuzz-case-035",
+    "state": {
+      "open_todos": 1,
+      "flag": 0
+    },
+    "tools": [
+      {
+        "id": "fs.read",
+        "read_only": true,
+        "input": {
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "path",
+            "found"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "found": {
+              "type": "integer"
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "id": "fs.write_scoped",
+        "input": {
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "ok",
+            "out_of_scope",
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ok": {
+              "type": "integer"
+            },
+            "out_of_scope": {
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "id": "user.ask",
+        "input": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "question": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "answer"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "answer": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "id": "task.complete",
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "ok"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ok": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    ],
+    "limits": {
+      "max_steps": 14,
+      "max_tool_calls": 3,
+      "continue_after_deny": false
+    },
+    "permissions": {
+      "tools": [
+        "fs.read",
+        "fs.write_scoped",
+        "user.ask",
+        "task.complete"
+      ],
+      "filesystem": {
+        "read_scopes": [
+          "src/"
+        ],
+        "write_scopes": [
+          "src/"
+        ]
+      }
+    },
+    "counterbalance": {
+      "orientation": {
+        "emit_each_step": true
+      },
+      "completion": {
+        "tool": "task.complete",
+        "require": {
+          "path": "state.open_todos",
+          "eq": 0
+        }
+      }
+    }
+  }
+}
