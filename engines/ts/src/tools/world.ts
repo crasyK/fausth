@@ -185,6 +185,11 @@ export function codingWorldFromAgent(
   return world;
 }
 
+export function contentFingerprint(content: string | null | undefined): string {
+  if (content === null || content === undefined) return "missing";
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
 export function createCodingTools(world: CodingWorld): Record<string, ToolHandler> {
   return {
     "fs.read": (args): ToolResultEnvelope => {
