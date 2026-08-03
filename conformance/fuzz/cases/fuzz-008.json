@@ -1,0 +1,117 @@
+{
+  "id": "fuzz-008",
+  "seed": 42,
+  "index": 8,
+  "expect_valid_hint": false,
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "fuzz-case-008",
+    "state": {
+      "open_todos": 0,
+      "flag": 0
+    },
+    "tools": [
+      {
+        "id": "fs.read",
+        "read_only": true,
+        "input": {
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "path",
+            "found"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "found": {
+              "type": "integer"
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "id": "fs.write_scoped",
+        "input": {
+          "type": "object",
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "ok",
+            "out_of_scope",
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ok": {
+              "type": "integer"
+            },
+            "out_of_scope": {
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "limits": {
+      "max_steps": 11,
+      "max_tool_calls": 7,
+      "continue_after_deny": true
+    },
+    "permissions": {
+      "tools": [
+        "fs.read",
+        "fs.write_scoped"
+      ],
+      "filesystem": {
+        "read_scopes": [
+          "src/"
+        ],
+        "write_scopes": [
+          "src/"
+        ]
+      }
+    },
+    "counterbalance": {
+      "orientation": {
+        "emit_each_step": true
+      }
+    },
+    "mutable": [
+      "skills",
+      "not-a-cell"
+    ]
+  }
+}

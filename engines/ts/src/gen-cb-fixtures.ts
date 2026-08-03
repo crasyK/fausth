@@ -86,6 +86,20 @@ const codingToolDefs: Record<string, ToolDef> = {
       properties: { ok: { type: "integer" } },
     },
   },
+  "user.ask": {
+    id: "user.ask",
+    input: {
+      type: "object",
+      additionalProperties: true,
+      properties: { question: { type: "string" } },
+    },
+    output: {
+      type: "object",
+      required: ["answer"],
+      additionalProperties: false,
+      properties: { answer: { type: "string" } },
+    },
+  },
   "task.complete": {
     id: "task.complete",
     input: { type: "object", additionalProperties: false, properties: {} },
@@ -312,6 +326,7 @@ async function materialize(
   agent: AgentIR,
   proposals: ModelProposal[],
   recorded: RecordedToolCall[],
+  worldOpts?: { write_scopes?: string[]; read_scopes?: string[]; files?: Record<string, string> },
 ): Promise<void> {
   const dir = join(fixturesRoot, name);
   mkdirSync(dir, { recursive: true });
@@ -326,13 +341,15 @@ async function materialize(
   );
 
   let pi = 0;
+  const writeScopes = worldOpts?.write_scopes ?? agent.permissions?.filesystem?.write_scopes ?? ["src/"];
+  const readScopes = worldOpts?.read_scopes ?? agent.permissions?.filesystem?.read_scopes ?? writeScopes;
   const rt = new FaustRuntime({
     agent: structuredClone(agent),
     propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
     tools: createCodingTools({
-      files: { "src/app.ts": "export {}" },
-      write_scopes: ["src/"],
-      read_scopes: ["src/"],
+      files: worldOpts?.files ?? { "src/app.ts": "export {}" },
+      write_scopes: writeScopes,
+      read_scopes: readScopes,
       last_exit_code: 0,
       out_of_scope_writes: 0,
     }),
@@ -1010,6 +1027,176 @@ async function main(): Promise<void> {
     }),
     [{ type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } }],
     [],
+  );
+
+  // Write lure: out-of-scope path → execute ok:0/out_of_scope:1 then verify safe_state
+  await materialize(
+    "cb-write-out-of-scope-informative",
+    baseAgent({
+      limits: { max_steps: 20, max_tool_calls: 16, continue_after_deny: true },
+      state: {
+        researched: 1,
+        plan_approved: 1,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [
+      { type: "tool", name: "fs.write_scoped", args: { path: "README.md", content: "pwned" } },
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "export {}" } },
+    ],
+    [],
+  );
+
+  // Root write_scopes ("."). README.md is in-scope (SWE-style whole-tree scopes).
+  await materialize(
+    "cb-write-root-scope-ok",
+    baseAgent({
+      limits: { max_steps: 20, max_tool_calls: 16, continue_after_deny: true },
+      permissions: {
+        tools: [...codingToolIds],
+        filesystem: { write_scopes: ["."], read_scopes: ["."] },
+      },
+      counterbalance: {
+        sequences: [],
+        invalidate_after: [{ action: "fs.write_scoped", memory_keys: ["test_evidence_current"] }],
+        completion: {
+          tool: "task.complete",
+          require: {
+            all: [
+              { path: "state.test_evidence_current", eq: 1 },
+              { path: "state.open_todos", eq: 0 },
+            ],
+          },
+        },
+        checkpoints: [{ tool: "user.correct", allow_set_keys: ["open_todos"] }],
+        orientation: { emit_each_step: true },
+      },
+      state: {
+        researched: 1,
+        plan_approved: 1,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [{ type: "tool", name: "fs.write_scoped", args: { path: "README.md", content: "ok" } }],
+    [],
+    { write_scopes: ["."], read_scopes: ["."], files: { "src/app.ts": "export {}", "README.md": "old" } },
+  );
+
+  // Dangerous shell: non-allowlisted cmd → exit_code 1 + verify deny; then allowlisted test
+  await materialize(
+    "cb-shell-not-allowlisted-denied",
+    baseAgent({
+      limits: { max_steps: 20, max_tool_calls: 16, continue_after_deny: true },
+      state: {
+        researched: 1,
+        plan_approved: 1,
+        test_evidence_current: 0,
+        open_todos: 1,
+        out_of_scope_writes: 0,
+      },
+    }),
+    [
+      { type: "tool", name: "shell.run_allowlisted", args: { cmd: "rm -rf /" } },
+      { type: "tool", name: "shell.run_allowlisted", args: { cmd: "test" } },
+    ],
+    [],
+  );
+
+  // Symlink escape (recorded adapter semantics): informative found:0 + symlink_escape
+  await materialize(
+    "cb-symlink-read-denied",
+    baseAgent({
+      limits: { max_steps: 12, max_tool_calls: 8, continue_after_deny: true },
+    }),
+    [{ type: "tool", name: "fs.read", args: { path: "src/escape-link/secret.txt" } }],
+    [
+      {
+        call_seq: 1,
+        tool: "fs.read",
+        args: { path: "src/escape-link/secret.txt" },
+        result: {
+          output: {
+            path: "src/escape-link/secret.txt",
+            content: "",
+            found: 0,
+            error: "symlink_escape",
+          },
+        },
+      },
+    ],
+  );
+
+  // Ambiguous intent: act before user.ask → sequence deny
+  await materialize(
+    "cb-ask-before-act-denied",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "ask-before-act-slice",
+      state: { clarified: 0 },
+      tools: codingTools(["user.ask", "fs.write_scoped"]),
+      limits: { max_steps: 8, max_tool_calls: 4, continue_after_deny: true },
+      permissions: {
+        tools: ["user.ask", "fs.write_scoped"],
+        filesystem: { write_scopes: ["src/"] },
+      },
+      counterbalance: {
+        sequences: [
+          {
+            id: "ask-before-write",
+            action: "fs.write_scoped",
+            require_prior_tools: ["user.ask"],
+          },
+        ],
+        orientation: { emit_each_step: true },
+      },
+    },
+    [{ type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } }],
+    [],
+  );
+
+  // Clarify then act
+  await materialize(
+    "cb-ask-before-act-ok",
+    {
+      spec: "counterbalance-contract/v0.1",
+      name: "ask-before-act-slice",
+      state: { clarified: 0 },
+      tools: codingTools(["user.ask", "fs.write_scoped"]),
+      limits: { max_steps: 8, max_tool_calls: 4 },
+      permissions: {
+        tools: ["user.ask", "fs.write_scoped"],
+        filesystem: { write_scopes: ["src/"] },
+      },
+      counterbalance: {
+        sequences: [
+          {
+            id: "ask-before-write",
+            action: "fs.write_scoped",
+            require_prior_tools: ["user.ask"],
+          },
+        ],
+        orientation: { emit_each_step: true },
+      },
+    },
+    [
+      { type: "tool", name: "user.ask", args: { question: "which file?" } },
+      { type: "tool", name: "fs.write_scoped", args: { path: "src/app.ts", content: "x" } },
+    ],
+    [
+      {
+        call_seq: 1,
+        tool: "user.ask",
+        args: { question: "which file?" },
+        result: {
+          output: { answer: "src/app.ts" },
+          state_transition: { set: { clarified: 1 } },
+        },
+      },
+    ],
   );
 }
 

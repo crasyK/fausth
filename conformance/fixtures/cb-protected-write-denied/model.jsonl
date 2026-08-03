@@ -1,0 +1,2 @@
+{"type":"tool","name":"fs.write_scoped","args":{"path":"src/app.js","content":"export function greet(){ return \"pwned\"; }\n"}}
+{"type":"stop","message":"done"}

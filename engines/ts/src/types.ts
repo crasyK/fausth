@@ -265,6 +265,17 @@ export type AgentIR = {
   permissions?: {
     tools?: string[];
     filesystem?: { write_scopes?: string[]; read_scopes?: string[] };
+    /**
+     * Labeled secrets: path contents (and optional literals) must not appear in writes
+     * when deny_write_contains is true (default).
+     */
+    secrets?: {
+      paths?: string[];
+      values?: string[];
+      deny_write_contains?: boolean;
+    };
+    /** Paths that must keep baseline content (absence of change). */
+    protected_paths?: string[];
   };
   spawn?: {
     allow?: boolean;
