@@ -8,4 +8,4 @@
 {"args":{"text":"Per article, refunds need review."},"seq":8,"stage":"authorize","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":8,"verdict":"allow"}
 {"args":{"text":"Per article, refunds need review."},"result":{"ok":1},"seq":9,"stage":"execute","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":9,"verdict":"allow"}
 {"seq":10,"stage":"verify","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","ts_logical":10,"verdict":"allow"}
-{"reason":"run_complete","seq":11,"stage":"record","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","tool":"answer.send","ts_logical":11,"verdict":"allow"}
+{"seq":11,"stage":"propose","state_hash":"4032caac8c80859517c2fbeeec20808bba0643c4d464968f794c2339ace76093","ts_logical":11,"verdict":"allow"}

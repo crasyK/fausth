@@ -11,4 +11,5 @@
 {"args":{},"seq":11,"stage":"authorize","state_hash":"32debfe04b416deb227a12dabc4679eb062c6785dce215265ce622ffcfbf23cb","tool":"phase.yield","ts_logical":11,"verdict":"allow"}
 {"args":{},"result":{"ok":1},"seq":12,"stage":"execute","state_hash":"fafc1a875d8e6a15634b7354dbca97d402b2339ad7bfb22d10411fae70e65b94","tool":"phase.yield","ts_logical":12,"verdict":"allow"}
 {"seq":13,"stage":"verify","state_hash":"fafc1a875d8e6a15634b7354dbca97d402b2339ad7bfb22d10411fae70e65b94","ts_logical":13,"verdict":"allow"}
-{"reason":"phase_yielded","seq":14,"stage":"record","state_hash":"fafc1a875d8e6a15634b7354dbca97d402b2339ad7bfb22d10411fae70e65b94","tool":"phase.yield","ts_logical":14,"verdict":"allow"}
+{"observation":{"completion":{"ready":1,"require_paths":[],"tool":"task.complete"},"freshness":{},"permitted_tools":["fs.read","harness.reflect_skills","phase.yield"],"sequence_blockers":[],"tools":["fs.read","harness.reflect_skills","phase.yield"]},"seq":14,"stage":"orient","state_hash":"fafc1a875d8e6a15634b7354dbca97d402b2339ad7bfb22d10411fae70e65b94","ts_logical":14,"verdict":"allow"}
+{"seq":15,"stage":"propose","state_hash":"fafc1a875d8e6a15634b7354dbca97d402b2339ad7bfb22d10411fae70e65b94","ts_logical":15,"verdict":"allow"}
