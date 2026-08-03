@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
-import { createCodingTools } from "./tools/world.js";
+import { createCodingTools, codingWorldFromAgent } from "./tools/world.js";
 import { canonicalJson } from "./canonical.js";
 import type { AgentIR, ModelProposal, RecordedToolCall, ToolDef } from "./types.js";
 
@@ -346,13 +346,12 @@ async function materialize(
   const rt = new FaustRuntime({
     agent: structuredClone(agent),
     propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: createCodingTools({
-      files: worldOpts?.files ?? { "src/app.ts": "export {}" },
-      write_scopes: writeScopes,
-      read_scopes: readScopes,
-      last_exit_code: 0,
-      out_of_scope_writes: 0,
-    }),
+    tools: createCodingTools(
+      codingWorldFromAgent(agent, {
+        files: worldOpts?.files ?? { "src/app.ts": "export {}" },
+        testExit: 0,
+      }),
+    ),
     recordedToolResults: recorded.length ? recorded : undefined,
   });
   await rt.runLoop();

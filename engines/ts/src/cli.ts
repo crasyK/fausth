@@ -29,7 +29,7 @@ import {
   writeProbeReport,
 } from "./model/index.js";
 import type { ModelProposal as PortProposal } from "./model/port.js";
-import { createGreenhouseTools, createCodingTools, createSpawnTool } from "./tools/world.js";
+import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
 import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
 import { auditJsonlFile, formatAuditHuman } from "./audit.js";
@@ -87,12 +87,7 @@ function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealt
       fan_percent: Number(agent.state.fan_percent ?? 0),
       sensor_healthy: overrides?.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
     }),
-    ...createCodingTools({
-      files: { "src/app.ts": "export {}" },
-      write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
-      last_exit_code: overrides?.testExit ?? 1,
-      out_of_scope_writes: 0,
-    }),
+    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit })),
     ...createSpawnTool(agent.permissions?.tools ?? []),
   };
 }

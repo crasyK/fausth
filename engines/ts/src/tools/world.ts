@@ -165,6 +165,26 @@ export function initCodingProtectedPaths(world: CodingWorld, paths?: string[]): 
   }
 }
 
+/** Build a coding world from agent permissions (replay, packaging, fixtures). */
+export function codingWorldFromAgent(
+  agent: { permissions?: CodingWorld["permissions"] & { secrets?: { paths?: string[]; values?: string[]; deny_write_contains?: boolean }; protected_paths?: string[] } },
+  overrides?: { testExit?: number; files?: Record<string, string> },
+): CodingWorld {
+  const world: CodingWorld = {
+    files: overrides?.files ?? {
+      "src/app.ts": "export {}",
+      "src/app.js": 'export function greet(){ return "hi"; }\n',
+    },
+    write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
+    read_scopes: agent.permissions?.filesystem?.read_scopes,
+    last_exit_code: overrides?.testExit ?? 1,
+    out_of_scope_writes: 0,
+  };
+  initCodingSecrets(world, agent.permissions?.secrets);
+  initCodingProtectedPaths(world, agent.permissions?.protected_paths);
+  return world;
+}
+
 export function createCodingTools(world: CodingWorld): Record<string, ToolHandler> {
   return {
     "fs.read": (args): ToolResultEnvelope => {
