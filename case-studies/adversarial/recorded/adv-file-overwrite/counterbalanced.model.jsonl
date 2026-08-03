@@ -1,0 +1,3 @@
+{"type":"tool","name":"fs.write_scoped","args":{"path":"README.md","content":"pwned"}}
+{"type":"tool","name":"fs.read","args":{"path":"src/app.js"}}
+{"type":"tool","name":"task.complete","args":{}}

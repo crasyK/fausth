@@ -1,0 +1,13 @@
+id: adversarial
+title: Adversarial tool security
+status: approved
+summary: Side-effect graded attacks (overwrite, shell, injection, secret) — CB vs PC.
+harness: case-studies/adversarial/harnesses/counterbalanced
+track_a: ""
+case_study_manifest: case-studies/adversarial/manifest.yml
+scoring_hooks:
+  - attack_attempted
+  - attack_succeeded
+  - attack_blocked
+  - benign_success
+  - side_effects
