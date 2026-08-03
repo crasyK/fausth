@@ -3,45 +3,83 @@
   "$id": "https://fausth.dev/schema/counterbalance-contract.v0.1.json",
   "title": "Counterbalance Contract v0.1",
   "type": "object",
-  "required": ["spec", "name", "state", "tools"],
+  "required": [
+    "spec",
+    "name",
+    "state",
+    "tools"
+  ],
   "additionalProperties": false,
   "properties": {
-    "spec": { "type": "string", "const": "counterbalance-contract/v0.1" },
-    "name": { "type": "string", "minLength": 1 },
+    "spec": {
+      "type": "string",
+      "const": "counterbalance-contract/v0.1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
     "state": {
       "type": "object",
-      "propertyNames": { "type": "string", "minLength": 1 },
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
       "additionalProperties": true
     },
     "tools": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/tool" }
+      "items": {
+        "$ref": "#/$defs/tool"
+      }
     },
     "gates": {
       "type": "array",
-      "items": { "$ref": "#/$defs/gate" }
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
     },
     "limits": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max_steps": { "type": "integer", "minimum": 0 },
-        "max_tool_calls": { "type": "integer", "minimum": 0 },
-        "timeout_ms": { "type": "integer", "minimum": 1 },
-        "continue_after_deny": { "type": "boolean" }
+        "max_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_tool_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "continue_after_deny": {
+          "type": "boolean"
+        }
       }
     },
-    "safe_state": { "type": "object" },
-    "fallback_state": { "type": "object" },
-    "recovery": { "$ref": "#/$defs/recovery" },
+    "safe_state": {
+      "type": "object"
+    },
+    "fallback_state": {
+      "type": "object"
+    },
+    "recovery": {
+      "$ref": "#/$defs/recovery"
+    },
     "permissions": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "tools": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "filesystem": {
           "type": "object",
@@ -49,12 +87,41 @@
           "properties": {
             "write_scopes": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 }
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             },
             "read_scopes": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 }
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
+          }
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "deny_write_contains": {
+              "type": "boolean"
+            }
+          }
+        },
+        "protected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }
@@ -63,9 +130,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "allow": { "type": "boolean" },
-        "tighten_only": { "type": "boolean" },
-        "allow_nested": { "type": "boolean" }
+        "allow": {
+          "type": "boolean"
+        },
+        "tighten_only": {
+          "type": "boolean"
+        },
+        "allow_nested": {
+          "type": "boolean"
+        }
       }
     },
     "counterbalance": {
@@ -76,7 +149,14 @@
     "mutable": {
       "type": "array",
       "description": "Cells the agent may propose edits to (never security/checkpoints).",
-      "items": { "type": "string", "enum": ["skills", "memory", "instincts"] },
+      "items": {
+        "type": "string",
+        "enum": [
+          "skills",
+          "memory",
+          "instincts"
+        ]
+      },
       "uniqueItems": true
     },
     "instinct_text": {
@@ -88,29 +168,55 @@
       "description": "Model-adaptive scaffolding overlays (narrow-only).",
       "items": {
         "type": "object",
-        "required": ["when_model"],
+        "required": [
+          "when_model"
+        ],
         "additionalProperties": false,
         "properties": {
           "when_model": {
             "oneOf": [
-              { "type": "string", "minLength": 1 },
-              { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              }
             ]
           },
           "tools": {
             "type": "array",
-            "items": { "type": "string", "minLength": 1 }
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "limits": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "max_steps": { "type": "integer", "minimum": 0 },
-              "max_tool_calls": { "type": "integer", "minimum": 0 },
-              "timeout_ms": { "type": "integer", "minimum": 1 }
+              "max_steps": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_tool_calls": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
             }
           },
-          "prompt_hint": { "type": "string" }
+          "prompt_hint": {
+            "type": "string"
+          }
         }
       }
     }
@@ -120,186 +226,337 @@
       "oneOf": [
         {
           "type": "object",
-          "required": ["path", "eq"],
+          "required": [
+            "path",
+            "eq"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
             "eq": true
           }
         },
         {
           "type": "object",
-          "required": ["path", "eq_path"],
+          "required": [
+            "path",
+            "eq_path"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
-            "eq_path": { "type": "string", "minLength": 1 }
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "eq_path": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         {
           "type": "object",
-          "required": ["path", "neq"],
+          "required": [
+            "path",
+            "neq"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
             "neq": true
           }
         },
         {
           "type": "object",
-          "required": ["path", "lt"],
+          "required": [
+            "path",
+            "lt"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
-            "lt": { "type": "integer" }
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "lt": {
+              "type": "integer"
+            }
           }
         },
         {
           "type": "object",
-          "required": ["path", "lte"],
+          "required": [
+            "path",
+            "lte"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
-            "lte": { "type": "integer" }
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "lte": {
+              "type": "integer"
+            }
           }
         },
         {
           "type": "object",
-          "required": ["path", "gt"],
+          "required": [
+            "path",
+            "gt"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
-            "gt": { "type": "integer" }
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gt": {
+              "type": "integer"
+            }
           }
         },
         {
           "type": "object",
-          "required": ["path", "gte"],
+          "required": [
+            "path",
+            "gte"
+          ],
           "additionalProperties": false,
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
-            "gte": { "type": "integer" }
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gte": {
+              "type": "integer"
+            }
           }
         },
         {
           "type": "object",
-          "required": ["all"],
+          "required": [
+            "all"
+          ],
           "additionalProperties": false,
           "properties": {
             "all": {
               "type": "array",
               "minItems": 1,
-              "items": { "$ref": "#/$defs/predicate" }
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
             }
           }
         },
         {
           "type": "object",
-          "required": ["any"],
+          "required": [
+            "any"
+          ],
           "additionalProperties": false,
           "properties": {
             "any": {
               "type": "array",
               "minItems": 1,
-              "items": { "$ref": "#/$defs/predicate" }
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
             }
           }
         },
         {
           "type": "object",
-          "required": ["not"],
+          "required": [
+            "not"
+          ],
           "additionalProperties": false,
           "properties": {
-            "not": { "$ref": "#/$defs/predicate" }
+            "not": {
+              "$ref": "#/$defs/predicate"
+            }
           }
         }
       ]
     },
     "verdict": {
       "type": "string",
-      "enum": ["allow", "deny", "safe_state"]
+      "enum": [
+        "allow",
+        "deny",
+        "safe_state"
+      ]
     },
     "gate": {
       "type": "object",
-      "required": ["require"],
+      "required": [
+        "require"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string" },
-        "when": { "$ref": "#/$defs/predicate" },
-        "require": { "$ref": "#/$defs/predicate" },
-        "otherwise": { "$ref": "#/$defs/verdict" }
+        "id": {
+          "type": "string"
+        },
+        "when": {
+          "$ref": "#/$defs/predicate"
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/verdict"
+        }
       }
     },
     "verifyEffect": {
       "type": "object",
-      "required": ["kind", "observe", "require"],
+      "required": [
+        "kind",
+        "observe",
+        "require"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "const": "effect" },
-        "observe": { "type": "string", "minLength": 1 },
-        "require": { "$ref": "#/$defs/predicate" },
-        "otherwise": { "$ref": "#/$defs/verdict" }
+        "kind": {
+          "const": "effect"
+        },
+        "observe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/verdict"
+        }
       }
     },
     "verifyEvidence": {
       "type": "object",
-      "required": ["kind", "require"],
+      "required": [
+        "kind",
+        "require"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "const": "evidence" },
-        "require": { "$ref": "#/$defs/predicate" },
-        "otherwise": { "$ref": "#/$defs/verdict" }
+        "kind": {
+          "const": "evidence"
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/verdict"
+        }
       }
     },
     "verifyAbsence": {
       "type": "object",
-      "required": ["kind", "require"],
+      "required": [
+        "kind",
+        "require"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "const": "absence" },
-        "require": { "$ref": "#/$defs/predicate" },
-        "otherwise": { "$ref": "#/$defs/verdict" }
+        "kind": {
+          "const": "absence"
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/verdict"
+        }
       }
     },
     "verifyJudge": {
       "type": "object",
-      "required": ["kind", "rubric", "require"],
+      "required": [
+        "kind",
+        "rubric",
+        "require"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "const": "judge" },
-        "model_from": { "type": "string" },
-        "rubric": { "type": "string", "minLength": 1 },
-        "require": { "$ref": "#/$defs/predicate" },
-        "otherwise": { "$ref": "#/$defs/verdict" }
+        "kind": {
+          "const": "judge"
+        },
+        "model_from": {
+          "type": "string"
+        },
+        "rubric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/verdict"
+        }
       }
     },
     "verify": {
       "oneOf": [
-        { "$ref": "#/$defs/verifyEffect" },
-        { "$ref": "#/$defs/verifyEvidence" },
-        { "$ref": "#/$defs/verifyAbsence" },
-        { "$ref": "#/$defs/verifyJudge" }
+        {
+          "$ref": "#/$defs/verifyEffect"
+        },
+        {
+          "$ref": "#/$defs/verifyEvidence"
+        },
+        {
+          "$ref": "#/$defs/verifyAbsence"
+        },
+        {
+          "$ref": "#/$defs/verifyJudge"
+        }
       ]
     },
     "tool": {
       "type": "object",
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" },
-        "read_only": { "type": "boolean" },
-        "input": { "type": "object" },
-        "output": { "type": "object" },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "input": {
+          "type": "object"
+        },
+        "output": {
+          "type": "object"
+        },
         "verify": {
           "type": "array",
-          "items": { "$ref": "#/$defs/verify" }
+          "items": {
+            "$ref": "#/$defs/verify"
+          }
         }
       }
     },
     "recovery": {
       "type": "object",
-      "required": ["execute", "verify"],
+      "required": [
+        "execute",
+        "verify"
+      ],
       "additionalProperties": false,
       "properties": {
         "on": {
@@ -313,17 +570,28 @@
         },
         "execute": {
           "type": "object",
-          "required": ["tool"],
+          "required": [
+            "tool"
+          ],
           "additionalProperties": false,
           "properties": {
-            "tool": { "type": "string", "minLength": 1 },
-            "args": { "type": "object" }
+            "tool": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "object"
+            }
           }
         },
-        "verify": { "$ref": "#/$defs/verify" },
+        "verify": {
+          "$ref": "#/$defs/verify"
+        },
         "on_failure": {
           "type": "string",
-          "enum": ["terminal_failure"]
+          "enum": [
+            "terminal_failure"
+          ]
         }
       }
     }
