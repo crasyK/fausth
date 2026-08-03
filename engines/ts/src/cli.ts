@@ -81,7 +81,10 @@ function loadFixtureAgent(dir: string): AgentIR {
 }
 
 function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealthy?: number }) {
-  const files: Record<string, string> = { "src/app.ts": "export {}" };
+  const files: Record<string, string> = {
+    "src/app.ts": "export {}",
+    "src/app.js": 'export function greet(){ return "hello"; }\n',
+  };
   const secrets = agent.permissions?.secrets;
   if (secrets?.paths) {
     for (const p of secrets.paths) {
@@ -93,22 +96,13 @@ function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealt
       files[p] = 'export function greet(){ return "hello"; }\n';
     }
   }
-  const coding = {
-    files,
-    write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
-    read_scopes: agent.permissions?.filesystem?.read_scopes,
-    last_exit_code: overrides?.testExit ?? 1,
-    out_of_scope_writes: 0,
-  };
-  initCodingSecrets(coding, secrets);
-  initCodingProtectedPaths(coding, agent.permissions?.protected_paths);
   return {
     ...createGreenhouseTools({
       temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
       fan_percent: Number(agent.state.fan_percent ?? 0),
       sensor_healthy: overrides?.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
     }),
-    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit })),
+    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit, files })),
     ...createSpawnTool(agent.permissions?.tools ?? []),
   };
 }

@@ -49,17 +49,6 @@ export type CodingWorld = {
   protected_baseline?: Record<string, string | null>;
 };
 
-export function initCodingSecrets(
-  _world: CodingWorld,
-  _secrets?: { paths?: string[]; values?: string[]; deny_write_contains?: boolean },
-): void {
-  // Secrets/protected fixture files are seeded in buildTools (cli/packaging).
-}
-
-export function initCodingProtectedPaths(_world: CodingWorld, _paths?: string[]): void {
-  // Baseline snapshots for protected paths are seeded in buildTools (cli/packaging).
-}
-
 const SHELL_NOT_ALLOWLISTED_ERROR =
   "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore";
 

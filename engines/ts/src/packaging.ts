@@ -213,7 +213,10 @@ export function inspectHarness(
 }
 
 function buildTools(agent: AgentIR) {
-  const files: Record<string, string> = { "src/app.ts": "export {}" };
+  const files: Record<string, string> = {
+    "src/app.ts": "export {}",
+    "src/app.js": 'export function greet(){ return "hello"; }\n',
+  };
   const secrets = agent.permissions?.secrets;
   if (secrets?.paths) {
     for (const p of secrets.paths) {
@@ -225,22 +228,13 @@ function buildTools(agent: AgentIR) {
       files[p] = 'export function greet(){ return "hello"; }\n';
     }
   }
-  const coding = {
-    files,
-    write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
-    read_scopes: agent.permissions?.filesystem?.read_scopes,
-    last_exit_code: 1,
-    out_of_scope_writes: 0,
-  };
-  initCodingSecrets(coding, secrets);
-  initCodingProtectedPaths(coding, agent.permissions?.protected_paths);
   return {
     ...createGreenhouseTools({
       temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
       fan_percent: Number(agent.state.fan_percent ?? 0),
       sensor_healthy: Number(agent.state.sensor_healthy ?? 1),
     }),
-    ...createCodingTools(codingWorldFromAgent(agent)),
+    ...createCodingTools(codingWorldFromAgent(agent, { files })),
     ...createSpawnTool(agent.permissions?.tools ?? []),
   };
 }
