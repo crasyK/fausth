@@ -1,0 +1,12 @@
+id: coding-sandbox
+title: Coding sandbox
+status: approved
+summary: Disposable worktree coding counterbalance (CB vs PC task success).
+harness: examples/coding-counterbalance
+track_a: examples/coding-counterbalance
+case_study_manifest: case-studies/coding-counterbalance/manifest.yml
+deployment_templates:
+  - examples/coding-counterbalance/deployment.kit.yml
+scoring_hooks:
+  - task_success
+  - false_completion

@@ -1,0 +1,34 @@
+# Fausth Lab on CasaOS — Custom App / Docker Compose
+# Secrets: use env_file pointing at host .env (never bake keys into the image).
+#
+# CasaOS: Apps → Install custom app → paste this compose, set env_file path,
+# map port 8787, attach volumes as needed.
+
+services:
+  fausth-lab:
+    build:
+      context: ../..
+      dockerfile: deploy/casaos/Dockerfile
+    container_name: fausth-lab
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - ../../.env
+    environment:
+      FAUSTH_LAB_PORT: "8787"
+      FAUSTH_ROOT: /app
+      # Trusted LAN only — set FAUSTH_LAB_TOKEN to require Authorization: Bearer <token>
+      FAUSTH_LAB_TOKEN: ${FAUSTH_LAB_TOKEN:-}
+    volumes:
+      # Live sync with host Cursor checkout (preferred on the same machine)
+      - ../..:/app
+      # Persist run artifacts even if you switch to a baked image without bind-mount
+      - fausth-live-reports:/app/live/reports
+      - fausth-case-results:/app/case-studies
+    working_dir: /app
+    command: ["node", "lab-ui/server.mjs"]
+
+volumes:
+  fausth-live-reports:
+  fausth-case-results:

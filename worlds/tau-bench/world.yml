@@ -1,0 +1,11 @@
+id: tau-bench-retail
+title: τ-bench retail (HRI Track T)
+status: approved
+summary: τ-bench retail tasks 1:1 under Fausth CB vs PC (policy wiki + tool DB).
+harness: case-studies/tau-bench/harnesses/counterbalanced
+case_study_manifest: case-studies/tau-bench/manifest.yml
+deployment_templates:
+  - case-studies/tau-bench/deployments/local-kit.yml
+scoring_hooks:
+  - task_success
+  - engaged

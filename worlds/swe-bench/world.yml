@@ -1,0 +1,12 @@
+id: swe-bench-lite
+title: SWE-bench Lite (HRI Track S)
+status: approved
+summary: Curated SWE-bench Lite N=25 under Fausth CB vs PC (real repo checkouts).
+harness: case-studies/swe-bench/harnesses/counterbalanced
+case_study_manifest: case-studies/swe-bench/manifest.yml
+deployment_templates:
+  - case-studies/swe-bench/deployments/local-kit.yml
+scoring_hooks:
+  - task_success
+  - false_completion
+  - engaged

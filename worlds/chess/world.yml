@@ -1,0 +1,8 @@
+id: chess
+title: Chess (stub)
+status: draft
+summary: Long-term world — legal moves, board observe, skill/memory/instinct gates. Not runnable in MVP.
+harness: ""
+track_a: ""
+case_study_manifest: ""
+scoring_hooks: []

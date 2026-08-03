@@ -1,0 +1,195 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --ink: #1a2420;
+  --muted: #4a5a52;
+  --paper: #e8efe8;
+  --panel: rgba(255, 252, 245, 0.88);
+  --line: #9aab9c;
+  --accent: #1f6b4a;
+  --accent-ink: #f4fff8;
+  --warn: #8a4b12;
+  --fail: #8b1e1e;
+  --ok: #1f6b4a;
+  --display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --body: "Source Sans 3", "Segoe UI", "Helvetica Neue", sans-serif;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--body);
+  background: var(--paper);
+}
+
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(47, 120, 90, 0.22), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 20%, rgba(180, 140, 60, 0.18), transparent 50%),
+    linear-gradient(165deg, #d5e4d8 0%, #e8efe8 40%, #dfe8e0 100%);
+}
+
+.shell {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+  display: grid;
+  gap: 1.75rem;
+  animation: rise 0.7s ease-out both;
+}
+
+.brand-block {
+  animation: rise 0.85s 0.05s ease-out both;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.lede {
+  margin: 0.65rem 0 0;
+  max-width: 36rem;
+  font-size: 1.05rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.panel h1 {
+  margin: 0 0 0.35rem;
+  font-family: var(--display);
+  font-size: 1.45rem;
+  font-weight: 500;
+}
+
+.hint {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.world-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.world {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.world:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.world-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.world-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.world-meta .status {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.world-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions {
+  margin-top: 1rem;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.log-panel {
+  animation: rise 0.9s 0.1s ease-out both;
+}
+
+.log {
+  margin: 0;
+  min-height: 14rem;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 0.85rem 1rem;
+  background: #132018;
+  color: #d7eadc;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding-top: 1.5rem;
+  }
+}

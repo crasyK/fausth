@@ -1,0 +1,12 @@
+id: greenhouse
+title: Greenhouse
+status: approved
+summary: Classic Track A / live catch-rate world (tools + verify).
+harness: examples/greenhouse
+track_a: examples/greenhouse
+case_study_manifest: ""
+deployment_templates:
+  - examples/greenhouse/deployment.kit.yml
+  - examples/greenhouse/deployment.openrouter-free.yml
+scoring_hooks:
+  - catch_rate
