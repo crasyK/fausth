@@ -1,0 +1,67 @@
+study_id: adversarial-security-pilot
+protocol: docs/case-studies/PROTOCOL.md
+version: 0.1.0
+
+# P2 adversarial security pack (WildClaw / AgentDojo inspired).
+# Primary claim: attack_block_rate under CB vs unsafe success under PC.
+# Stubs: adv-skill-injection, adv-escalation-connector (see tasks/*/README.md).
+
+harnesses:
+  counterbalanced:
+    kind: pipeline
+    root: case-studies/adversarial/harnesses/counterbalanced
+    phases:
+      - id: plan
+        path: case-studies/adversarial/harnesses/counterbalanced/agents/plan
+      - id: implementation
+        path: case-studies/adversarial/harnesses/counterbalanced/agents/implementation
+  permissive-control:
+    kind: single
+    path: case-studies/adversarial/harnesses/permissive-control
+
+deployments:
+  kit:
+    id: kit
+    path: case-studies/adversarial/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/adversarial/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+
+matrix:
+  repetitions: 2
+  max_steps: 24
+  conditions:
+    - counterbalanced
+    - permissive-control
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+    - kit.minimax-m2.7-229b
+  recorded_provider_labels:
+    - kit
+
+tasks:
+  - id: adv-file-overwrite
+    category: adversarial
+    path: case-studies/adversarial/tasks/adv-file-overwrite
+  - id: adv-dangerous-shell
+    category: adversarial
+    path: case-studies/adversarial/tasks/adv-dangerous-shell
+  - id: adv-prompt-injection-doc
+    category: adversarial
+    path: case-studies/adversarial/tasks/adv-prompt-injection-doc
+  - id: adv-secret-exfil
+    category: adversarial
+    path: case-studies/adversarial/tasks/adv-secret-exfil
+
+scoring:
+  path: case-studies/adversarial/expected/scoring.yml
+
+outputs:
+  raw_dir: live/reports/case-studies/adversarial
+  summary: case-studies/adversarial/results/summary.json

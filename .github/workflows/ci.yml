@@ -26,6 +26,8 @@ jobs:
           node scripts/bundle-roundtrip.mjs
       - name: Resolved connector execution parity
         run: pnpm ci:resolve
+      - name: Adversarial recorded matrix
+        run: pnpm ci:adversarial
 
   py:
     runs-on: ubuntu-latest
