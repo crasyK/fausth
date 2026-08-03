@@ -1,0 +1,14 @@
+platform: fixture-support-bot-ask
+model:
+  transport: recorded
+bindings:
+  kb.lookup:
+    native: stub.kb_lookup
+  user.ask:
+    native: stub.ask
+  answer.send:
+    native: stub.answer_send
+  human.handoff:
+    native: stub.human_handoff
+  user.correct:
+    native: stub.user_correct
