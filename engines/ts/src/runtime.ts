@@ -81,6 +81,7 @@ function normalizeEnvelope(
 
 function scopeCovered(child: string, parents: string[]): boolean {
   return parents.some((p) => {
+    if (p === "." || p === "./" || p === "*" || p === "**") return true;
     if (child === p) return true;
     const prefix = p.endsWith("/") ? p : p + "/";
     return child.startsWith(prefix) || child === p.replace(/\/$/, "");
@@ -216,8 +217,12 @@ export class FaustRuntime {
   private buildOrientationFrame(): Record<string, unknown> {
     const cb = this.agent.counterbalance ?? {};
     // Can-only: advertise tools this harness actually declares — never blocked_tools / modes.
-    const permitted = this.agent.tools.map((t) => t.id).sort();
+    let permitted = this.agent.tools.map((t) => t.id).sort();
     const done = this.successfulExecutes();
+    const planApproved = Number(this.agent.state.plan_approved ?? 0) === 1;
+    if (planApproved) {
+      permitted = permitted.filter((t) => t !== "user.approve");
+    }
     const sequence_blockers = (cb.sequences ?? [])
       .filter(
         (s) =>
@@ -252,7 +257,7 @@ export class FaustRuntime {
       completion && completion.tool
         ? this.checkCompletion(completion.tool).ok
         : true;
-    return {
+    const frame: Record<string, unknown> = {
       permitted_tools: permitted,
       tools: permitted,
       sequence_blockers,
@@ -263,6 +268,16 @@ export class FaustRuntime {
         ready: completion_ready ? 1 : 0,
       },
     };
+    if ("plan_approved" in this.agent.state) {
+      frame.plan = planApproved
+        ? {
+            approved: 1,
+            next_tool: "phase.yield",
+            note: "Plan already approved — call phase.yield next. Do not call user.approve again.",
+          }
+        : { approved: 0 };
+    }
+    return frame;
   }
 
   private checkSequences(
@@ -445,12 +460,20 @@ export class FaustRuntime {
     }
   }
 
+  private completionToolId(): string {
+    return this.agent.counterbalance?.completion?.tool ?? "task.complete";
+  }
+
+  private isTerminalSuccessTool(name: string): boolean {
+    return name === this.completionToolId() || name === "phase.yield";
+  }
+
   private checkCompletion(
     actionName: string,
   ): { ok: true } | { ok: false; reason: ReasonCode; failure: DenyFailure } {
     const completion = this.agent.counterbalance?.completion;
     if (!completion) return { ok: true };
-    const tool = completion.tool ?? "task.complete";
+    const tool = this.completionToolId();
     if (actionName !== tool) return { ok: true };
     if (!completion.require) return { ok: true };
     const snap: Snapshot = {
@@ -1471,9 +1494,22 @@ export class FaustRuntime {
       }
 
       const verified = await this.runVerifies(tool, action, envelope.output);
-      if (!verified) break;
+      if (!verified) {
+        if (this.denyIsTerminal()) break;
+        continue;
+      }
 
       this.applyInvalidateAfter(action.name);
+
+      if (this.isTerminalSuccessTool(action.name)) {
+        this.emit({
+          stage: "record",
+          verdict: "allow",
+          reason: action.name === "phase.yield" ? "phase_yielded" : "run_complete",
+          tool: action.name,
+        });
+        break;
+      }
     }
     return this.events;
   }

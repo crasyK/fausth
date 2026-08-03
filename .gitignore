@@ -22,3 +22,11 @@ engines/py/*.egg-info/
 engines/py/build/
 .idea/
 .vscode/
+
+# Local Cursor chat exports (not for the repo)
+README_convos.md
+/2026-*.md
+
+# SWE-bench repo mirrors
+live/cache/swe/*.git
+live/cache/swe/**/*.git

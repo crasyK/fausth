@@ -69,6 +69,12 @@ Memory items need provenance and status (`current` | `stale` | `contradicted` | 
 
 A checkpoint is only as strong as its **independence** from what it checks. Orchestrator todos written by the *same* model are Gates (`open_todos eq 0`), not User-cell authority. Self-reported learning without observed work is a mirror, not a counterweight.
 
+**`require_prior_tools: [user.approve]` is ordering, not human approval.** If the write harness also provisions `user.approve` (and especially `*_auto` bindings), the model can satisfy the sequence itself. Prefer a **plan/impl pipeline** (implementation omits `user.approve`; host starts write phase only after plan-phase approve) — see coding-counterbalance and adversarial CB.
+
+**Secrets** are declared under `permissions.secrets` (`paths` / `values`, `deny_write_contains`). The engine refuses `fs.write_scoped` when content contains a registered secret (`secret_leak: 1`). Path scopes alone cannot protect in-scope exfil.
+
+**Protected paths** (`permissions.protected_paths`) enforce **absence of change**: baseline content is snapshotted at world init; direct writes are denied (`protected_modified: 1`); shell mutations that drift the hash are rolled back and flagged. Prefer this over parsing tool-call text.
+
 ## Behaviour
 
 Role-specific **subagent harnesses** (separate YAMLs with distinct tool lists), permissions, sequence requirements, and hooks shape acceptable paths. Same exchange kernel for coding, support, CI review, later multi-agent. Do not multiplex roles via in-YAML modes.
