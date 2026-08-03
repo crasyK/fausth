@@ -33,6 +33,8 @@ def normalize_envelope(raw: dict[str, Any]) -> dict[str, Any]:
 
 def scope_covered(child: str, parents: list[str]) -> bool:
     for p in parents:
+        if p in (".", "./", "*", "**"):
+            return True
         if child == p:
             return True
         prefix = p if p.endswith("/") else p + "/"
@@ -237,6 +239,9 @@ class FaustRuntime:
             [t.get("id") for t in (self.agent.get("tools") or []) if t.get("id")]
         )
         done = self.successful_executes()
+        plan_approved = int(self.agent["state"].get("plan_approved", 0) or 0) == 1
+        if plan_approved:
+            permitted = [t for t in permitted if t != "user.approve"]
         sequence_blockers: list[dict[str, Any]] = []
         for seq in cb.get("sequences") or []:
             action = seq.get("action")
@@ -264,7 +269,7 @@ class FaustRuntime:
         completion_paths = sorted(set(self.collect_completion_paths(completion.get("require"))))
         ctool = completion.get("tool") or "task.complete"
         ready, _, _ = self.check_completion(ctool)
-        return {
+        frame: dict[str, Any] = {
             "permitted_tools": permitted,
             "tools": permitted,
             "sequence_blockers": sequence_blockers,
@@ -275,6 +280,17 @@ class FaustRuntime:
                 "ready": 1 if ready else 0,
             },
         }
+        if "plan_approved" in self.agent["state"]:
+            frame["plan"] = (
+                {
+                    "approved": 1,
+                    "next_tool": "phase.yield",
+                    "note": "Plan already approved — call phase.yield next. Do not call user.approve again.",
+                }
+                if plan_approved
+                else {"approved": 0}
+            )
+        return frame
 
     def check_sequences(
         self, action: dict[str, Any]
@@ -441,13 +457,20 @@ class FaustRuntime:
                 }
             )
 
+    def completion_tool_id(self) -> str:
+        completion = (self.agent.get("counterbalance") or {}).get("completion") or {}
+        return completion.get("tool") or "task.complete"
+
+    def is_terminal_success_tool(self, name: str) -> bool:
+        return name == self.completion_tool_id() or name == "phase.yield"
+
     def check_completion(
         self, action_name: str
     ) -> tuple[bool, str | None, dict[str, Any] | None]:
         completion = (self.agent.get("counterbalance") or {}).get("completion") or {}
         if not completion:
             return True, None, None
-        tool = completion.get("tool") or "task.complete"
+        tool = self.completion_tool_id()
         if action_name != tool:
             return True, None, None
         req = completion.get("require")
@@ -1354,8 +1377,27 @@ class FaustRuntime:
                         }
                     )
             if not self.run_verifies(tool, action, envelope["output"]):
-                break
+                # CB: deliver the failed observation and let the model recover when
+                # continue_after_deny is set — same as authorize denies.
+                if self.deny_is_terminal():
+                    break
+                continue
             self.apply_invalidate_after(action["name"])
+            # First successful terminal tool ends the run (avoid complete/yield spam).
+            if self.is_terminal_success_tool(action["name"]):
+                self.emit(
+                    {
+                        "stage": "record",
+                        "verdict": "allow",
+                        "reason": (
+                            "phase_yielded"
+                            if action["name"] == "phase.yield"
+                            else "run_complete"
+                        ),
+                        "tool": action["name"],
+                    }
+                )
+                break
         return self.events
 
 

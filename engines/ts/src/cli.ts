@@ -81,6 +81,27 @@ function loadFixtureAgent(dir: string): AgentIR {
 }
 
 function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealthy?: number }) {
+  const files: Record<string, string> = { "src/app.ts": "export {}" };
+  const secrets = agent.permissions?.secrets;
+  if (secrets?.paths) {
+    for (const p of secrets.paths) {
+      if (files[p] === undefined) files[p] = "sk-fixture-secret-0001";
+    }
+  }
+  for (const p of agent.permissions?.protected_paths ?? []) {
+    if (files[p] === undefined) {
+      files[p] = 'export function greet(){ return "hello"; }\n';
+    }
+  }
+  const coding = {
+    files,
+    write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
+    read_scopes: agent.permissions?.filesystem?.read_scopes,
+    last_exit_code: overrides?.testExit ?? 1,
+    out_of_scope_writes: 0,
+  };
+  initCodingSecrets(coding, secrets);
+  initCodingProtectedPaths(coding, agent.permissions?.protected_paths);
   return {
     ...createGreenhouseTools({
       temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
