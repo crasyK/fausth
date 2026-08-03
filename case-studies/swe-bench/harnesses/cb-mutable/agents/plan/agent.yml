@@ -55,9 +55,10 @@ tools:
         found: { type: integer }
   - id: user.approve
     description: >
-      Submit your fix plan for approval. Name the exact source file(s) to edit
-      (not test files). Implementation phase will be gated on editing those source
-      paths before running cmd="test".
+      Submit your fix plan for approval ONCE. Name the exact source file(s) to edit
+      (not test files). After approved=1, do NOT call user.approve again — call
+      phase.yield to advance. Implementation is gated on editing those source paths
+      before running cmd="test".
     input:
       type: object
       additionalProperties: true
@@ -90,6 +91,16 @@ tools:
       additionalProperties: false
       properties:
         ok: { type: integer }
+
+gates:
+  - id: approve-once
+    when:
+      path: action.name
+      eq: user.approve
+    require:
+      path: state.plan_approved
+      eq: 0
+    otherwise: deny
 
 permissions:
   tools:

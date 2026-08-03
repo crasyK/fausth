@@ -10,6 +10,7 @@ state:
   plan_approved: 1
   test_evidence_current: 0
   open_todos: 1
+  off_plan_writes: 0
   out_of_scope_writes: 0
   phase_yielded: 0
 
@@ -89,8 +90,8 @@ tools:
       on the whole repo) or cmd="typecheck" (collect-only). Do NOT pass pytest paths,
       python3 scripts, grep, or any other shell command — they return 'not allowlisted'.
       Run cmd="test" only AFTER you have written the source fix; exit_code must be 0
-      to set test_evidence_current. On failure, read stdout/stderr in the result,
-      fix the source, and re-run cmd="test".
+      to set test_evidence_current. On failure the observation includes stdout/stderr —
+      read them, fix the approved source file, and re-run cmd="test".
     input:
       type: object
       required: [cmd]

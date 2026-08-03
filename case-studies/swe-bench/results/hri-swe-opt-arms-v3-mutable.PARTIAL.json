@@ -1,0 +1,21 @@
+{
+  "status": "partial_killed",
+  "run_id": "hri-swe-opt-arms-v3-mutable",
+  "killed_at": "2026-08-03T21:34:00+02:00",
+  "note": "Run stopped by operator before completion. No summary.json generated.",
+  "scored_attempts": 22,
+  "task_chains_started": 5,
+  "task_chains_completed": 0,
+  "last_activity": {
+    "task_id": "psf__requests-1963",
+    "try_index": 3,
+    "phase": "implementation"
+  },
+  "tasks_remaining": [
+    "pylint-dev__pylint-5859",
+    "pytest-dev__pytest-11143",
+    "django__django-10914"
+  ],
+  "task_success": 0,
+  "ground_truth_pass": 0
+}

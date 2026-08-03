@@ -22,6 +22,7 @@ world:
   max_read_bytes: 512000
   max_output_bytes: 128000
   commands:
+    # Resolved to absolute path at kit deployment materialization (see case-study-coding.mjs).
     test: ["pytest", "-q"]
     typecheck: ["pytest", "-q", "--collect-only"]
     pytest: ["pytest", "-q"]
