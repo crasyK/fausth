@@ -1,0 +1,51 @@
+id: "retail-033"
+title: "retail-033"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 33
+  task_id: "retail-033"
+  user_id: "noah_patel_6952"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Noah"
+        last_name: "Patel"
+        zip: "10108"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "noah_patel_6952"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W6111398"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7043598"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W1845024"
+    - name: "modify_user_address"
+      kwargs:
+        user_id: "noah_patel_6952"
+        address1: "517 Lakeview Drive"
+        address2: "Suite 183"
+        city: "Seattle"
+        country: "USA"
+        state: "WA"
+        zip: "98195"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

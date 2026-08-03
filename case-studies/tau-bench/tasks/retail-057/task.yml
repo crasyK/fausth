@@ -1,0 +1,25 @@
+id: "retail-057"
+title: "retail-057"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 57
+  task_id: "retail-057"
+  user_id: "ivan_hernandez_6923"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions: []
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

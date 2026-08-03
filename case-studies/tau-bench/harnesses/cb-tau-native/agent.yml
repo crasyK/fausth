@@ -1,0 +1,170 @@
+spec: counterbalance-contract/v0.1
+name: tau-retail-cb-tau-native
+
+# τ-native surface: call retail API via tau.invoke (no write→shell protocol).
+# Domain-shaped tools vs stock coding tools — not apples-to-apples with CB v2.
+
+state:
+  policy_read: 0
+  clarified: 0
+  open_todos: 1
+  test_evidence_current: 0
+
+limits:
+  max_steps: 40
+  max_tool_calls: 36
+  continue_after_deny: true
+
+tools:
+  - id: fs.read
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: fs.list
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, entries, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { type: string } }
+        found: { type: integer }
+  - id: tau.invoke
+    description: >
+      Call one τ-bench retail API tool and receive the result in the tool observation.
+      ONLY these tool names exist (others return "Error: unknown tool <name>"):
+      find_user_id_by_name_zip kwargs:{first_name,last_name,zip};
+      find_user_id_by_email kwargs:{email};
+      get_user_details kwargs:{user_id};
+      get_order_details kwargs:{order_id};
+      get_product_details kwargs:{product_id};
+      list_all_product_types kwargs:{};
+      cancel_pending_order kwargs:{order_id,reason};
+      return_delivered_order_items kwargs:{order_id,item_ids,payment_method_id};
+      exchange_delivered_order_items kwargs:{order_id,item_ids,new_item_ids,payment_method_id};
+      modify_pending_order_address kwargs:{order_id,address1,address2,city,state,country,zip};
+      modify_user_address kwargs:{user_id,...address fields};
+      transfer_to_human_agents kwargs:{summary};
+      think kwargs:{}; calculate kwargs:{expression}.
+      Do NOT invent names like get_user_id or search_user.
+      Split full names: "Yusuf Rossi" -> first_name:"Yusuf", last_name:"Rossi".
+      Use email from the task prompt when present (find_user_id_by_email).
+      Read wiki.md via fs.read before mutating orders. Clarify cancel/return/exchange via user.ask first.
+      Required facts for the customer (e.g. tracking numbers) appear in the observation result — tell the user via user.ask.
+    input:
+      type: object
+      required: [tool]
+      additionalProperties: false
+      properties:
+        tool: { type: string }
+        kwargs: { type: object }
+    output:
+      type: object
+      required: [ok, tool, result]
+      additionalProperties: true
+      properties:
+        ok: { type: integer }
+        tool: { type: string }
+        kwargs: { type: object }
+        result: { type: string }
+        error: { type: string }
+    verify:
+      - kind: evidence
+        require: { path: result.ok, eq: 1 }
+        otherwise: deny
+  - id: user.ask
+    description: >
+      Clarify consequential actions (cancel/return/exchange/modify) before mutating.
+      The scripted user sim returns "yes"/"yes please" — that is CONFIRMATION only, never an email or name.
+      Extract identity from the task prompt Customer section and use find_user_id_by_* via tau.invoke.
+      Do not ask repeatedly for email if the prompt already provides it.
+      Also use this to communicate required facts (tracking numbers, confirmations) to the customer.
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        question: { type: string }
+    output:
+      type: object
+      required: [answer]
+      additionalProperties: false
+      properties:
+        answer: { type: string }
+  - id: user.correct
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        request: { type: string }
+        reason: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+  - id: task.complete
+    description: >
+      Call ONCE when all customer requests are fulfilled or escalated.
+      If orientation shows completion.ready=1, STOP — do not call again.
+      Requires open_todos=0. Never use user.correct just to unlock completion.
+    input: { type: object, additionalProperties: false, properties: {} }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - fs.read
+    - fs.list
+    - tau.invoke
+    - user.ask
+    - user.correct
+    - task.complete
+  filesystem:
+    write_scopes: ["tau/", "data/"]
+    read_scopes: ["."]
+
+counterbalance:
+  sequences:
+    - id: wiki-before-mutate
+      action: tau.invoke
+      require_prior_tools: [fs.read]
+    - id: ask-before-tau
+      action: tau.invoke
+      require_prior_tools: [fs.read]
+  invalidate_after:
+    - action: tau.invoke
+      memory_keys: [test_evidence_current]
+  completion:
+    tool: task.complete
+    require:
+      all:
+        - { path: state.open_todos, eq: 0 }
+  checkpoints:
+    - tool: user.correct
+      allow_set_keys: [open_todos]
+  orientation:
+    emit_each_step: true

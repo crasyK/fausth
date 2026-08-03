@@ -220,8 +220,9 @@ export class FaustRuntime {
     let permitted = this.agent.tools.map((t) => t.id).sort();
     const done = this.successfulExecutes();
     const planApproved = Number(this.agent.state.plan_approved ?? 0) === 1;
+    // Once approved, drop user.approve from the menu and nudge toward phase.yield.
     if (planApproved) {
-      permitted = permitted.filter((t) => t !== "user.approve");
+      permitted = permitted.filter((id) => id !== "user.approve");
     }
     const sequence_blockers = (cb.sequences ?? [])
       .filter(
@@ -460,10 +461,12 @@ export class FaustRuntime {
     }
   }
 
+  /** Designated end-of-run tool (default task.complete). */
   private completionToolId(): string {
     return this.agent.counterbalance?.completion?.tool ?? "task.complete";
   }
 
+  /** Tools whose first successful execute should end the run loop. */
   private isTerminalSuccessTool(name: string): boolean {
     return name === this.completionToolId() || name === "phase.yield";
   }
@@ -1015,6 +1018,18 @@ export class FaustRuntime {
     const snapshot: Snapshot = { action, state: this.agent.state, result };
     if (!evalPredicate(v.require, snapshot)) {
       const verdict = v.otherwise ?? "safe_state";
+      const observation: Record<string, unknown> = {};
+      if (v.kind === "evidence" && action.name === "shell.run_allowlisted") {
+        const stdout = typeof result.stdout === "string" ? result.stdout : "";
+        const stderr = typeof result.stderr === "string" ? result.stderr : "";
+        const exitCode = result.exit_code;
+        if (stdout) observation.stdout = stdout.slice(0, 8000);
+        if (stderr) observation.stderr = stderr.slice(0, 8000);
+        if (exitCode !== undefined) observation.exit_code = exitCode;
+        if (typeof result.error === "string" && result.error) observation.error = result.error;
+        observation.hint =
+          "cmd=test failed verify_evidence. Read stdout/stderr above, fix the approved source file, then re-run cmd=test.";
+      }
       this.emit({
         stage: "verify",
         verdict,
@@ -1022,6 +1037,7 @@ export class FaustRuntime {
         tool: action.name,
         args: action.args,
         result,
+        ...(Object.keys(observation).length ? { observation } : {}),
       });
       if (verdict === "safe_state" && !this.recovering) {
         await this.enterSafeFlow(reason);
@@ -1495,12 +1511,16 @@ export class FaustRuntime {
 
       const verified = await this.runVerifies(tool, action, envelope.output);
       if (!verified) {
+        // CB: deliver the failed observation (via conversational propose) and let the
+        // model recover when continue_after_deny is set — same as authorize denies.
         if (this.denyIsTerminal()) break;
         continue;
       }
 
       this.applyInvalidateAfter(action.name);
 
+      // First successful terminal tool ends the run. Without this, models spam
+      // task.complete / phase.yield until max_steps / limit_exceeded.
       if (this.isTerminalSuccessTool(action.name)) {
         this.emit({
           stage: "record",

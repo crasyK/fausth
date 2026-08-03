@@ -1,0 +1,53 @@
+id: "retail-013"
+title: "retail-013"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 13
+  task_id: "retail-013"
+  user_id: "mia_garcia_4516"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "mia.garcia2723@example.com"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "mia_garcia_4516"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5490111"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7387996"
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W5490111"
+        item_ids:
+          - "4579334072"
+          - "6117189161"
+          - "4947717507"
+        payment_method_id: "paypal_9497703"
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W5490111"
+        item_ids:
+          - "4579334072"
+          - "6117189161"
+          - "4947717507"
+        payment_method_id: "credit_card_3124723"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

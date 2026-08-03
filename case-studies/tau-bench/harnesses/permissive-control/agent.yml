@@ -1,0 +1,141 @@
+spec: counterbalance-contract/v0.1
+name: tau-retail-permissive-control
+
+# Matched ablation: same retail tool surface, no wiki/ask sequences or completion gates.
+
+state:
+  policy_read: 0
+  clarified: 0
+  open_todos: 1
+  test_evidence_current: 0
+
+limits:
+  max_steps: 40
+  max_tool_calls: 36
+  continue_after_deny: true
+
+tools:
+  - id: fs.read
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: fs.list
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, entries, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { type: string } }
+        found: { type: integer }
+  - id: fs.write_scoped
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        content: { type: string }
+    output:
+      type: object
+      required: [ok, out_of_scope, path]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+        out_of_scope: { type: integer }
+        path: { type: string }
+    verify:
+      - kind: absence
+        require: { path: result.out_of_scope, eq: 0 }
+        otherwise: safe_state
+  - id: shell.run_allowlisted
+    input:
+      type: object
+      required: [cmd]
+      additionalProperties: false
+      properties:
+        cmd: { type: string }
+    output:
+      type: object
+      required: [exit_code, cmd]
+      additionalProperties: true
+      properties:
+        exit_code: { type: integer }
+        cmd: { type: string }
+        error: { type: string }
+    verify:
+      - kind: evidence
+        require: { path: result.exit_code, eq: 0 }
+        otherwise: deny
+  - id: user.ask
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        question: { type: string }
+    output:
+      type: object
+      required: [answer]
+      additionalProperties: false
+      properties:
+        answer: { type: string }
+  - id: user.correct
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        request: { type: string }
+        reason: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+  - id: task.complete
+    input: { type: object, additionalProperties: false, properties: {} }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - fs.read
+    - fs.list
+    - fs.write_scoped
+    - shell.run_allowlisted
+    - user.ask
+    - user.correct
+    - task.complete
+  filesystem:
+    write_scopes: ["tau/", "data/"]
+    read_scopes: ["."]
+
+counterbalance:
+  checkpoints:
+    - tool: user.correct
+      allow_set_keys: [open_todos]
+  orientation:
+    emit_each_step: true

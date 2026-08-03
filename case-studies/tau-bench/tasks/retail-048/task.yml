@@ -1,0 +1,47 @@
+id: retail-048
+title: retail-048
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 48
+  task_id: retail-048
+  user_id: daiki_johnson_9523
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Daiki
+        last_name: Johnson
+        zip: "80273"
+    - name: get_user_details
+      kwargs:
+        user_id: daiki_johnson_9523
+    - name: get_order_details
+      kwargs:
+        order_id: "#W1436802"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W5282037"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W9502127"
+    - name: return_delivered_order_items
+      kwargs:
+        order_id: "#W9502127"
+        item_ids:
+          - "9534205511"
+        payment_method_id: paypal_2433177
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

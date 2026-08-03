@@ -1,0 +1,43 @@
+id: "retail-066"
+title: "retail-066"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 66
+  task_id: "retail-066"
+  user_id: "aarav_lee_1982"
+  annotator: "3"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Aarav"
+        last_name: "Lee"
+        zip: "85025"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "aarav_lee_1982"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3361211"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W3586556"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W3361211"
+        reason: "no longer needed"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

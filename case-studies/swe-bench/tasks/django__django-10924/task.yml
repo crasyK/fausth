@@ -1,0 +1,27 @@
+id: django__django-10924
+title: django__django-10924
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: django__django-10924
+repo: django/django
+base_commit: bceadd2788dc2dad53eba0caae172bd8522fd483
+version: "3.0"
+environment_setup_commit: 419a78300f7cd27611196e1e464d50fd0385ff27
+seed:
+  kind: git_checkout
+  repo: django/django
+  base_commit: bceadd2788dc2dad53eba0caae172bd8522fd483
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["test_callable_path (model_fields.test_filepathfield.FilePathFieldTests)"]'
+  PASS_TO_PASS: '["test_path (model_fields.test_filepathfield.FilePathFieldTests)"]'
+FAIL_TO_PASS: '["test_callable_path (model_fields.test_filepathfield.FilePathFieldTests)"]'
+PASS_TO_PASS: '["test_path (model_fields.test_filepathfield.FilePathFieldTests)"]'
+gold:
+  patch_sha256: c15a336f335509fea0aa33a77e41b88e9ab95359f344a31fa7fa68eaa97165ac
+  test_patch_sha256: 418a17eede0c413fb5424bc202f1d1cd43d51ee67941370580e21b87be0550ce

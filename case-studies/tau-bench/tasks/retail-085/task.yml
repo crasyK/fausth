@@ -1,0 +1,33 @@
+id: "retail-085"
+title: "retail-085"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 85
+  task_id: "retail-085"
+  user_id: "yusuf_hernandez_6785"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W2466703"
+        item_ids:
+          - "9385662952"
+        new_item_ids:
+          - "8733974883"
+        payment_method_id: "paypal_7529813"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

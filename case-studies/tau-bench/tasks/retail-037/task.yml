@@ -1,0 +1,68 @@
+id: "retail-037"
+title: "retail-037"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 37
+  task_id: "retail-037"
+  user_id: "daiki_sanchez_3253"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "daikisanchez1479@example.com"
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Daiki"
+        last_name: "Sanchez"
+        zip: "46236"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "daiki_sanchez_3253"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9348897"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "3377618313"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9743693396"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "6817146515"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "2524789262"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9523456873"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W9348897"
+        item_ids:
+          - "6117189161"
+          - "7453605304"
+          - "3799046073"
+        new_item_ids:
+          - "6700049080"
+          - "5320792178"
+          - "3234800602"
+        payment_method_id: "credit_card_8853416"
+  outputs:
+    - "camera"
+    - "481.5"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

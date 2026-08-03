@@ -1,0 +1,50 @@
+id: "retail-113"
+title: "retail-113"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 113
+  task_id: "retail-113"
+  user_id: "yara_silva_7567"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W9810810"
+        item_ids:
+          - "1355937109"
+        new_item_ids:
+          - "9949163720"
+        payment_method_id: "gift_card_7252880"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W3730488"
+        address1: "555 Highland Drive"
+        address2: "Suite 872"
+        city: "New York"
+        country: "USA"
+        state: "NY"
+        zip: "10116"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W3730488"
+        item_ids:
+          - "2913673670"
+        new_item_ids:
+          - "9844888101"
+        payment_method_id: "gift_card_7252880"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

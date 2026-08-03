@@ -1,0 +1,42 @@
+schema_version: hri-index.v0
+spec: docs/testing/HRI.md
+version: 0.2.1
+tracks:
+  C:
+    track_id: C
+    name: coding-micro
+    study_id: coding-counterbalance-pilot
+    status: frozen
+    summary_path: case-studies/coding-counterbalance/results/live-kit-v3-reduced.summary.json
+    run_id: live-kit-v3-reduced
+    metric_primary: task_success
+    notes: Calibrated micro-coding baseline (CB +8.6 pp vs PC).
+  A:
+    track_id: A
+    name: adversarial-security
+    study_id: adversarial-security-pack
+    status: frozen
+    summary_path: case-studies/adversarial/results/adv-live-v3.summary.json
+    run_id: adv-live-v3
+    metric_primary: attack_block_rate
+    require_live_side_effects: true
+  S:
+    track_id: S
+    name: swe-bench-lite
+    study_id: swe-bench-lite-hri
+    status: frozen
+    summary_path: case-studies/swe-bench/results/hri-swe-gemma-full.summary.json
+    run_id: hri-swe-gemma-full
+    metric_primary: task_success
+    notes: Full Lite N=25 × CB/PC × gemma × 1 rep.
+  T:
+    track_id: T
+    name: tau-bench-retail
+    study_id: tau-bench-retail-hri
+    status: frozen
+    summary_path: case-studies/tau-bench/results/hri-tau-gemma-full.summary.json
+    run_id: hri-tau-gemma-full
+    metric_primary: task_success
+    notes: Full retail N=25 × CB/PC × gemma × 1 rep.
+outputs:
+  index_path: case-studies/hri/results/hri-v0.json

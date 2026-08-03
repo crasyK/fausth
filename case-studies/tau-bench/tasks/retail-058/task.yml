@@ -1,0 +1,52 @@
+id: "retail-058"
+title: "retail-058"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 58
+  task_id: "retail-058"
+  user_id: "ivan_hernandez_6923"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Ivan"
+        last_name: "Hernandez"
+        zip: "92133"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "ivan_hernandez_6923"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5838674"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "4354588079"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "4760268021"
+    - name: "exchange_delivered_order_items"
+      kwargs:
+        order_id: "#W5838674"
+        item_ids:
+          - "7441167885"
+          - "3478699712"
+        new_item_ids:
+          - "3815173328"
+          - "6017636844"
+        payment_method_id: "gift_card_9368765"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

@@ -1,0 +1,63 @@
+id: scikit-learn__scikit-learn-10508
+title: scikit-learn__scikit-learn-10508
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: scikit-learn__scikit-learn-10508
+repo: scikit-learn/scikit-learn
+base_commit: c753b77ac49e72ebc0fe5e3c2369fe628f975017
+version: "0.20"
+environment_setup_commit: 55bf5d93e5674f13a1134d93a11fd0cd11aabcd1
+seed:
+  kind: git_checkout
+  repo: scikit-learn/scikit-learn
+  base_commit: c753b77ac49e72ebc0fe5e3c2369fe628f975017
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["sklearn/preprocessing/tests/test_label.py::test_label_encoder_errors",
+    "sklearn/preprocessing/tests/test_label.py::test_label_encoder_empty_array"]'
+  PASS_TO_PASS: '["sklearn/preprocessing/tests/test_label.py::test_label_binarizer",
+    "sklearn/preprocessing/tests/test_label.py::test_label_binarizer_unseen_labels",
+    "sklearn/preprocessing/tests/test_label.py::test_label_binarizer_set_label_encoding",
+    "sklearn/preprocessing/tests/test_label.py::test_label_binarizer_errors",
+    "sklearn/preprocessing/tests/test_label.py::test_label_encoder",
+    "sklearn/preprocessing/tests/test_label.py::test_label_encoder_fit_transform",
+    "sklearn/preprocessing/tests/test_label.py::test_sparse_output_multilabel_binarizer",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_empty_sample",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_unknown_class",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_given_classes",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_same_length_sequence",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_non_integer_labels",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_non_unique",
+    "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_inverse_validation",
+    "sklearn/preprocessing/tests/test_label.py::test_label_binarize_with_class_order",
+    "sklearn/preprocessing/tests/test_label.py::test_invalid_input_label_binarize",
+    "sklearn/preprocessing/tests/test_label.py::test_inverse_binarize_multiclass"]'
+FAIL_TO_PASS: '["sklearn/preprocessing/tests/test_label.py::test_label_encoder_errors",
+  "sklearn/preprocessing/tests/test_label.py::test_label_encoder_empty_array"]'
+PASS_TO_PASS: '["sklearn/preprocessing/tests/test_label.py::test_label_binarizer",
+  "sklearn/preprocessing/tests/test_label.py::test_label_binarizer_unseen_labels",
+  "sklearn/preprocessing/tests/test_label.py::test_label_binarizer_set_label_encoding",
+  "sklearn/preprocessing/tests/test_label.py::test_label_binarizer_errors",
+  "sklearn/preprocessing/tests/test_label.py::test_label_encoder",
+  "sklearn/preprocessing/tests/test_label.py::test_label_encoder_fit_transform",
+  "sklearn/preprocessing/tests/test_label.py::test_sparse_output_multilabel_binarizer",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_empty_sample",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_unknown_class",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_given_classes",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_same_length_sequence",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_non_integer_labels",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_non_unique",
+  "sklearn/preprocessing/tests/test_label.py::test_multilabel_binarizer_inverse_validation",
+  "sklearn/preprocessing/tests/test_label.py::test_label_binarize_with_class_order",
+  "sklearn/preprocessing/tests/test_label.py::test_invalid_input_label_binarize",
+  "sklearn/preprocessing/tests/test_label.py::test_inverse_binarize_multiclass"]'
+gold:
+  patch_sha256: 7664039eb8b692bddab2bcf1ad5e20b59cd319827a8b2b792818b0769d5d6065
+  test_patch_sha256: 4f1ae3a3d971cda5b992dfd7323ba0419033674b373e0afc2a5c5f0692a29e6b

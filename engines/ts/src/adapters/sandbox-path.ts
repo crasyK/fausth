@@ -27,6 +27,8 @@ export function scopeCovered(child: string, parents: string[]): boolean {
   const c = child.replace(/\\/g, "/");
   return parents.some((p) => {
     const parent = p.replace(/\\/g, "/");
+    // Repo-root / wildcard scopes cover every relative path under the worktree.
+    if (parent === "." || parent === "./" || parent === "*" || parent === "**") return true;
     if (c === parent) return true;
     const prefix = parent.endsWith("/") ? parent : parent + "/";
     return c.startsWith(prefix) || c === parent.replace(/\/$/, "");

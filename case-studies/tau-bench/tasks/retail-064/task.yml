@@ -1,0 +1,60 @@
+id: retail-064
+title: retail-064
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 64
+  task_id: retail-064
+  user_id: harper_moore_6183
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: James
+        last_name: Sanchez
+        zip: "60623"
+    - name: get_user_details
+      kwargs:
+        user_id: james_sanchez_3954
+    - name: get_order_details
+      kwargs:
+        order_id: "#W7464385"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W8499625"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W1279004"
+    - name: get_product_details
+      kwargs:
+        product_id: "3377618313"
+    - name: exchange_delivered_order_items
+      kwargs:
+        order_id: "#W7464385"
+        item_ids:
+          - "1810466394"
+        new_item_ids:
+          - "6700049080"
+        payment_method_id: paypal_1261484
+    - name: modify_pending_order_items
+      kwargs:
+        order_id: "#W7464385"
+        item_ids:
+          - "1810466394"
+        new_item_ids:
+          - "6700049080"
+        payment_method_id: paypal_1261484
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

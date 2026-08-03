@@ -1,0 +1,55 @@
+# SWE-bench Lite HRI deployment — KIT live.
+# Whole-repo scopes; pytest via allowlisted shell cmd=test.
+# Requires --workspace and KIT_AI_API_KEY.
+
+platform: case-study-swe-kit
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.gemma4-31b-it
+  temperature: 0.7
+  max_tokens: 4096
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+world:
+  shell_timeout_ms: 180000
+  max_read_bytes: 512000
+  max_output_bytes: 128000
+  commands:
+    # Resolved to absolute path at kit deployment materialization (see case-study-coding.mjs).
+    test: ["pytest", "-q"]
+    typecheck: ["pytest", "-q", "--collect-only"]
+    pytest: ["pytest", "-q"]
+  scopes:
+    read: ["."]
+    write: ["."]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve_auto
+  user.correct:
+    native: local.user_correct_auto
+  task.complete:
+    native: local.task_complete
+  phase.yield:
+    native: local.phase_yield
+  harness.reflect_skills:
+    native: local.harness_reflect
+  harness.propose_skills_patch:
+    native: local.harness_reflect
+  harness.decline_skills_patch:
+    native: local.harness_decline

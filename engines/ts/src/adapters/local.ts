@@ -8,9 +8,10 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { execFile, execFileSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -23,6 +24,8 @@ import {
   scopeCovered,
   validateLinkedWorktree,
 } from "./sandbox-path.js";
+import { extractPlanPaths, loadApprovedWritePaths } from "./plan-paths.js";
+import { contentFingerprint } from "../tools/world.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -50,6 +53,12 @@ export type LocalWorld = {
   interactive: boolean;
   autoApprove: boolean;
   outOfScopeWrites: number;
+  secretPaths: string[];
+  secretValues: Set<string>;
+  denyWriteContains: boolean;
+  protectedPaths: string[];
+  /** Baseline UTF-8 content; null = missing at init. */
+  protectedBaseline: Map<string, string | null>;
 };
 
 function narrowScopes(agentScopes: string[] | undefined, deploymentScopes: string[] | undefined): string[] {
@@ -81,6 +90,42 @@ export function createLocalWorld(opts: LocalWorldOptions): LocalWorld {
   }
   const agentFs = opts.agent.permissions?.filesystem;
   const depScopes = world.scopes;
+  const secrets = opts.agent.permissions?.secrets;
+  const secretPaths = [...(secrets?.paths ?? [])];
+  const secretValues = new Set<string>();
+  for (const v of secrets?.values ?? []) {
+    const t = String(v).trim();
+    if (t) secretValues.add(t);
+  }
+  const denyWriteContains = secrets
+    ? secrets.deny_write_contains !== false
+    : false;
+  // Seed secret values from labeled paths already on disk.
+  for (const p of secretPaths) {
+    try {
+      const abs = resolveContainedPath(root, p);
+      if (existsSync(abs) && lstatSync(abs).isFile()) {
+        const t = readFileSync(abs, "utf8").trim();
+        if (t) secretValues.add(t);
+      }
+    } catch {
+      /* path may be out of scope until narrowed — ignore */
+    }
+  }
+  const protectedPaths = [...(opts.agent.permissions?.protected_paths ?? [])];
+  const protectedBaseline = new Map<string, string | null>();
+  for (const p of protectedPaths) {
+    try {
+      const abs = resolveContainedPath(root, p);
+      if (existsSync(abs) && lstatSync(abs).isFile()) {
+        protectedBaseline.set(p, readFileSync(abs, "utf8"));
+      } else {
+        protectedBaseline.set(p, null);
+      }
+    } catch {
+      protectedBaseline.set(p, null);
+    }
+  }
   return {
     root,
     readScopes: narrowScopes(agentFs?.read_scopes, depScopes?.read),
@@ -96,6 +141,11 @@ export function createLocalWorld(opts: LocalWorldOptions): LocalWorld {
     interactive: opts.interactive ?? true,
     autoApprove: opts.autoApprove ?? false,
     outOfScopeWrites: 0,
+    secretPaths,
+    secretValues,
+    denyWriteContains,
+    protectedPaths,
+    protectedBaseline,
   };
 }
 
@@ -148,6 +198,49 @@ function errEnvelope(code: string, message: string): ToolResultEnvelope {
   return { output: { ok: 0, error: code, message } };
 }
 
+function protectionActive(world: LocalWorld): boolean {
+  return world.protectedPaths.length > 0;
+}
+
+function protectFlags(world: LocalWorld): Record<string, number> {
+  return protectionActive(world) ? { protected_modified: 0 } : {};
+}
+
+/** Restore protected files from baseline; returns true if any drifted. */
+function restoreLocalProtected(world: LocalWorld): boolean {
+  if (!protectionActive(world)) return false;
+  let drifted = false;
+  for (const p of world.protectedPaths) {
+    const baseline = world.protectedBaseline.has(p)
+      ? world.protectedBaseline.get(p)!
+      : null;
+    let current: string | null = null;
+    try {
+      const abs = resolveContainedPath(world.root, p);
+      if (existsSync(abs) && lstatSync(abs).isFile()) {
+        current = readFileSync(abs, "utf8");
+      }
+    } catch {
+      current = null;
+    }
+    if (contentFingerprint(current) !== contentFingerprint(baseline)) {
+      drifted = true;
+      try {
+        const abs = resolveContainedPath(world.root, p);
+        if (baseline === null) {
+          if (existsSync(abs)) rmSync(abs);
+        } else {
+          mkdirSync(dirname(abs), { recursive: true });
+          writeFileSync(abs, baseline, "utf8");
+        }
+      } catch {
+        /* best-effort restore */
+      }
+    }
+  }
+  return drifted;
+}
+
 export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHandler> {
   const fsRead: ToolHandler = (args) => {
     const rel = String(args.path ?? "");
@@ -183,9 +276,14 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
         return refused("read_too_large", `file exceeds max_read_bytes (${world.maxReadBytes})`);
       }
       const content = buf.toString("utf8");
+      const relOut = toRelUnderRoot(world.root, abs) || unified;
+      if (world.secretPaths.includes(unified) || world.secretPaths.includes(relOut)) {
+        const t = content.trim();
+        if (t) world.secretValues.add(t);
+      }
       return {
         output: {
-          path: toRelUnderRoot(world.root, abs) || unified,
+          path: relOut,
           content,
           found: 1,
         },
@@ -249,31 +347,150 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     }
   };
 
-  const fsWrite: ToolHandler = (args) => {
+  const fsWrite: ToolHandler = (args, ctx) => {
     try {
       const rel = String(args.path ?? "");
       const content = String(args.content ?? "");
       const unified = rel.replace(/\\/g, "/");
+      const leakCheck = world.denyWriteContains;
+
+      const statePaths = Array.isArray(ctx.state.allowed_write_paths)
+        ? (ctx.state.allowed_write_paths as string[]).map((p) => String(p).replace(/\\/g, "/"))
+        : null;
+      const filePaths = loadApprovedWritePaths(world.root);
+      const allowedPaths =
+        filePaths && filePaths.length > 0
+          ? filePaths
+          : statePaths && statePaths.length > 0
+            ? statePaths
+            : null;
+
+      if (allowedPaths && !scopeCovered(unified, allowedPaths)) {
+        const offPlan = Number(ctx.state.off_plan_writes ?? 0);
+        if (offPlan >= 1) {
+          return {
+            output: {
+              ok: 0,
+              out_of_scope: 0,
+              path: unified,
+              error: "off_plan_path",
+              reason: `Write denied: ${unified} is not among approved plan paths: ${allowedPaths.join(", ")}`,
+              ...(leakCheck ? { secret_leak: 0 } : {}),
+              ...protectFlags(world),
+            },
+          };
+        }
+        // First off-plan write: allow with warning (warn-then-deny).
+        const warnMsg = `Warning: ${unified} is not in approved plan paths (${allowedPaths.join(", ")}). Next off-plan write will be denied.`;
+        assertInScope(unified, world.writeScopes, "write");
+        const abs = resolveContainedPath(world.root, rel);
+        mkdirSync(dirname(abs), { recursive: true });
+        const tmp = `${abs}.fausth-tmp-${process.pid}-${Date.now()}`;
+        writeFileSync(tmp, content, { encoding: "utf8" });
+        renameSync(tmp, abs);
+        return {
+          output: {
+            ok: 1,
+            out_of_scope: 0,
+            off_plan: 1,
+            path: unified,
+            warning: warnMsg,
+            ...(leakCheck ? { secret_leak: 0 } : {}),
+            ...protectFlags(world),
+          },
+          state_transition: { set: { off_plan_writes: offPlan + 1 } },
+        };
+      }
+
+      if (protectionActive(world) && world.protectedPaths.includes(unified)) {
+        return {
+          output: {
+            ok: 0,
+            out_of_scope: 0,
+            protected_modified: 1,
+            path: unified,
+            ...(leakCheck ? { secret_leak: 0 } : {}),
+          },
+        };
+      }
+      if (leakCheck && world.secretValues.size > 0) {
+        for (const s of world.secretValues) {
+          if (s && content.includes(s)) {
+            return {
+              output: {
+                ok: 0,
+                out_of_scope: 0,
+                secret_leak: 1,
+                path: unified,
+                ...protectFlags(world),
+              },
+            };
+          }
+        }
+      }
       assertInScope(unified, world.writeScopes, "write");
       const abs = resolveContainedPath(world.root, rel);
       mkdirSync(dirname(abs), { recursive: true });
       const tmp = `${abs}.fausth-tmp-${process.pid}-${Date.now()}`;
       writeFileSync(tmp, content, { encoding: "utf8" });
       renameSync(tmp, abs);
-      return { output: { ok: 1, out_of_scope: 0, path: unified } };
+      // τ todo-delegate: writing the shared slot/final files drives completion state.
+      const stateSet: Record<string, unknown> = {};
+      if (unified === "tau/todos.json") {
+        try {
+          const parsed = JSON.parse(content);
+          const slots = Array.isArray(parsed?.slots) ? parsed.slots : [];
+          const filled = slots.filter(
+            (s: { value?: unknown }) => s?.value != null && String(s.value) !== "",
+          ).length;
+          stateSet.slots_filled = filled;
+          if (slots.length > 0 && filled === slots.length) stateSet.open_todos = 0;
+        } catch {
+          /* malformed todos.json — leave state unchanged */
+        }
+      }
+      if (unified === "tau/final.txt") {
+        stateSet.finalized = 1;
+        stateSet.open_todos = 0;
+      }
+      return {
+        output: {
+          ok: 1,
+          out_of_scope: 0,
+          path: unified,
+          ...(leakCheck ? { secret_leak: 0 } : {}),
+          ...protectFlags(world),
+        },
+        ...(Object.keys(stateSet).length
+          ? { state_transition: { set: stateSet } }
+          : {}),
+      };
     } catch (e) {
       if (e instanceof SandboxPathError) {
         if (e.code === "scope_denied") {
           world.outOfScopeWrites += 1;
           return {
-            output: { ok: 0, out_of_scope: 1, path: String(args.path ?? "") },
+            output: {
+              ok: 0,
+              out_of_scope: 1,
+              path: String(args.path ?? ""),
+              ...(world.denyWriteContains ? { secret_leak: 0 } : {}),
+              ...protectFlags(world),
+            },
             state_transition: {
               set: { out_of_scope_writes: world.outOfScopeWrites },
             },
           };
         }
         return {
-          output: { ok: 0, out_of_scope: 1, path: String(args.path ?? ""), error: e.message },
+          output: {
+            ok: 0,
+            out_of_scope: 1,
+            path: String(args.path ?? ""),
+            error: e.message,
+            ...(world.denyWriteContains ? { secret_leak: 0 } : {}),
+            ...protectFlags(world),
+          },
         };
       }
       throw e;
@@ -284,11 +501,18 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     const cmd = String(args.cmd ?? "");
     const argv = world.commands[cmd];
     if (!argv || argv.length === 0) {
-      return { output: { exit_code: 1, cmd, error: SHELL_NOT_ALLOWLISTED_ERROR } };
+      return {
+        output: {
+          exit_code: 1,
+          cmd,
+          error: SHELL_NOT_ALLOWLISTED_ERROR,
+          ...protectFlags(world),
+        },
+      };
     }
     const [bin, ...rest] = argv;
     if (!bin) {
-      return { output: { exit_code: 1, cmd, error: "empty command argv" } };
+      return { output: { exit_code: 1, cmd, error: "empty command argv", ...protectFlags(world) } };
     }
     try {
       const { stdout, stderr } = await execFileAsync(bin, rest, {
@@ -301,6 +525,18 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
       } as Parameters<typeof execFileAsync>[2]);
       const out = truncateUtf8(Buffer.isBuffer(stdout) ? stdout : Buffer.from(String(stdout)), world.maxOutputBytes);
       const err = truncateUtf8(Buffer.isBuffer(stderr) ? stderr : Buffer.from(String(stderr)), world.maxOutputBytes);
+      if (restoreLocalProtected(world)) {
+        return {
+          output: {
+            exit_code: 0,
+            cmd,
+            stdout: out.text,
+            stderr: err.text,
+            truncated: out.truncated || err.truncated ? 1 : 0,
+            protected_modified: 1,
+          },
+        };
+      }
       return {
         output: {
           exit_code: 0,
@@ -308,6 +544,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
           stdout: out.text,
           stderr: err.text,
           truncated: out.truncated || err.truncated ? 1 : 0,
+          ...protectFlags(world),
         },
         state_transition: { set: { test_evidence_current: 1 } },
       };
@@ -329,6 +566,18 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
         Buffer.isBuffer(err.stderr) ? err.stderr : Buffer.from(String(err.stderr ?? err.message ?? "")),
         world.maxOutputBytes,
       );
+      if (restoreLocalProtected(world)) {
+        return {
+          output: {
+            exit_code: exitCode,
+            cmd,
+            stdout: out.text,
+            stderr: serr.text,
+            truncated: out.truncated || serr.truncated ? 1 : 0,
+            protected_modified: 1,
+          },
+        };
+      }
       return {
         output: {
           exit_code: exitCode,
@@ -336,25 +585,34 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
           stdout: out.text,
           stderr: serr.text,
           truncated: out.truncated || serr.truncated ? 1 : 0,
+          ...protectFlags(world),
         },
       };
     }
   };
 
-  const approveInteractive: ToolHandler = async () => {
+  const approveStateFromArgs = (args: Record<string, unknown>): Record<string, unknown> => {
+    const plan = String(args.plan ?? args.request ?? "");
+    const paths = extractPlanPaths(plan);
+    const set: Record<string, unknown> = { plan_approved: 1 };
+    if (paths.length) set.allowed_write_paths = paths;
+    return set;
+  };
+
+  const approveInteractive: ToolHandler = async (args) => {
     const approved = world.interactive ? await promptYesNo("Approve plan? [y/N] ") : false;
     if (approved) {
       return {
         output: { approved: 1 },
-        state_transition: { set: { plan_approved: 1 } },
+        state_transition: { set: approveStateFromArgs(args) },
       };
     }
     return { output: { approved: 0 } };
   };
 
-  const approveAuto: ToolHandler = () => ({
+  const approveAuto: ToolHandler = (args) => ({
     output: { approved: 1 },
-    state_transition: { set: { plan_approved: 1 } },
+    state_transition: { set: approveStateFromArgs(args) },
   });
 
   const correctInteractive: ToolHandler = async (_args) => {
@@ -376,12 +634,389 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     };
   };
 
+  const askAuto: ToolHandler = (args) => {
+    const scripted = process.env.FAUSTH_USER_ASK_ANSWER;
+    const answer =
+      scripted && scripted.length > 0
+        ? scripted
+        : String(args.answer ?? args.default_answer ?? "yes");
+    return {
+      output: { answer },
+      state_transition: { set: { clarified: 1 } },
+    };
+  };
+
+  const MUTATING_TAU_TOOLS = new Set([
+    "cancel_pending_order",
+    "return_delivered_order_items",
+    "exchange_delivered_order_items",
+    "modify_pending_order_items",
+    "modify_pending_order_address",
+    "modify_pending_order_payment",
+    "modify_user_address",
+    "transfer_to_human_agents",
+  ]);
+
+  function mutateToolsFromSlotId(slotId: string): string[] | null {
+    const m = /^mutate_\d+_(.+)$/.exec(slotId);
+    if (!m?.[1]) return null;
+    return m[1].split("_or_").filter(Boolean);
+  }
+
+  function readTauTodoSlots(): Array<Record<string, unknown>> {
+    const todosPath = join(world.root, "tau", "todos.json");
+    if (!existsSync(todosPath)) return [];
+    try {
+      const doc = JSON.parse(readFileSync(todosPath, "utf8")) as {
+        slots?: Array<Record<string, unknown>>;
+      };
+      return Array.isArray(doc.slots) ? doc.slots : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function slotFilled(s: Record<string, unknown>): boolean {
+    return s?.value != null && String(s.value) !== "";
+  }
+
+  function openMutateToolSet(slots: Array<Record<string, unknown>>): {
+    open: Set<string>;
+    hasMutateSlots: boolean;
+  } {
+    const open = new Set<string>();
+    let hasMutateSlots = false;
+    for (const s of slots) {
+      const tools = mutateToolsFromSlotId(String(s?.id ?? ""));
+      if (!tools?.length) continue;
+      hasMutateSlots = true;
+      if (slotFilled(s)) continue;
+      for (const t of tools) open.add(t);
+    }
+    return { open, hasMutateSlots };
+  }
+
+  function successfulMutatingActionCount(actionsPath: string): number {
+    if (!existsSync(actionsPath)) return 0;
+    let n = 0;
+    for (const line of readFileSync(actionsPath, "utf8").split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const a = JSON.parse(line) as { name?: string; tool?: string; result?: string };
+        const name = String(a?.name ?? a?.tool ?? "");
+        const result = String(a?.result ?? "");
+        if (MUTATING_TAU_TOOLS.has(name) && !result.startsWith("Error:")) n += 1;
+      } catch {
+        /* skip */
+      }
+    }
+    return n;
+  }
+
+  /** Stage τ request.json + run world.commands.tau; return API result in observation. */
+  const tauInvoke: ToolHandler = async (args, ctx) => {
+    const tool = String(args.tool ?? args.name ?? "");
+    const kwargs =
+      args.kwargs && typeof args.kwargs === "object" && !Array.isArray(args.kwargs)
+        ? (args.kwargs as Record<string, unknown>)
+        : args.args && typeof args.args === "object" && !Array.isArray(args.args)
+          ? (args.args as Record<string, unknown>)
+          : {};
+    if (!tool) {
+      return {
+        output: {
+          ok: 0,
+          tool: "",
+          kwargs: {},
+          result: "",
+          error: "missing tool name",
+        },
+      };
+    }
+    // Slot-backed mutation guard: mutating tools must match an open mutate_* slot.
+    if (MUTATING_TAU_TOOLS.has(tool)) {
+      const slots = readTauTodoSlots();
+      if (slots.length > 0) {
+        const { open, hasMutateSlots } = openMutateToolSet(slots);
+        const allowed =
+          hasMutateSlots && open.size > 0
+            ? [...open].sort()
+            : [];
+        const blocked =
+          !hasMutateSlots || open.size === 0 || !open.has(tool);
+        if (blocked) {
+          const offPlan = Number(ctx.state.off_plan_mutations ?? 0);
+          const openIds = slots
+            .filter((s) => {
+              const tools = mutateToolsFromSlotId(String(s?.id ?? ""));
+              return tools && !slotFilled(s);
+            })
+            .map((s) => String(s.id));
+          const hint = !hasMutateSlots
+            ? "No mutate_* slots — this is a resolve/report-only plan. Do not mutate; fill resolve/report via todo.complete."
+            : open.size === 0
+              ? "All mutate_* slots are already filled — do not mutate further."
+              : `No open slot requires ${tool}. Open slots: [${openIds.join(", ") || "none"}].`;
+          return {
+            output: {
+              ok: 0,
+              tool,
+              kwargs,
+              result: "",
+              error: "off_plan_mutation",
+              off_plan: 1,
+              warning:
+                offPlan < 1
+                  ? `Off-plan mutation blocked (warning). ${hint}`
+                  : `Off-plan mutation denied. ${hint}`,
+              hint,
+              open_mutate_tools: allowed,
+            },
+            state_transition: { set: { off_plan_mutations: offPlan + 1 } },
+          };
+        }
+      }
+    }
+    const argv = world.commands.tau;
+    if (!argv || argv.length === 0) {
+      return {
+        output: {
+          ok: 0,
+          tool,
+          kwargs,
+          result: "",
+          error: "tau command not configured in deployment.world.commands",
+        },
+      };
+    }
+    const reqDir = join(world.root, "tau");
+    mkdirSync(reqDir, { recursive: true });
+    writeFileSync(join(reqDir, "request.json"), JSON.stringify({ tool, kwargs }), "utf8");
+    const [bin, ...rest] = argv;
+    if (!bin) {
+      return { output: { ok: 0, tool, kwargs, result: "", error: "empty tau argv" } };
+    }
+    try {
+      const { stdout, stderr } = await execFileAsync(bin, rest, {
+        cwd: world.root,
+        timeout: world.shellTimeoutMs,
+        maxBuffer: world.maxOutputBytes,
+        windowsHide: true,
+        shell: false,
+        encoding: "buffer",
+      } as Parameters<typeof execFileAsync>[2]);
+      const out = truncateUtf8(
+        Buffer.isBuffer(stdout) ? stdout : Buffer.from(String(stdout)),
+        world.maxOutputBytes,
+      );
+      const err = truncateUtf8(
+        Buffer.isBuffer(stderr) ? stderr : Buffer.from(String(stderr)),
+        world.maxOutputBytes,
+      );
+      const result = out.text.replace(/\n$/, "");
+      // Belt-and-suspenders for graders: accumulate results beyond response.txt overwrite.
+      writeFileSync(join(reqDir, "outputs.log"), `${result}\n`, { flag: "a" });
+      return {
+        output: {
+          ok: 1,
+          tool,
+          kwargs,
+          result,
+          exit_code: 0,
+          stderr: err.text,
+          truncated: out.truncated || err.truncated ? 1 : 0,
+        },
+        state_transition: { set: { test_evidence_current: 1, researched: 1 } },
+      };
+    } catch (e: unknown) {
+      const err = e as {
+        code?: number | string;
+        killed?: boolean;
+        stdout?: Buffer | string;
+        stderr?: Buffer | string;
+        message?: string;
+      };
+      const exitCode = typeof err.code === "number" ? err.code : err.killed ? 124 : 1;
+      const out = truncateUtf8(
+        Buffer.isBuffer(err.stdout) ? err.stdout : Buffer.from(String(err.stdout ?? "")),
+        world.maxOutputBytes,
+      );
+      const serr = truncateUtf8(
+        Buffer.isBuffer(err.stderr)
+          ? err.stderr
+          : Buffer.from(String(err.stderr ?? err.message ?? "")),
+        world.maxOutputBytes,
+      );
+      const result = out.text.replace(/\n$/, "");
+      if (result) {
+        writeFileSync(join(reqDir, "outputs.log"), `${result}\n`, { flag: "a" });
+      }
+      return {
+        output: {
+          ok: 0,
+          tool,
+          kwargs,
+          result,
+          exit_code: exitCode,
+          stderr: serr.text,
+          truncated: out.truncated || serr.truncated ? 1 : 0,
+          error: exitCode === 124 ? "timeout" : "tau_failed",
+        },
+      };
+    }
+  };
+
+  /** Fill one τ todo-delegate slot by id; writes tau/todos.json and drives open_todos. */
+  const todoComplete: ToolHandler = (args) => {
+    const slotId = String(args.id ?? args.slot_id ?? args.todo ?? "");
+    const valueRaw = args.value;
+    const value =
+      valueRaw == null || valueRaw === ""
+        ? "done"
+        : typeof valueRaw === "string"
+          ? valueRaw
+          : JSON.stringify(valueRaw);
+    if (!slotId) {
+      return { output: { ok: 0, error: "missing_id", id: "", value: "" } };
+    }
+    const todosPath = join(world.root, "tau", "todos.json");
+    let doc: { version?: number; slots?: Array<Record<string, unknown>> } = {
+      version: 1,
+      slots: [],
+    };
+    if (existsSync(todosPath)) {
+      try {
+        doc = JSON.parse(readFileSync(todosPath, "utf8"));
+      } catch {
+        return {
+          output: {
+            ok: 0,
+            error: "todos_unreadable",
+            id: slotId,
+            value,
+          },
+        };
+      }
+    }
+    const slots = Array.isArray(doc.slots) ? doc.slots : [];
+    const idx = slots.findIndex((s) => String(s?.id ?? "") === slotId);
+    if (idx < 0) {
+      return {
+        output: {
+          ok: 0,
+          error: "unknown_slot",
+          id: slotId,
+          value,
+          known_ids: slots.map((s) => String(s?.id ?? "")),
+        },
+      };
+    }
+    const actionsPath = join(world.root, "tau", "actions.jsonl");
+    const slotKind = String(slots[idx]?.kind ?? "");
+    // resolve_* requires a clean (unmutated) DB / action log.
+    if (slotKind === "resolve" || slotId.startsWith("resolve_")) {
+      const mutCount = successfulMutatingActionCount(actionsPath);
+      if (mutCount > 0) {
+        return {
+          output: {
+            ok: 0,
+            error: "resolve_requires_no_mutations",
+            id: slotId,
+            value,
+            mutating_actions: mutCount,
+            hint: "resolve slots are for no-mutation outcomes; undo is impossible — do not mutate on resolve-only plans",
+          },
+        };
+      }
+    }
+    // mutate_N_<tool> or mutate_N_<toolA_or_toolB> require matching successful actions.
+    const requiredTools = mutateToolsFromSlotId(slotId);
+    if (requiredTools?.length) {
+      const hitTools: string[] = [];
+      if (existsSync(actionsPath)) {
+        for (const line of readFileSync(actionsPath, "utf8").split(/\r?\n/)) {
+          if (!line.trim()) continue;
+          try {
+            const a = JSON.parse(line) as {
+              name?: string;
+              tool?: string;
+              result?: string;
+            };
+            const name = String(a?.name ?? a?.tool ?? "");
+            const result = String(a?.result ?? "");
+            if (name && !result.startsWith("Error:")) hitTools.push(name);
+          } catch {
+            /* skip bad line */
+          }
+        }
+      }
+      const toolSetKey = [...requiredTools].sort().join("|");
+      let filledSameTool = 0;
+      for (let i = 0; i < slots.length; i++) {
+        const id = String(slots[i]?.id ?? "");
+        const tools = mutateToolsFromSlotId(id);
+        if (!tools?.length) continue;
+        if ([...tools].sort().join("|") !== toolSetKey) continue;
+        const already =
+          i !== idx &&
+          slots[i]?.value != null &&
+          String(slots[i].value) !== "";
+        if (already || i === idx) filledSameTool += 1;
+      }
+      const have = hitTools.filter((t) => requiredTools.includes(t)).length;
+      if (have < filledSameTool) {
+        return {
+          output: {
+            ok: 0,
+            error: "mutate_tool_mismatch",
+            id: slotId,
+            value,
+            required_tools: requiredTools,
+            actions_of_tool: have,
+            slots_of_tool: filledSameTool,
+            hint: `Call tau.invoke tool=${requiredTools.join("|")} successfully before todo.complete on this slot`,
+          },
+        };
+      }
+    }
+    slots[idx] = { ...slots[idx], value, filled: true };
+    const filled = slots.filter(
+      (s) => s?.value != null && String(s.value) !== "",
+    ).length;
+    const allFilled = slots.length > 0 && filled === slots.length;
+    mkdirSync(dirname(todosPath), { recursive: true });
+    writeFileSync(
+      todosPath,
+      JSON.stringify({ version: doc.version ?? 1, slots }, null, 2) + "\n",
+      "utf8",
+    );
+    return {
+      output: {
+        ok: 1,
+        id: slotId,
+        value,
+        slots_filled: filled,
+        slots_total: slots.length,
+        all_filled: allFilled ? 1 : 0,
+      },
+      state_transition: {
+        set: {
+          slots_filled: filled,
+          ...(allFilled ? { open_todos: 0 } : {}),
+        },
+      },
+    };
+  };
+
   return {
     "fs.read": fsRead,
     "fs.list": fsList,
     "fs.write_scoped": fsWrite,
     "shell.run_allowlisted": shell,
+    "tau.invoke": tauInvoke,
+    "todo.complete": todoComplete,
     "user.approve": approveInteractive,
+    "user.ask": askAuto,
     "user.correct": correctInteractive,
     "task.complete": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
     "harness.propose_skills_patch": (): ToolResultEnvelope => ({
@@ -403,6 +1038,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     // Internal keys used by registry for *_auto natives
     "__local.user_approve_auto": approveAuto,
     "__local.user_correct_auto": correctAuto,
+    "__local.user_ask_auto": askAuto,
   };
 }
 
@@ -416,6 +1052,7 @@ export function pickLocalHandler(
 ): ToolHandler | undefined {
   if (native === "local.user_approve_auto") return tools["__local.user_approve_auto"];
   if (native === "local.user_correct_auto") return tools["__local.user_correct_auto"];
+  if (native === "local.user_ask_auto") return tools["__local.user_ask_auto"];
   return tools[toolId];
 }
 

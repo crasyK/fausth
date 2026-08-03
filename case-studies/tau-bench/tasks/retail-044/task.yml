@@ -1,0 +1,47 @@
+id: retail-044
+title: retail-044
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 44
+  task_id: retail-044
+  user_id: aarav_anderson_8794
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Aarav
+        last_name: Anderson
+        zip: "19031"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W9300146"
+    - name: get_product_details
+      kwargs:
+        product_id: "6817146515"
+    - name: calculate
+      kwargs:
+        expression: 135.24 - 153.23
+    - name: modify_pending_order_items
+      kwargs:
+        order_id: "#W9300146"
+        item_ids:
+          - "9190635437"
+        new_item_ids:
+          - "5320792178"
+        payment_method_id: gift_card_7245904
+  outputs:
+    - "17.99"
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

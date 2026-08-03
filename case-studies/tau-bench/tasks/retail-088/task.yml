@@ -1,0 +1,28 @@
+id: retail-088
+title: retail-088
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 88
+  task_id: retail-088
+  user_id: daiki_silva_2903
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: cancel_pending_order
+      kwargs:
+        order_id: "#W8835847"
+        reason: ordered by mistake
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

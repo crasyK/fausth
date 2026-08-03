@@ -1,0 +1,70 @@
+id: "retail-054"
+title: "retail-054"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 54
+  task_id: "retail-054"
+  user_id: "amelia_silva_7726"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "silva7872@example.com"
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "amelia.silva7872@example.com"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "amelia_silva_7726"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W2586676"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5400801"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4597054"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4836353"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7773202"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7342738"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W4836353"
+        reason: "no longer needed"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W7342738"
+        reason: "no longer needed"
+    - name: "return_delivered_order_items"
+      kwargs:
+        order_id: "#W4597054"
+        item_ids:
+          - "5669664287"
+          - "4900990404"
+          - "9862136885"
+          - "6777246137"
+        payment_method_id: "gift_card_3491931"
+  outputs:
+    - "3646.68"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

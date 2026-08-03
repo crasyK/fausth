@@ -1,0 +1,33 @@
+id: "retail-081"
+title: "retail-081"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 81
+  task_id: "retail-081"
+  user_id: "james_kim_7213"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W3289292"
+        reason: "no longer needed"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W9722559"
+        reason: "no longer needed"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

@@ -1,0 +1,37 @@
+id: matplotlib__matplotlib-18869
+title: matplotlib__matplotlib-18869
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: matplotlib__matplotlib-18869
+repo: matplotlib/matplotlib
+base_commit: b7d05919865fc0c37a0164cf467d5d5513bd0ede
+version: "3.3"
+environment_setup_commit: 28289122be81e0bc0a6ee0c4c5b7343a46ce2e4e
+seed:
+  kind: git_checkout
+  repo: matplotlib/matplotlib
+  base_commit: b7d05919865fc0c37a0164cf467d5d5513bd0ede
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0-version_tuple0]",
+    "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0rc2-version_tuple1]",
+    "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.dev820+g6768ef8c4c-version_tuple2]",
+    "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.post820+g6768ef8c4c-version_tuple3]"]'
+  PASS_TO_PASS: '["lib/matplotlib/tests/test_matplotlib.py::test_importable_with_no_home",
+    "lib/matplotlib/tests/test_matplotlib.py::test_use_doc_standard_backends",
+    "lib/matplotlib/tests/test_matplotlib.py::test_importable_with__OO"]'
+FAIL_TO_PASS: '["lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0-version_tuple0]",
+  "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0rc2-version_tuple1]",
+  "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.dev820+g6768ef8c4c-version_tuple2]",
+  "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.post820+g6768ef8c4c-version_tuple3]"]'
+PASS_TO_PASS: '["lib/matplotlib/tests/test_matplotlib.py::test_importable_with_no_home",
+  "lib/matplotlib/tests/test_matplotlib.py::test_use_doc_standard_backends",
+  "lib/matplotlib/tests/test_matplotlib.py::test_importable_with__OO"]'
+gold:
+  patch_sha256: 5d3404d373895de6082f27c255ccdeeae9773e7353c289ba410beb68c14f4f4a
+  test_patch_sha256: 47fddcfc5ca0951f8a01f28711093f7774821c64fabdb3ad22ebde67a807f5f0

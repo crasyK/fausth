@@ -1,0 +1,33 @@
+id: retail-076
+title: retail-076
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 76
+  task_id: retail-076
+  user_id: ava_nguyen_6646
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: cancel_pending_order
+      kwargs:
+        order_id: "#W8367380"
+        reason: ordered by mistake
+    - name: cancel_pending_order
+      kwargs:
+        order_id: "#W1242543"
+        reason: no longer needed
+  outputs:
+    - "1939.05"
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

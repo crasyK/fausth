@@ -84,8 +84,11 @@ function cmdBootstrap(args) {
   if (args.seed) {
     const seed = resolve(args.seed);
     cpSync(seed, out, { recursive: true, force: true });
-  } else if (args["tiny-seed"] === "true" || !args.seed) {
-    // Default: overwrite with tiny failing test repo content (keep .git from worktree)
+  } else if (args["tiny-seed"] === "true") {
+    seedTinyRepo(out);
+  } else if (args["empty"] === "true" || args["tiny-seed"] === "false") {
+    // Leave worktree empty (aside from .git) for git_checkout / external seeders.
+  } else {
     seedTinyRepo(out);
   }
 

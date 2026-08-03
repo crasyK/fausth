@@ -1,0 +1,61 @@
+id: pallets__flask-4992
+title: pallets__flask-4992
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: pallets__flask-4992
+repo: pallets/flask
+base_commit: 4c288bc97ea371817199908d0d9b12de9dae327e
+version: "2.3"
+environment_setup_commit: 182ce3dd15dfa3537391c3efaf9c3ff407d134d4
+seed:
+  kind: git_checkout
+  repo: pallets/flask
+  base_commit: 4c288bc97ea371817199908d0d9b12de9dae327e
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["tests/test_config.py::test_config_from_file_toml"]'
+  PASS_TO_PASS: '["tests/test_config.py::test_config_from_pyfile",
+    "tests/test_config.py::test_config_from_object",
+    "tests/test_config.py::test_config_from_file_json",
+    "tests/test_config.py::test_from_prefixed_env",
+    "tests/test_config.py::test_from_prefixed_env_custom_prefix",
+    "tests/test_config.py::test_from_prefixed_env_nested",
+    "tests/test_config.py::test_config_from_mapping",
+    "tests/test_config.py::test_config_from_class",
+    "tests/test_config.py::test_config_from_envvar",
+    "tests/test_config.py::test_config_from_envvar_missing",
+    "tests/test_config.py::test_config_missing",
+    "tests/test_config.py::test_config_missing_file",
+    "tests/test_config.py::test_custom_config_class",
+    "tests/test_config.py::test_session_lifetime",
+    "tests/test_config.py::test_get_namespace",
+    "tests/test_config.py::test_from_pyfile_weird_encoding[utf-8]",
+    "tests/test_config.py::test_from_pyfile_weird_encoding[iso-8859-15]",
+    "tests/test_config.py::test_from_pyfile_weird_encoding[latin-1]"]'
+FAIL_TO_PASS: '["tests/test_config.py::test_config_from_file_toml"]'
+PASS_TO_PASS: '["tests/test_config.py::test_config_from_pyfile",
+  "tests/test_config.py::test_config_from_object",
+  "tests/test_config.py::test_config_from_file_json",
+  "tests/test_config.py::test_from_prefixed_env",
+  "tests/test_config.py::test_from_prefixed_env_custom_prefix",
+  "tests/test_config.py::test_from_prefixed_env_nested",
+  "tests/test_config.py::test_config_from_mapping",
+  "tests/test_config.py::test_config_from_class",
+  "tests/test_config.py::test_config_from_envvar",
+  "tests/test_config.py::test_config_from_envvar_missing",
+  "tests/test_config.py::test_config_missing",
+  "tests/test_config.py::test_config_missing_file",
+  "tests/test_config.py::test_custom_config_class",
+  "tests/test_config.py::test_session_lifetime",
+  "tests/test_config.py::test_get_namespace",
+  "tests/test_config.py::test_from_pyfile_weird_encoding[utf-8]",
+  "tests/test_config.py::test_from_pyfile_weird_encoding[iso-8859-15]",
+  "tests/test_config.py::test_from_pyfile_weird_encoding[latin-1]"]'
+gold:
+  patch_sha256: db912cc1331807c9b0715766eb45a5fac8c4036a99dd54c9ce998b675d0d8697
+  test_patch_sha256: 851c94393511592a1e3b65ea1d909b73b342ef55388819c6bd9632edb71ad304

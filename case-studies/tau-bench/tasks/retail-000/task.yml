@@ -1,0 +1,48 @@
+id: retail-000
+title: retail-000
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 0
+  task_id: retail-000
+  user_id: yusuf_rossi_9620
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: find_user_id_by_name_zip
+      kwargs:
+        first_name: Yusuf
+        last_name: Rossi
+        zip: "19122"
+    - name: get_order_details
+      kwargs:
+        order_id: "#W2378156"
+    - name: get_product_details
+      kwargs:
+        product_id: "1656367028"
+    - name: get_product_details
+      kwargs:
+        product_id: "4896585277"
+    - name: exchange_delivered_order_items
+      kwargs:
+        order_id: "#W2378156"
+        item_ids:
+          - "1151293680"
+          - "4983901480"
+        new_item_ids:
+          - "7706410293"
+          - "7747408585"
+        payment_method_id: credit_card_9513926
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes
+    - yes please
+    - that is correct

@@ -1,0 +1,38 @@
+id: retail-092
+title: retail-092
+category: tau-bench-retail
+prompt_file: prompt.md
+source:
+  benchmark: tau-bench
+  domain: retail
+  dataset: sierra-research/tau-bench
+  index: 92
+  task_id: retail-092
+  user_id: mei_ahmed_4909
+seed:
+  kind: tau_db
+  dir: seed
+grade:
+  kind: tau_policy
+  gold_actions:
+    - name: return_delivered_order_items
+      kwargs:
+        order_id: "#W7553978"
+        item_ids:
+          - "4545791457"
+          - "3098764622"
+          - "1631806422"
+        payment_method_id: credit_card_5902940
+    - name: return_delivered_order_items
+      kwargs:
+        order_id: "#W3239882"
+        item_ids:
+          - "9494281769"
+        payment_method_id: credit_card_5902940
+  outputs: []
+user_sim:
+  kind: scripted
+  answers:
+    - yes, and also return the smart watch and the e-reader
+    - yes please
+    - that is correct

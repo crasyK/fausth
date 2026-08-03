@@ -1,0 +1,225 @@
+spec: counterbalance-contract/v0.1
+name: tau-worker
+
+# τ todo-delegate WORKER: fill every slot via todo.complete (do NOT rewrite JSON).
+# WORKFLOW (slot-driven):
+#   1. fs.read tau/todos.json to see the slots (each {id, kind, value, filled}).
+#   2. For each "mutate" slot: the slot id ends with the required tool (mutate_N_<tool>);
+#      call that exact tau.invoke tool, then IMMEDIATELY todo.complete(id=<slot id>, value=...).
+#      Never substitute another mutation (e.g. cancel for modify/return/exchange).
+#   3. For each "report" slot: one distinct customer fact (amount, tracking #, etc.) via
+#      todo.complete(id=..., value=<exact fact>). If several report_* slots exist, fill EACH
+#      with a different fact (e.g. per-exchange price delta AND the total) — never leave a
+#      line-item amount out because you already reported a total.
+#   4. When ALL slots are filled (orientation open_todos=0), phase.yield.
+# CRITICAL — todo.complete id: copy the slot id VERBATIM from tau/todos.json. NEVER invent
+# ids (e.g. exchange_1_*, mutate_1_cancel_*) unless that exact string is a slot id in the file.
+# CRITICAL — do NOT cancel_pending_order as a substitute for item modify / exchange / return.
+# If a needed tool fails with "unknown tool", retry with the correct allowed tool name — do NOT
+# cancel just to make progress. For "cannot modify → no action" / info-only tasks (resolve_*
+# slots only), leave the DB unchanged and fill resolve/report via todo.complete — mutating tools
+# are blocked when no open mutate_*_<tool> slot remains.
+# Mutate only tools named by an unfilled mutate_* slot (slot id may be toolA_or_toolB — either OK).
+# Off-plan mutations (wrong tool or mutate on resolve-only) return ok=0 with off_plan_mutation.
+# CRITICAL — returns: put EVERY item_id you still need to return from a delivered order into
+# ONE return_delivered_order_items call. After any successful return that order is no longer
+# delivered — a later return of leftover items on the same order WILL FAIL. Never return a
+# proper subset then try again.
+# Do NOT over-clarify: at most ONE user.ask to confirm a cancel/return/exchange, then act.
+# That one ask MUST list every order_id and item you will mutate; scripted "yes" confirms the
+# full set you named — do not ask about a subset (e.g. only skateboards) if more items remain.
+
+state:
+  policy_read: 0
+  clarified: 0
+  open_todos: 1
+  slots_filled: 0
+
+limits:
+  max_steps: 40
+  max_tool_calls: 36
+  continue_after_deny: true
+
+tools:
+  - id: fs.read
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        content: { type: string }
+        found: { type: integer }
+  - id: fs.list
+    read_only: true
+    input:
+      type: object
+      required: [path]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+    output:
+      type: object
+      required: [path, entries, found]
+      additionalProperties: true
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { type: string } }
+        found: { type: integer }
+  - id: todo.complete
+    description: >
+      Mark one slot done. Call AFTER the work for that slot (mutation or reported fact).
+      Args: id = slot id copied VERBATIM from tau/todos.json (read the file first — never invent
+      ids like "exchange_1_*" or "mutate_1_cancel_*" unless that exact id appears in the file);
+      value = short confirmation for mutate slots (e.g. "cancelled #W9373487") OR the exact
+      customer fact for report slots (e.g. tracking number "746342064230") OR an explanation
+      for resolve/report when no mutation is possible (e.g. "cannot modify delivered order").
+      Do NOT rewrite tau/todos.json yourself — this tool updates it and unlocks phase.yield
+      when every slot is filled (open_todos becomes 0).
+    input:
+      type: object
+      required: [id, value]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        value: { type: string }
+    output:
+      type: object
+      required: [ok, id]
+      additionalProperties: true
+      properties:
+        ok: { type: integer }
+        id: { type: string }
+        value: { type: string }
+        slots_filled: { type: integer }
+        slots_total: { type: integer }
+        all_filled: { type: integer }
+        error: { type: string }
+    verify:
+      - kind: evidence
+        require: { path: result.ok, eq: 1 }
+        otherwise: deny
+  - id: tau.invoke
+    description: >
+      Call one τ-bench retail API tool and receive the result in the tool observation.
+      ONLY these tool names exist (others return "Error: unknown tool <name>"):
+      find_user_id_by_name_zip kwargs:{first_name,last_name,zip};
+      find_user_id_by_email kwargs:{email};
+      get_user_details kwargs:{user_id};
+      get_order_details kwargs:{order_id};
+      get_product_details kwargs:{product_id};
+      list_all_product_types kwargs:{};
+      cancel_pending_order kwargs:{order_id,reason} (cancels the WHOLE order — no per-item
+      cancel exists; for single-item removal use modify_pending_order_items or take no action;
+      reason must be "no longer needed" or "ordered by mistake" matching the customer's motive
+      for THAT order — do not reuse one reason across orders);
+      return_delivered_order_items kwargs:{order_id,item_ids,payment_method_id};
+      exchange_delivered_order_items kwargs:{order_id,item_ids,new_item_ids,payment_method_id};
+      modify_pending_order_items kwargs:{order_id,item_ids,new_item_ids,payment_method_id};
+      modify_pending_order_address kwargs:{order_id,address1,address2,city,state,country,zip};
+      modify_user_address kwargs:{user_id,...address fields};
+      transfer_to_human_agents kwargs:{summary};
+      think kwargs:{}; calculate kwargs:{expression}.
+      Do NOT invent names like get_user_id or search_user.
+      Split full names: "Yusuf Rossi" -> first_name:"Yusuf", last_name:"Rossi".
+      Use email from the task prompt when present (find_user_id_by_email).
+      Read wiki.md via fs.read before mutating orders. Clarify cancel/return/exchange via user.ask first.
+      Required facts for the customer (e.g. tracking numbers, price deltas) appear in observations
+      or via calculate — put EACH distinct fact into its own report_* slot.
+      To change product options on a PENDING order use modify_pending_order_items (item_ids +
+      new_item_ids + payment_method_id). Do NOT use modify_pending_order_address for item/option
+      swaps — address tools only change shipping address fields.
+      Do NOT use cancel_pending_order as a substitute for item modify, exchange, or return — if the
+      slot or task needs modify/exchange/return and a tool name is unknown, pick the correct allowed
+      tool from this list instead of cancelling. When the task is "no action" / info-only (only
+      resolve_* or report_* slots), leave the DB unchanged — off-plan mutations are blocked.
+      Only call mutating tools that match an open unfilled mutate_N_<tool> slot (or mutate_N_<a_or_b>).
+      For returns: include every item_id for that delivered order in a single call; partial returns
+      lock the order and block further returns on it.
+    input:
+      type: object
+      required: [tool]
+      additionalProperties: false
+      properties:
+        tool: { type: string }
+        kwargs: { type: object }
+    output:
+      type: object
+      required: [ok, tool, result]
+      additionalProperties: true
+      properties:
+        ok: { type: integer }
+        tool: { type: string }
+        kwargs: { type: object }
+        result: { type: string }
+        error: { type: string }
+    verify:
+      - kind: evidence
+        require: { path: result.ok, eq: 1 }
+        otherwise: deny
+  - id: user.ask
+    description: >
+      OPTIONAL, at most ONCE: confirm a consequential action (cancel/return/exchange) before mutating.
+      Name EVERY order_id and item_id (or product) you will mutate in that single question — "yes"
+      confirms the full set. Do not confirm a subset (e.g. only two skateboards) if the customer
+      also needs other items returned/exchanged on the same or other orders.
+      The scripted user sim returns "yes"/"yes please" — that is CONFIRMATION only, never an email,
+      name, order id, or reason. Do NOT ask for identity or reasons — get those from the task prompt
+      and tau.invoke. Do NOT ask more than once; proceed to fill the slots.
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        question: { type: string }
+    output:
+      type: object
+      required: [answer]
+      additionalProperties: false
+      properties:
+        answer: { type: string }
+  - id: phase.yield
+    description: >
+      Call ONCE when orientation shows open_todos=0 (every slot filled via todo.complete).
+      Do NOT yield earlier — completion gate will deny. Host then launches finalize.
+    input: { type: object, additionalProperties: false, properties: {} }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - fs.read
+    - fs.list
+    - todo.complete
+    - tau.invoke
+    - user.ask
+    - phase.yield
+  filesystem:
+    write_scopes: ["tau/", "data/"]
+    read_scopes: ["."]
+
+counterbalance:
+  sequences:
+    - id: wiki-before-mutate
+      action: tau.invoke
+      require_prior_tools: [fs.read]
+  invalidate_after:
+    - action: tau.invoke
+      memory_keys: [test_evidence_current]
+  completion:
+    tool: phase.yield
+    require:
+      all:
+        - { path: state.open_todos, eq: 0 }
+  orientation:
+    emit_each_step: true

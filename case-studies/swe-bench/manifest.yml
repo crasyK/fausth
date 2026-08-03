@@ -1,0 +1,123 @@
+study_id: swe-bench-lite-hri
+protocol: docs/case-studies/PROTOCOL.md
+hri_track: S
+version: 0.1.0
+harnesses:
+  counterbalanced:
+    kind: pipeline
+    root: case-studies/swe-bench/harnesses/counterbalanced
+    phases:
+      - id: research
+        path: case-studies/swe-bench/harnesses/counterbalanced/agents/research
+      - id: plan
+        path: case-studies/swe-bench/harnesses/counterbalanced/agents/plan
+      - id: implementation
+        path: case-studies/swe-bench/harnesses/counterbalanced/agents/implementation
+  permissive-control:
+    kind: single
+    path: case-studies/swe-bench/harnesses/permissive-control
+deployments:
+  kit:
+    id: kit
+    path: case-studies/swe-bench/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/swe-bench/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+matrix:
+  repetitions: 1
+  max_steps: 60
+  conditions:
+    - counterbalanced
+    - permissive-control
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+    - kit.minimax-m2.7-229b
+  recorded_provider_labels:
+    - kit
+tasks:
+  - id: pallets__flask-4045
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pallets__flask-4045
+  - id: mwaskom__seaborn-2848
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/mwaskom__seaborn-2848
+  - id: pydata__xarray-3364
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pydata__xarray-3364
+  - id: astropy__astropy-12907
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/astropy__astropy-12907
+  - id: psf__requests-1963
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/psf__requests-1963
+  - id: pylint-dev__pylint-5859
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pylint-dev__pylint-5859
+  - id: sphinx-doc__sphinx-10325
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/sphinx-doc__sphinx-10325
+  - id: pytest-dev__pytest-11143
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pytest-dev__pytest-11143
+  - id: matplotlib__matplotlib-18869
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/matplotlib__matplotlib-18869
+  - id: scikit-learn__scikit-learn-10297
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/scikit-learn__scikit-learn-10297
+  - id: sympy__sympy-11400
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/sympy__sympy-11400
+  - id: django__django-10914
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/django__django-10914
+  - id: pallets__flask-4992
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pallets__flask-4992
+  - id: mwaskom__seaborn-3010
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/mwaskom__seaborn-3010
+  - id: pydata__xarray-4094
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pydata__xarray-4094
+  - id: astropy__astropy-14182
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/astropy__astropy-14182
+  - id: psf__requests-2148
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/psf__requests-2148
+  - id: pylint-dev__pylint-6506
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pylint-dev__pylint-6506
+  - id: sphinx-doc__sphinx-10451
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/sphinx-doc__sphinx-10451
+  - id: pytest-dev__pytest-11148
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pytest-dev__pytest-11148
+  - id: matplotlib__matplotlib-22711
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/matplotlib__matplotlib-22711
+  - id: scikit-learn__scikit-learn-10508
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/scikit-learn__scikit-learn-10508
+  - id: sympy__sympy-11870
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/sympy__sympy-11870
+  - id: django__django-10924
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/django__django-10924
+  - id: pallets__flask-5063
+    category: swe-bench-lite
+    path: case-studies/swe-bench/tasks/pallets__flask-5063
+scoring:
+  path: case-studies/swe-bench/expected/scoring.yml
+outputs:
+  raw_dir: live/reports/case-studies/swe-bench
+  summary: case-studies/swe-bench/results/summary.json

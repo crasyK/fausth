@@ -1,0 +1,7 @@
+primary:
+  - task_success
+secondary:
+  - engaged
+  - false_completion
+notes: |
+  τ-bench retail HRI Track T. grade.kind=tau_policy (DB hash vs gold actions).

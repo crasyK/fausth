@@ -1,0 +1,36 @@
+# Recorded plumbing deployment for SWE HRI CI smoke.
+platform: case-study-swe-recorded
+model:
+  transport: recorded
+  profile: fixture
+  models:
+    - recorded-fixture
+
+world:
+  shell_timeout_ms: 60000
+  max_read_bytes: 512000
+  max_output_bytes: 128000
+  commands:
+    test: ["pytest", "-q"]
+    typecheck: ["pytest", "-q", "--collect-only"]
+  scopes:
+    read: ["."]
+    write: ["."]
+
+bindings:
+  fs.read:
+    native: local.fs_read
+  fs.list:
+    native: local.fs_list
+  fs.write_scoped:
+    native: local.fs_write
+  shell.run_allowlisted:
+    native: local.shell
+  user.approve:
+    native: local.user_approve_auto
+  user.correct:
+    native: local.user_correct_auto
+  task.complete:
+    native: local.task_complete
+  phase.yield:
+    native: local.phase_yield

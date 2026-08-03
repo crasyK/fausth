@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schemas/hri-index.v0.json",
+  "title": "Fausth Harness Reliability Index v0",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "tracks", "headline"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "hri-index.v0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "manifest_path": { "type": "string" },
+    "spec": { "type": "string" },
+    "tracks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["track_id", "status"],
+        "properties": {
+          "track_id": { "type": "string" },
+          "status": { "enum": ["frozen", "pending", "excluded"] },
+          "study_id": { "type": "string" },
+          "run_id": { "type": "string" },
+          "summary_path": { "type": "string" },
+          "metrics": { "type": "object" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "headline": {
+      "type": "object",
+          "required": ["HRI_utility", "HRI_policy", "HRI_security", "HRI_joint"],
+      "properties": {
+        "HRI_utility": {
+          "type": "object",
+          "properties": {
+            "absolute_delta": { "type": ["number", "null"] },
+            "sources": { "type": "array", "items": { "type": "string" } },
+            "components": { "type": "array" }
+          }
+        },
+        "HRI_policy": {
+          "type": "object",
+          "properties": {
+            "absolute_delta": { "type": ["number", "null"] },
+            "sources": { "type": "array", "items": { "type": "string" } },
+            "components": { "type": "array" }
+          }
+        },
+        "HRI_security": {
+          "type": "object",
+          "properties": {
+            "absolute_delta": { "type": ["number", "null"] },
+            "sources": { "type": "array", "items": { "type": "string" } },
+            "components": { "type": "array" }
+          }
+        },
+        "HRI_joint": {
+          "type": "object",
+          "properties": {
+            "value": { "type": ["number", "null"] },
+            "sources": { "type": "array", "items": { "type": "string" } },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "non_claims": { "type": "array", "items": { "type": "string" } }
+  }
+}

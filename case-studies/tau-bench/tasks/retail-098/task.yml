@@ -1,0 +1,42 @@
+id: "retail-098"
+title: "retail-098"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 98
+  task_id: "retail-098"
+  user_id: "yusuf_li_7255"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W6750959"
+        address1: "476 Maple Drive"
+        address2: "Suite 432"
+        city: "New York"
+        country: "USA"
+        state: "NY"
+        zip: "10093"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W6750959"
+        item_ids:
+          - "3254583681"
+        new_item_ids:
+          - "9440686670"
+        payment_method_id: "paypal_8080730"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

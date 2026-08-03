@@ -1,0 +1,29 @@
+id: mwaskom__seaborn-3010
+title: mwaskom__seaborn-3010
+category: swe-bench-lite
+prompt_file: prompt.md
+source:
+  benchmark: SWE-bench_Lite
+  dataset: princeton-nlp/SWE-bench_Lite
+  split: test
+  instance_id: mwaskom__seaborn-3010
+repo: mwaskom/seaborn
+base_commit: 0f5a013e2cf43562deec3b879458e59a73853813
+version: "0.12"
+environment_setup_commit: d25872b0fc99dbf7e666a91f59bd4ed125186aa1
+seed:
+  kind: git_checkout
+  repo: mwaskom/seaborn
+  base_commit: 0f5a013e2cf43562deec3b879458e59a73853813
+  cache_dir: live/cache/swe
+grade:
+  kind: swe_bench
+  FAIL_TO_PASS: '["tests/_stats/test_regression.py::TestPolyFit::test_missing_data"]'
+  PASS_TO_PASS: '["tests/_stats/test_regression.py::TestPolyFit::test_no_grouper",
+    "tests/_stats/test_regression.py::TestPolyFit::test_one_grouper"]'
+FAIL_TO_PASS: '["tests/_stats/test_regression.py::TestPolyFit::test_missing_data"]'
+PASS_TO_PASS: '["tests/_stats/test_regression.py::TestPolyFit::test_no_grouper",
+  "tests/_stats/test_regression.py::TestPolyFit::test_one_grouper"]'
+gold:
+  patch_sha256: 2d282a78db2b88dc42330fea5dc78b0551629b7d15c6d5b22f20c57a2ee3d1d7
+  test_patch_sha256: 1ba4f740fddbe1d3e1b82f09cf4dc724bd0d65eeed3a108f0892519b0ec8761b

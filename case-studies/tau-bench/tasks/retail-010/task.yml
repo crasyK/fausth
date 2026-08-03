@@ -1,0 +1,40 @@
+id: "retail-010"
+title: "retail-010"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 10
+  task_id: "retail-010"
+  user_id: "mia_garcia_4516"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "mia.garcia2723@example.com"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "mia_garcia_4516"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W5490111"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7387996"
+    - name: "transfer_to_human_agents"
+      kwargs:
+        summary: "The user wants to refund each order to the opposite order's payment method, but the agent cannot help."
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

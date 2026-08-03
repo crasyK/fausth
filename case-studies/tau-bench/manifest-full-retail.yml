@@ -1,0 +1,399 @@
+study_id: tau-bench-retail-hri-full
+protocol: docs/case-studies/PROTOCOL.md
+hri_track: T
+version: 0.1.0-full
+harnesses:
+  counterbalanced:
+    kind: single
+    path: case-studies/tau-bench/harnesses/counterbalanced
+  cb-tau-native:
+    kind: single
+    path: case-studies/tau-bench/harnesses/cb-tau-native
+  cb-todo-delegate:
+    kind: pipeline
+    root: case-studies/tau-bench/harnesses/cb-todo-delegate
+    phases:
+      - id: intake
+        path: case-studies/tau-bench/harnesses/cb-todo-delegate/agents/intake
+      - id: worker
+        path: case-studies/tau-bench/harnesses/cb-todo-delegate/agents/worker
+      - id: finalize
+        path: case-studies/tau-bench/harnesses/cb-todo-delegate/agents/finalize
+  permissive-control:
+    kind: single
+    path: case-studies/tau-bench/harnesses/permissive-control
+deployments:
+  kit:
+    id: kit
+    path: case-studies/tau-bench/deployments/local-kit.yml
+    model_id: kit.gemma4-31b-it
+    api_key_env: KIT_AI_API_KEY
+  recorded:
+    id: recorded
+    path: case-studies/tau-bench/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+matrix:
+  repetitions: 1
+  max_steps: 40
+  conditions:
+    - counterbalanced
+    - permissive-control
+  live_deployments:
+    - kit
+  live_kit_models:
+    - kit.gemma4-31b-it
+    - kit.minimax-m2.7-229b
+  recorded_provider_labels:
+    - kit
+tasks:
+  - id: retail-000
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-000
+  - id: retail-001
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-001
+  - id: retail-002
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-002
+  - id: retail-003
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-003
+  - id: retail-004
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-004
+  - id: retail-005
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-005
+  - id: retail-006
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-006
+  - id: retail-007
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-007
+  - id: retail-008
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-008
+  - id: retail-009
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-009
+  - id: retail-010
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-010
+  - id: retail-011
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-011
+  - id: retail-012
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-012
+  - id: retail-013
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-013
+  - id: retail-014
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-014
+  - id: retail-015
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-015
+  - id: retail-016
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-016
+  - id: retail-017
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-017
+  - id: retail-018
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-018
+  - id: retail-019
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-019
+  - id: retail-020
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-020
+  - id: retail-021
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-021
+  - id: retail-022
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-022
+  - id: retail-023
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-023
+  - id: retail-024
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-024
+  - id: retail-025
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-025
+  - id: retail-026
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-026
+  - id: retail-027
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-027
+  - id: retail-028
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-028
+  - id: retail-029
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-029
+  - id: retail-030
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-030
+  - id: retail-031
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-031
+  - id: retail-032
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-032
+  - id: retail-033
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-033
+  - id: retail-034
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-034
+  - id: retail-035
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-035
+  - id: retail-036
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-036
+  - id: retail-037
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-037
+  - id: retail-038
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-038
+  - id: retail-039
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-039
+  - id: retail-040
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-040
+  - id: retail-041
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-041
+  - id: retail-042
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-042
+  - id: retail-043
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-043
+  - id: retail-044
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-044
+  - id: retail-045
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-045
+  - id: retail-046
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-046
+  - id: retail-047
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-047
+  - id: retail-048
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-048
+  - id: retail-049
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-049
+  - id: retail-050
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-050
+  - id: retail-051
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-051
+  - id: retail-052
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-052
+  - id: retail-053
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-053
+  - id: retail-054
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-054
+  - id: retail-055
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-055
+  - id: retail-056
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-056
+  - id: retail-057
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-057
+  - id: retail-058
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-058
+  - id: retail-059
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-059
+  - id: retail-060
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-060
+  - id: retail-061
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-061
+  - id: retail-062
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-062
+  - id: retail-063
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-063
+  - id: retail-064
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-064
+  - id: retail-065
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-065
+  - id: retail-066
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-066
+  - id: retail-067
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-067
+  - id: retail-068
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-068
+  - id: retail-069
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-069
+  - id: retail-070
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-070
+  - id: retail-071
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-071
+  - id: retail-072
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-072
+  - id: retail-073
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-073
+  - id: retail-074
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-074
+  - id: retail-075
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-075
+  - id: retail-076
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-076
+  - id: retail-077
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-077
+  - id: retail-078
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-078
+  - id: retail-079
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-079
+  - id: retail-080
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-080
+  - id: retail-081
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-081
+  - id: retail-082
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-082
+  - id: retail-083
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-083
+  - id: retail-084
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-084
+  - id: retail-085
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-085
+  - id: retail-086
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-086
+  - id: retail-087
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-087
+  - id: retail-088
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-088
+  - id: retail-089
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-089
+  - id: retail-090
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-090
+  - id: retail-091
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-091
+  - id: retail-092
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-092
+  - id: retail-093
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-093
+  - id: retail-094
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-094
+  - id: retail-095
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-095
+  - id: retail-096
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-096
+  - id: retail-097
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-097
+  - id: retail-098
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-098
+  - id: retail-099
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-099
+  - id: retail-100
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-100
+  - id: retail-101
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-101
+  - id: retail-102
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-102
+  - id: retail-103
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-103
+  - id: retail-104
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-104
+  - id: retail-105
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-105
+  - id: retail-106
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-106
+  - id: retail-107
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-107
+  - id: retail-108
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-108
+  - id: retail-109
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-109
+  - id: retail-110
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-110
+  - id: retail-111
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-111
+  - id: retail-112
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-112
+  - id: retail-113
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-113
+  - id: retail-114
+    category: tau-bench-retail
+    path: case-studies/tau-bench/tasks/retail-114
+scoring:
+  path: case-studies/tau-bench/expected/scoring.yml
+outputs:
+  raw_dir: live/reports/case-studies/tau-bench
+  summary: case-studies/tau-bench/results/summary.json

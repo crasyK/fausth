@@ -1,0 +1,63 @@
+id: "retail-038"
+title: "retail-038"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 38
+  task_id: "retail-038"
+  user_id: "daiki_sanchez_3253"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_email"
+      kwargs:
+        email: "daikisanchez1479@example.com"
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Daiki"
+        last_name: "Sanchez"
+        zip: "46236"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "daiki_sanchez_3253"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9348897"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "3377618313"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9743693396"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "6817146515"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "2524789262"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9523456873"
+    - name: "calculate"
+      kwargs:
+        expression: "466.75 + 288.82 + 135.24 + 193.38 + 46.66"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W9348897"
+        reason: "no longer needed"
+  outputs:
+    - "camera"
+    - "481.5"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

@@ -1,0 +1,55 @@
+id: "retail-043"
+title: "retail-043"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 43
+  task_id: "retail-043"
+  user_id: "lucas_santos_6600"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Lucas"
+        last_name: "Santos"
+        zip: "80239"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "lucas_santos_6600"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W1588712"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W7895761"
+    - name: "modify_user_address"
+      kwargs:
+        user_id: "lucas_santos_6600"
+        address1: "943 Maple Drive"
+        address2: "Suite 356"
+        city: "Chicago"
+        state: "IL"
+        country: "USA"
+        zip: "60621"
+  outputs:
+    - "840887978435"
+    - "943 Maple Drive"
+    - "Suite 356"
+    - "Chicago"
+    - "IL"
+    - "60621"
+    - "64GB"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

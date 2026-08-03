@@ -1,0 +1,71 @@
+id: "retail-003"
+title: "retail-003"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 3
+  task_id: "retail-003"
+  user_id: "yusuf_rossi_9620"
+  annotator: "0"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Yusuf"
+        last_name: "Rossi"
+        zip: "19122"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "6086499569"
+    - name: "list_all_product_types"
+      kwargs: {}
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9523456873"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "yusuf_rossi_9620"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W6247578"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W9711842"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W4776164"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W6679257"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W2378156"
+    - name: "get_product_details"
+      kwargs:
+        product_id: "9523456873"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "yusuf_rossi_9620"
+    - name: "modify_pending_order_items"
+      kwargs:
+        order_id: "#W4776164"
+        item_ids:
+          - "8349118980"
+        new_item_ids:
+          - "9647292434"
+        payment_method_id: "credit_card_9513926"
+  outputs:
+    - "10"
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

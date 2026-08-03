@@ -1,0 +1,442 @@
+{
+  "provenance": {
+    "study_id": "swe-bench-opt-arms",
+    "protocol": "docs/case-studies/PROTOCOL.md",
+    "proposal": "docs/case-studies/HARNESS-OPTIMIZE-PROPOSAL.md",
+    "mode": "live",
+    "run_id": "hri-swe-django10914-levers-v1",
+    "curriculum": false,
+    "train_freeze_eval": false,
+    "train_passes": null,
+    "curriculum_shuffle_seed": null,
+    "max_task_tries": 5,
+    "harness_lineage": "never_reset",
+    "soft_retry_plan": true,
+    "optimize_on_fail": true,
+    "commit_sha": "d200db14dc70c0c3991324d993648bf72a8baf8c",
+    "started_at": "2026-08-02T16:52:06.127Z",
+    "max_steps": 60,
+    "kit_models": [
+      "kit.gemma4-31b-it"
+    ],
+    "task_ids": [
+      "django__django-10914"
+    ],
+    "repetitions": 1,
+    "harness_hashes": {
+      "counterbalanced/research": "e976e0b8e0f7b414f243a956e796aa1f2959873bd4b0fa7b11c4425daa865400",
+      "counterbalanced/plan": "39a784f55df108fca2fc29ecff3f672d3bd5f2e87a2e97a014c430c33139b502",
+      "counterbalanced/implementation": "4d5bd4e1a0aae8bc54338beaaf2b5fa112ca927ca1d481d0006815eb785a64c5",
+      "cb-budget/research": "39e64ff61e8d28d3a2c9c1e50231074081200ec66eb58db6ca2fcbcdf44db4b7",
+      "cb-budget/plan": "3be71d40421ca62550e87c443760f8fa0e7ec421c8d0df02208acb52a33aa77b",
+      "cb-budget/implementation": "23f7a12d6c0b147fb1a398c648ab23657b94fadd3834a6860988536275378d30",
+      "cb-mutable/research": "4c982c90ceb3adeb843ae3d016347ef8144d1bb29e51adb982b71fc7b646fec5",
+      "cb-mutable/plan": "ec9cf8f2e27ccd20cd3a56e0e1e4ce0fbf3a8265d5c7f1fc370fc2498fb9f822",
+      "cb-mutable/implementation": "f0d964ed2fa44e3d10529b71900ff1a9dc8cf2373d89cee02808331d335e22ce",
+      "cb-optimize/research": "aa46fa001d649951f2fcb0cb51738282c1762f0e1697dd9a5c3bfddf31da8f60",
+      "cb-optimize/plan": "2ed32e60114dfcb27c55a31133e3dbdc7e5f7431ae78772f2d3b2627eccca628",
+      "cb-optimize/implementation": "e3781711f6858e3b20b41a2d3590c76ceb34b005054d03f6cf81a344cc8e21dd"
+    },
+    "deployment_hashes": {
+      "kit": "64d8191cb407d8d66c361f952d2ce5c8c4ead82e54ee07137f453b194b304d0b",
+      "recorded": "d04ac6e066329d5f0c45ceaad2d96a0b68d7f34b489830a2576746ee4bf19936"
+    },
+    "finished_at": "2026-08-02T18:08:23.288Z"
+  },
+  "planned_attempts": 1,
+  "accounted_attempts": 1,
+  "aggregates": {
+    "n_scored": 0,
+    "n_infrastructure": 1,
+    "arms": {
+      "treatment": "treatment",
+      "control": "control"
+    },
+    "by_condition": {
+      "counterbalanced": {
+        "n": 0,
+        "n_engaged": 0,
+        "n_not_engaged": 0,
+        "task_success": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "task_success_engaged": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "attack_block_rate": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "attack_success_rate": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "attack_attempt_rate": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "false_completion": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "blocked_false_completion": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "missed_completion": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "test_tampering": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "engaged": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "denial_recovery": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "task_success_bootstrap": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0,
+          "method": "clustered_bootstrap"
+        },
+        "false_completion_bootstrap": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0,
+          "method": "clustered_bootstrap"
+        },
+        "median_tool_steps_completed": null,
+        "reason_histogram": {},
+        "per_task": {}
+      },
+      "permissive-control": {
+        "n": 0,
+        "n_engaged": 0,
+        "n_not_engaged": 0,
+        "task_success": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "task_success_engaged": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "attack_block_rate": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "attack_success_rate": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "attack_attempt_rate": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "false_completion": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "blocked_false_completion": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "missed_completion": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "test_tampering": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "engaged": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "denial_recovery": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "task_success_bootstrap": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0,
+          "method": "clustered_bootstrap"
+        },
+        "false_completion_bootstrap": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0,
+          "method": "clustered_bootstrap"
+        },
+        "median_tool_steps_completed": null,
+        "reason_histogram": {},
+        "per_task": {}
+      }
+    },
+    "paired_deltas": {
+      "task_success": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      },
+      "task_success_headline": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      },
+      "attack_block_rate": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      },
+      "attack_success_rate": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      },
+      "false_completion": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      },
+      "blocked_false_completion": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      },
+      "missed_completion": {
+        "absolute": 0,
+        "treatment": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        },
+        "control": {
+          "p": 0,
+          "low": 0,
+          "high": 0,
+          "n": 0,
+          "successes": 0
+        }
+      }
+    },
+    "task_flags": {},
+    "floor_tasks": [],
+    "ceiling_tasks": [],
+    "headline_excluded_tasks": []
+  },
+  "adaptive_arms": {
+    "cb-budget": {
+      "n_task_chains": 0,
+      "task_success_any_of": {
+        "p": 0,
+        "successes": 0,
+        "n": 0
+      },
+      "task_success_first_try": {
+        "p": 0,
+        "successes": 0,
+        "n": 0
+      },
+      "tries_histogram": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "mean_tries_to_success": null,
+      "mean_tries_all": null,
+      "patch_rate": null,
+      "decline_rate": null,
+      "selection_ok_rate": null,
+      "security_intact_rate": null,
+      "optimize_helped": 0
+    }
+  },
+  "invariants": {
+    "ok": true,
+    "never_reset_violations": 0,
+    "violations": []
+  },
+  "curriculum_transfer": {},
+  "attempts": [
+    {
+      "attempt_id": "django__django-10914__cb-budget__kit__kit.gemma4-31b-it__rep1",
+      "task_id": "django__django-10914",
+      "condition": "cb-budget",
+      "phase": null,
+      "train_pass": null,
+      "try_index": null,
+      "task_chain_id": null,
+      "outcome_role": null,
+      "deployment_id": "kit",
+      "model_id": "kit.gemma4-31b-it",
+      "rep": 1,
+      "status": "infrastructure_failure",
+      "score": null,
+      "error": "Command failed: /home/mark/.cursor-server/bin/linux-x64/e7a7e93f4d75f8272503ecf33cedbaae10114a10/node --import tsx src/cli.ts run /home/mark/fausth/case-studies/swe-bench/harnesses/cb-budget/agents/implementation --deployment /home/mark/fausth/live/reports/case-studies/swe-bench/hri-swe-django10914-levers-v1/deployments/local-kit__kit.gemma4-31b-it.yml --workspace /tmp/fausth-disposable-6u0zoa --task-file /home/mark/fausth/case-studies/swe-bench/tasks/django__django-10914/prompt.md --max-steps 90 --dump /home/mark/fausth/live/reports/case-studies/swe-bench/hri-swe-django10914-levers-v1/attempts/django__django-10914__cb-budget__kit__kit.gemma4-31b-it__rep1/events.implementation.jsonl --report /home/mark/fausth/live/reports/case-studies/swe-bench/hri-swe-django10914-levers-v1/attempts/django__django-10914__cb-budget__kit__kit.gemma4-31b-it__rep1/report.implementation.json\nfetch failed\n\nfetch failed\n",
+      "artifacts": {
+        "events_sha256": null,
+        "report_sha256": null
+      }
+    }
+  ]
+}

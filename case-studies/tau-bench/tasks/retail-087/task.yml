@@ -1,0 +1,61 @@
+id: "retail-087"
+title: "retail-087"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 87
+  task_id: "retail-087"
+  user_id: "yusuf_hernandez_6785"
+  annotator: "4"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W2166301"
+        address1: "565 Maple Drive"
+        address2: "Suite 501"
+        city: "Washington"
+        country: "USA"
+        state: "DC"
+        zip: "20307"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W2466703"
+        address1: "565 Maple Drive"
+        address2: "Suite 501"
+        city: "Washington"
+        country: "USA"
+        state: "DC"
+        zip: "20307"
+    - name: "modify_pending_order_address"
+      kwargs:
+        order_id: "#W6832752"
+        address1: "565 Maple Drive"
+        address2: "Suite 501"
+        city: "Washington"
+        country: "USA"
+        state: "DC"
+        zip: "20307"
+    - name: "modify_user_address"
+      kwargs:
+        user_id: "yusuf_hernandez_6785"
+        address1: "565 Maple Drive"
+        address2: "Suite 501"
+        city: "Washington"
+        country: "USA"
+        state: "DC"
+        zip: "20307"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"

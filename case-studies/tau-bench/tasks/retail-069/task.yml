@@ -1,0 +1,40 @@
+id: "retail-069"
+title: "retail-069"
+category: "tau-bench-retail"
+prompt_file: "prompt.md"
+source:
+  benchmark: "tau-bench"
+  domain: "retail"
+  dataset: "sierra-research/tau-bench"
+  index: 69
+  task_id: "retail-069"
+  user_id: "emma_smith_8564"
+  annotator: "3"
+seed:
+  kind: "tau_db"
+  dir: "seed"
+grade:
+  kind: "tau_policy"
+  gold_actions:
+    - name: "find_user_id_by_name_zip"
+      kwargs:
+        first_name: "Emma"
+        last_name: "Smith"
+        zip: "10192"
+    - name: "get_user_details"
+      kwargs:
+        user_id: "emma_smith_8564"
+    - name: "get_order_details"
+      kwargs:
+        order_id: "#W2417020"
+    - name: "cancel_pending_order"
+      kwargs:
+        order_id: "#W2417020"
+        reason: "no longer needed"
+  outputs: []
+user_sim:
+  kind: "scripted"
+  answers:
+    - "yes"
+    - "yes please"
+    - "that is correct"
