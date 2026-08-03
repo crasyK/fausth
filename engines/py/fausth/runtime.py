@@ -701,16 +701,34 @@ class FaustRuntime:
         snapshot = {"action": action, "state": self.agent["state"], "result": result}
         if not eval_predicate(v["require"], snapshot):
             verdict = v.get("otherwise", "safe_state")
-            self.emit(
-                {
-                    "stage": "verify",
-                    "verdict": verdict,
-                    "reason": reason,
-                    "tool": action["name"],
-                    "args": action["args"],
-                    "result": result,
-                }
-            )
+            observation: dict[str, Any] = {}
+            if v["kind"] == "evidence" and action["name"] == "shell.run_allowlisted":
+                stdout = result.get("stdout") if isinstance(result.get("stdout"), str) else ""
+                stderr = result.get("stderr") if isinstance(result.get("stderr"), str) else ""
+                exit_code = result.get("exit_code")
+                if stdout:
+                    observation["stdout"] = stdout[:8000]
+                if stderr:
+                    observation["stderr"] = stderr[:8000]
+                if exit_code is not None:
+                    observation["exit_code"] = exit_code
+                if isinstance(result.get("error"), str) and result.get("error"):
+                    observation["error"] = result["error"]
+                observation["hint"] = (
+                    "cmd=test failed verify_evidence. Read stdout/stderr above, "
+                    "fix the approved source file, then re-run cmd=test."
+                )
+            payload: dict[str, Any] = {
+                "stage": "verify",
+                "verdict": verdict,
+                "reason": reason,
+                "tool": action["name"],
+                "args": action["args"],
+                "result": result,
+            }
+            if observation:
+                payload["observation"] = observation
+            self.emit(payload)
             if verdict == "safe_state" and not self.recovering:
                 self.enter_safe_flow(reason)
             return False
