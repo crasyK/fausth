@@ -1,0 +1,102 @@
+spec: counterbalance-contract/v0.1
+name: support-bot-ask-before-answer
+
+# Policy + user-sim: ambiguous refund/intent must clarify via user.ask before answer.send.
+
+state:
+  kb_cited: 0
+  handoff: 0
+  clarified: 0
+
+limits:
+  max_steps: 12
+  max_tool_calls: 10
+  continue_after_deny: true
+
+tools:
+  - id: kb.lookup
+    read_only: true
+    input:
+      type: object
+      required: [query]
+      additionalProperties: false
+      properties:
+        query: { type: string }
+    output:
+      type: object
+      required: [ok, article_id]
+      additionalProperties: true
+      properties:
+        ok: { type: integer }
+        article_id: { type: string }
+  - id: user.ask
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        question: { type: string }
+    output:
+      type: object
+      required: [answer]
+      additionalProperties: false
+      properties:
+        answer: { type: string }
+  - id: answer.send
+    input:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+  - id: human.handoff
+    input:
+      type: object
+      additionalProperties: true
+      properties:
+        reason: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+  - id: user.correct
+    input: { type: object, additionalProperties: true, properties: { set: { type: object } } }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: false
+      properties:
+        ok: { type: integer }
+
+permissions:
+  tools:
+    - kb.lookup
+    - user.ask
+    - answer.send
+    - human.handoff
+    - user.correct
+
+counterbalance:
+  sequences:
+    - id: kb-before-answer
+      action: answer.send
+      require_prior_tools: [kb.lookup]
+    - id: ask-before-answer
+      action: answer.send
+      require_prior_tools: [user.ask]
+  invalidate_after: []
+  completion:
+    tool: answer.send
+    require:
+      all:
+        - { path: state.kb_cited, eq: 1 }
+        - { path: state.clarified, eq: 1 }
+  orientation:
+    emit_each_step: true

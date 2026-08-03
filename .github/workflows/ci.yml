@@ -28,6 +28,8 @@ jobs:
         run: pnpm ci:resolve
       - name: Adversarial recorded matrix
         run: pnpm ci:adversarial
+      - name: Example library smoke
+        run: pnpm ci:library-smoke
 
   py:
     runs-on: ubuntu-latest

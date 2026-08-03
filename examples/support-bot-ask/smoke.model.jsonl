@@ -1,0 +1,3 @@
+{"type":"tool","name":"kb.lookup","args":{"query":"refund policy"}}
+{"type":"tool","name":"user.ask","args":{"question":"Do you want a refund or a replacement?"}}
+{"type":"tool","name":"answer.send","args":{"text":"Happy to help with a replacement."}}

@@ -1,0 +1,4 @@
+{"args":{"content":"x","path":"src/app.ts"},"seq":1,"stage":"propose","state_hash":"a49485694c05696008dd16c5c3ee2121937cd0c26cbdb5f64c8c03f266593b0a","tool":"fs.write_scoped","ts_logical":1}
+{"args":{"content":"x","path":"src/app.ts"},"seq":2,"stage":"validate","state_hash":"a49485694c05696008dd16c5c3ee2121937cd0c26cbdb5f64c8c03f266593b0a","tool":"fs.write_scoped","ts_logical":2,"verdict":"allow"}
+{"args":{"content":"x","path":"src/app.ts"},"failure":{"kind":"missing_prior_tools","missing_prior_tools":["user.approve"]},"reason":"sequence_requirement_failed","seq":3,"stage":"authorize","state_hash":"a49485694c05696008dd16c5c3ee2121937cd0c26cbdb5f64c8c03f266593b0a","tool":"fs.write_scoped","ts_logical":3,"verdict":"deny"}
+{"seq":4,"stage":"propose","state_hash":"a49485694c05696008dd16c5c3ee2121937cd0c26cbdb5f64c8c03f266593b0a","ts_logical":4,"verdict":"allow"}
