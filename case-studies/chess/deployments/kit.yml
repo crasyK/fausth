@@ -1,0 +1,34 @@
+# KIT KI-Toolbox — chess live match / scenarios.
+# Never put API keys in this file. Set KIT_AI_API_KEY in .env.
+
+platform: kit-scc-chess
+model:
+  transport: openai-compatible
+  profile: kit-scc
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  models:
+    - kit.minimax-m2.7-229b
+    - kit.mistral-small-4-119b-a8b
+  temperature: 0
+  max_tokens: 1024
+  compatibility:
+    preserve_response_fields:
+      - reasoning_details
+    gateway_system_prompt: prohibited
+
+model_catalog:
+  - id: kit.minimax-m2.7-229b
+    capabilities: { tools: true, json: true }
+    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
+  - id: kit.mistral-small-4-119b-a8b
+    capabilities: { tools: true, json: true }
+    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
+
+bindings:
+  board.observe:
+    native: stub.board_observe
+  board.move:
+    native: stub.board_move
+  game.claim:
+    native: stub.game_claim

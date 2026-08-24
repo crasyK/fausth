@@ -1,6 +1,6 @@
 # Worlds catalog
 
-Shared catalog for the Lab UI and (later) Cursor SDK world drafts.
+Shared catalog of worlds (harness + case-study pointers). The Lab UI that consumed this catalog lives **outside** this repo (`/home/mark/fausth-lab` / CasaOS). The CLI and `case-studies/` are the in-repo entry points.
 
 | Id | Status | Notes |
 |----|--------|-------|
@@ -9,6 +9,6 @@ Shared catalog for the Lab UI and (later) Cursor SDK world drafts.
 | [adversarial](adversarial/) | approved | Side-effect security matrix |
 | [swe-bench](swe-bench/) | approved | HRI Track S — SWE-bench Lite N=25 |
 | [tau-bench](tau-bench/) | approved | HRI Track T — τ-bench retail N=25 |
-| [chess](chess/) | draft | Stub only — not runnable |
+| [chess](chess/) | approved | Procedural wind tunnel — legality, replay, terminal claims |
 
 Each world has a `world.yml` (`id`, `title`, `status`, `harness` / `track_a`, `case_study_manifest`, scoring hooks).

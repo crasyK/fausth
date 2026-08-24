@@ -1,8 +1,12 @@
 id: chess
-title: Chess (stub)
-status: draft
-summary: Long-term world — legal moves, board observe, skill/memory/instinct gates. Not runnable in MVP.
-harness: ""
-track_a: ""
-case_study_manifest: ""
-scoring_hooks: []
+title: Chess
+status: approved
+summary: Procedural wind tunnel — legality gates, stale-state rejection, deterministic replay.
+harness: case-studies/chess/harnesses/legality-gated
+track_a: conformance/fixtures/chess-legal-move-ok
+case_study_manifest: case-studies/chess/manifest.yml
+deployment_templates:
+  - case-studies/chess/harnesses/legality-gated/deployment.fixture.yml
+scoring_hooks:
+  - illegal_executed_moves
+  - replay_deterministic

@@ -10,7 +10,7 @@ Tone: bounded claims only. Separate **engine invariants**, **safety under tools*
 
 | Axis | What we ran |
 |------|-------------|
-| Track A | 55 conformance fixtures (TS↔PY byte parity); P0 write-lure / shell / symlink / ask-before-act / secret write |
+| Track A | 66 conformance fixture dirs (55 at report date + 8 chess + later CB); P0 write-lure / shell / symlink / ask-before-act / secret write |
 | Fuzz | 48 seeded IR cases; TS↔PY validate agreement 48/48 (`pnpm ci:fuzz`) |
 | Coding CB live (prior) | `live-kit-v3-reduced` — see PROTOCOL |
 | Mutable cells (prior) | mid-v* / force-reflect / train-freeze — see mutable results README |
@@ -33,7 +33,7 @@ Tone: bounded claims only. Separate **engine invariants**, **safety under tools*
 
 | Suite | Run / artifact | n | Primary metric | Link |
 |-------|----------------|---|:---------------|------|
-| Track A parity | `pnpm ci:conformance` / parity 55 fixtures | 55 | byte-identical | `conformance/fixtures/` |
+| Track A parity | `pnpm ci:conformance` / parity | 66 dirs (55 at this report) | byte-identical except known chess PY gap + 8 CB golden drift (see docs/KNOWN-ISSUES.md) | `conformance/fixtures/` |
 | IR fuzz | `conformance/fuzz/last-check.json` | 48 | agree=48 | `pnpm ci:fuzz` |
 | Coding CB live | `live-kit-v3-reduced` | 92 scored / 96 planned | CB 53.3% vs PC 44.7% task success | [PROTOCOL](../case-studies/PROTOCOL.md) |
 | Mutable mid-v4 | gemma reps | 10+10 | Δ −0.10 vs baseline | [mutable README](../../case-studies/mutable-cells/results/README.md) |
@@ -147,7 +147,7 @@ Tone: bounded claims only. Separate **engine invariants**, **safety under tools*
 
 **Fausth is not yet good at (or not yet measured):** **SWE-scale** coding, **UI/web** worlds, **refusal-under-tools**, **memory self-improvement over long curricula**, and **proving “world talks more → success”** with a frozen live bandwidth ablation.
 
-**Next product steps:** CasaOS Lab continuous matrices; library growth; optional shell-mutation local tests for protected paths.
+**Next product steps:** chess harness measurement instrument (`case-studies/chess/RESEARCH-PROGRAM.md`); optional shell-mutation local tests for protected paths. CasaOS/Lab UI is parked outside this repo in `/home/mark/fausth-lab`.
 
 ---
 

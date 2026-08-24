@@ -1,0 +1,55 @@
+spec: counterbalance-contract/v0.1
+name: chess-permissive-control
+
+state:
+  fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  observed: 0
+  moves_played: 0
+  illegal_attempts: 0
+  game_over: 0
+
+limits:
+  max_steps: 24
+  max_tool_calls: 20
+  continue_after_deny: true
+
+tools:
+  - id: board.observe
+    description: Read canonical board state and legal UCI moves.
+    read_only: true
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output:
+      type: object
+      required: [fen, legal_moves, position_hash]
+      additionalProperties: true
+  - id: board.move
+    description: Submit a UCI move without sequence gates.
+    input:
+      type: object
+      required: [move]
+      additionalProperties: false
+      properties:
+        move: { type: string }
+        position_hash: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: true
+  - id: game.claim
+    description: Claim terminal result (no observe gate in permissive control).
+    input:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind: { type: string }
+    output:
+      type: object
+      required: [ok]
+      additionalProperties: true
+
+permissions:
+  tools: [board.observe, board.move, game.claim]

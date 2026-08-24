@@ -1,0 +1,6 @@
+id: chess-legal-opening
+agent: case-studies/chess/harnesses/legality-gated
+prompt: >
+  Observe the board, then play e2e4 using the position_hash from observe.
+  Stop after the move succeeds.
+max_steps: 6

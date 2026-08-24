@@ -1,0 +1,59 @@
+{
+  "study_id": "swe-bench-lite-hri-track-s",
+  "frozen_at": "2026-08-04",
+  "task_success_rate": 0,
+  "dominant_failure_modes": [
+    {
+      "mode": "output_schema_invalid",
+      "note": "High counts on v3 budget/baseline; tool-call formatting"
+    },
+    {
+      "mode": "completion_gate_failed",
+      "note": "test_evidence_current=0 or open_todos=1 at step limit"
+    },
+    {
+      "mode": "verify_evidence_failed",
+      "note": "cmd=test exits non-zero; lever 2 surfaces pytest stderr"
+    },
+    {
+      "mode": "limit_exceeded",
+      "note": "Research/plan burn before impl headroom exhausted"
+    },
+    {
+      "mode": "wrong_target_patch",
+      "note": "Writes to tests/adjacent files vs approved plan paths"
+    },
+    {
+      "mode": "ground_truth_pass_false",
+      "note": "All scored attempts; patches do not pass FAIL_TO_PASS"
+    }
+  ],
+  "infra_residuals": [
+    {
+      "run": "hri-swe-opt-arms-v3-budget",
+      "task": "django__django-10914",
+      "issue": "KIT fetch failed / context window"
+    },
+    {
+      "run": "hri-swe-opt-arms-v3-mutable",
+      "issue": "Killed at task 5/8; 22 scored tries"
+    },
+    {
+      "run": "hri-swe-opt-arms-v3-optimize",
+      "issue": "Killed at task 5/8; 22 scored tries"
+    }
+  ],
+  "accepted_limitations": [
+    "No full N=25 re-run after v3 levers",
+    "Python engine lacks off-plan path parity",
+    "Opt-arms not matched against PC on same 8-task slice"
+  ],
+  "artifacts": [
+    "HRI-S-STATUS-REPORT.md",
+    "HRI-S-IN-IMPL-REPORT.md",
+    "OPT-ARMS-V3-COMPARISON.md",
+    "hri-swe-gemma-full.summary.json",
+    "hri-swe-opt-arms-v3-baseline.summary.json",
+    "hri-swe-opt-arms-v3-budget.summary.json"
+  ]
+}

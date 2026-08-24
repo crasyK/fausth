@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — Mutable cells, module connectors, overlays (M16–M18)
+## Unreleased
+
+### Chess wind tunnel + docs hygiene
+
+- Chess procedural case study: adapter, three harnesses (H0/H1/H2), Track A fixtures, KIT two-model series (`pnpm chess:match`). Research program: [`case-studies/chess/RESEARCH-PROGRAM.md`](case-studies/chess/RESEARCH-PROGRAM.md).
+- Human map: [`docs/README.md`](docs/README.md); examples index; evidence-pack validator (`pnpm evidence:check`).
+- Point-in-time `RELEASE-v0.*.md` and superseded `spec-v0.2-draft.md` moved to [`docs/archive/`](docs/archive/).
+- CasaOS deploy + in-repo Lab UI removed (live in `/home/mark/fausth-lab`). `live/cache/` and `live/archive/` gitignored.
+
+### Mutable cells, module connectors, overlays (M16–M18)
 
 ### Added
 

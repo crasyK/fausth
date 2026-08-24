@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fausth.dev/schema/claim.v0.1.json",
+  "title": "Fausth case-study claim",
+  "type": "object",
+  "required": [
+    "study_id",
+    "version",
+    "claimed",
+    "not_claimed",
+    "population",
+    "evaluation_matrix",
+    "hashes",
+    "independence",
+    "outcome",
+    "recorded_vs_live"
+  ],
+  "properties": {
+    "study_id": { "type": "string" },
+    "version": { "type": "string", "const": "0.1" },
+    "date": { "type": "string" },
+    "claimed": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "not_claimed": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "model": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deployment_hash": { "type": "string" }
+      }
+    },
+    "population": {
+      "type": "object",
+      "properties": {
+        "tasks": { "type": "array", "items": { "type": "string" } },
+        "conditions": { "type": "array", "items": { "type": "string" } },
+        "repetitions": { "type": "integer" }
+      }
+    },
+    "evaluation_matrix": { "type": "object" },
+    "hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string" }
+    },
+    "independence": { "type": "array", "items": { "type": "string" } },
+    "outcome": { "enum": ["positive", "negative", "inconclusive"] },
+    "recorded_vs_live": { "type": "string" }
+  },
+  "additionalProperties": true
+}

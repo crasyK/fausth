@@ -1,0 +1,56 @@
+study_id: swe-bench-lite-hri-track-s
+version: "0.1"
+date: "2026-08-04"
+outcome: negative
+
+claimed:
+  - On fixed kit.gemma4-31b-it, harness work unblocked plan-to-implementation for Track S CB pipelines.
+  - Opt-arms v3 fixed grading observability (numeric grade_exit_code, worktree.diff capture).
+  - Lever 1 (plan-path write enforcement) and Lever 2 (stderr on verify_evidence_failed) shipped with unit tests.
+
+not_claimed:
+  - Any positive SWE-bench Lite task_success or ground_truth_pass rate on measured arms (all 0%).
+  - SWE-bench leaderboard delta or specialization lift for Gemma.
+  - Proof that budget, mutable, or optimize arms failed as ideas (utility never cleared in-impl wall).
+  - Matched PC comparison on opt-arms v3 pilot slice (CB-variant-only matrices).
+
+model:
+  id: kit.gemma4-31b-it
+  deployment_hash: see hri-swe-opt-arms-v3-baseline.summary.json provenance
+
+population:
+  tasks_frozen_full: 25
+  tasks_opt_arms_pilot: 8
+  conditions:
+    - counterbalanced
+    - permissive-control
+    - cb-budget
+    - cb-mutable
+    - cb-optimize
+  repetitions: 1
+  max_task_tries_opt_arms: 5
+
+evaluation_matrix:
+  frozen_full: hri-swe-gemma-full (25 CB + 25 PC)
+  opt_arms_v3_baseline: 8/8 scored, 0% task_success
+  opt_arms_v3_budget: 7/8 scored (1 infra), 0% task_success
+  opt_arms_v3_mutable: partial, 22 tries, 0% task_success
+  opt_arms_v3_optimize: partial, 22 tries, 0% task_success
+
+hashes:
+  frozen_full_commit: acb4bb02c3a3e90249e193a1b5470cf9f43d6e6d
+  opt_arms_v3_commit: d200db14dc70c0c3991324d993648bf72a8baf8c
+  baseline_summary: case-studies/swe-bench/results/hri-swe-opt-arms-v3-baseline.summary.json
+
+independence:
+  - ground_truth_pass from held-out FAIL_TO_PASS pytest after agent worktree edit
+  - grading uses mirror git diff + venv pytest (v3 pipeline)
+  - harness mutations on cb-mutable/cb-optimize subject to fausth select with holdout fixtures (not re-run to success)
+
+recorded_vs_live: |
+  All cited results are live KIT inference except ci:swe-recorded plumbing smoke.
+  Recorded fixtures prove engine semantics only; not counted toward live sample sizes.
+
+reopen_trigger: |
+  Track S reopens only after chess procedural stability gate passes AND a new lever is documented
+  (e.g. scoped test command, worktree pip install -e ., plan burn cap).

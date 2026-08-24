@@ -1,0 +1,12 @@
+platform: fixture-chess
+model:
+  transport: recorded
+  temperature: 0
+  max_tokens: 1024
+bindings:
+  board.observe:
+    native: stub.board_observe
+  board.move:
+    native: stub.board_move
+  game.claim:
+    native: stub.game_claim

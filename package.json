@@ -28,12 +28,15 @@
     "case-study:score-test": "node --test scripts/case-study-score.test.mjs",
     "ci:adversarial": "node scripts/case-study-coding.mjs --manifest case-studies/adversarial/manifest.yml --mode recorded --skip-conformance --run-id adversarial-recorded-ci",
     "ci:library-smoke": "node scripts/harness-library-smoke.mjs",
-    "lab": "node lab-ui/server.mjs",
     "kit:tmux": "node scripts/kit-tmux-shard.mjs",
     "hri:aggregate": "node scripts/hri-aggregate.mjs",
     "swe:import": "node scripts/import-swe-lite.mjs",
     "ci:swe-recorded": "node scripts/case-study-coding.mjs --manifest case-studies/swe-bench/manifest.yml --mode recorded --skip-conformance --tasks pallets__flask-4045 --reps 1 --run-id swe-recorded-ci",
     "ci:tau-recorded": "node scripts/case-study-coding.mjs --manifest case-studies/tau-bench/manifest.yml --mode recorded --skip-conformance --tasks retail-000 --reps 1 --run-id tau-recorded-ci",
-    "ci:fuzz": "node scripts/fuzz-ir.mjs"
+    "ci:fuzz": "node scripts/fuzz-ir.mjs",
+    "chess:fixtures": "pnpm -C engines/ts exec node --import tsx src/gen-chess-fixtures.ts",
+    "chess:match": "pnpm -C engines/ts exec env FAUSTH_CHESS_COLOR=1 node --import tsx src/chess-match.ts --deployment ../../case-studies/chess/deployments/kit.yml --games 20 --max-plies 200 --out-dir ../../live/reports/chess-series",
+    "live:chess": "pnpm -C engines/ts exec node --import tsx src/cli.ts live --deployment ../../case-studies/chess/deployments/kit.yml --scenarios ../../live/scenarios-chess --report ../../live/reports/chess-live.json --catch-rate-min 0.5",
+    "evidence:check": "node scripts/validate-evidence.mjs"
   }
 }

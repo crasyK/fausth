@@ -1,24 +1,36 @@
-# Chess world (stub — out of MVP)
+# Chess world
 
-Long-term Fausth world for stressing **skills, memory provenance, and instincts** under a clear legality gate.
+Procedural wind tunnel for Fausth game-world mechanics. **Not** a chess-playing benchmark.
 
-## Intended tools (not implemented)
+## Tools
 
 | Tool | Role |
 |------|------|
-| `board.observe` | FEN / legal-move list (world truth) |
-| `board.move` | Submit a move; illegal → structured deny |
-| `game.claim` | Claim mate / draw — requires evidence cells |
+| `board.observe` | Canonical FEN, legal UCI moves, position_hash, terminal status |
+| `board.move` | Execute legal move; illegal/stale → structured output + harness deny (gated) |
+| `game.claim` | Terminal claim (checkmate/draw/stalemate) requires prior observe |
 
-## Counterbalance cells (design)
+## Adapter
 
-- **Skill:** opening book or tactic skill must be declared before use
-- **Memory:** provenance on recalled lines (no invented PENs)
-- **Instinct:** “don’t resign without eval” style policy sequences
-- **Gate:** illegal move never mutates board; claim-without-evidence fails verify
+Implementation: [`engines/ts/src/adapters/chess.ts`](../../engines/ts/src/adapters/chess.ts) (chess.js for board truth only).
+
+## Harnesses
+
+| Harness | Path | Purpose |
+|---------|------|---------|
+| Legality-gated | `case-studies/chess/harnesses/legality-gated/` | observe-before-move sequence, illegal/stale verify deny |
+| Permissive control | `case-studies/chess/harnesses/permissive-control/` | no sequence gates; measures raw illegal proposals |
+| Oriented | `case-studies/chess/harnesses/oriented/` | orientation + gated surface |
+
+## Track A fixtures
+
+`conformance/fixtures/chess-*` — regenerate with:
+
+```bash
+node --import tsx engines/ts/src/gen-chess-fixtures.ts
+pnpm fausth replay
+```
 
 ## Status
 
-`status: draft` in [`world.yml`](world.yml). Lab UI shows the entry with **no run actions** until a harness lands.
-
-Ship greenhouse / coding / adversarial first; implement chess after the Lab run surface is stable.
+`approved` in [`world.yml`](world.yml). See [`case-studies/chess/README.md`](../../case-studies/chess/README.md) for runbook.

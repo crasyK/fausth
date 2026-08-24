@@ -21,6 +21,7 @@ import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
+import { agentUsesChess, chessWorldFromAgent, createChessTools } from "./adapters/chess.js";
 import type { AgentIR, Deployment, HarnessPatch, ModelProposal, RecordedToolCall } from "./types.js";
 import { canonicalJson } from "./canonical.js";
 import {
@@ -228,7 +229,11 @@ function buildTools(agent: AgentIR) {
       files[p] = 'export function greet(){ return "hello"; }\n';
     }
   }
+  const chess = agentUsesChess(agent)
+    ? createChessTools(chessWorldFromAgent(agent))
+    : {};
   return {
+    ...chess,
     ...createGreenhouseTools({
       temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
       fan_percent: Number(agent.state.fan_percent ?? 0),
@@ -315,6 +320,9 @@ function fixturePrefixesForHarness(harnessName: string): string[] {
   if (harnessName === "coding") return ["code-", "spawn-"];
   if (harnessName === "greenhouse") {
     return ["allow-", "deny-", "verify-", "budget-", "predicate-", "input-"];
+  }
+  if (harnessName === "chess" || harnessName === "legality-gated" || harnessName === "oriented" || harnessName === "permissive-control") {
+    return ["chess-"];
   }
   return [];
 }

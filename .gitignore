@@ -27,6 +27,8 @@ engines/py/build/
 README_convos.md
 /2026-*.md
 
-# SWE-bench repo mirrors
-live/cache/swe/*.git
-live/cache/swe/**/*.git
+# SWE-bench repo mirrors (regenerable; do not commit)
+live/cache/
+
+# Local-only moved reports (deep-clean archive)
+live/archive/

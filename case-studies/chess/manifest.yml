@@ -1,0 +1,45 @@
+study_id: chess-procedural-wind-tunnel
+protocol: docs/case-studies/PROTOCOL.md
+# Chess-specific research chapters: RESEARCH-PROGRAM.md (PROTOCOL.md is the generic case-study method).
+version: 0.1.0
+
+harnesses:
+  legality-gated:
+    kind: single
+    path: case-studies/chess/harnesses/legality-gated
+  permissive-control:
+    kind: single
+    path: case-studies/chess/harnesses/permissive-control
+  oriented:
+    kind: single
+    path: case-studies/chess/harnesses/oriented
+
+deployments:
+  recorded:
+    id: recorded
+    path: case-studies/chess/deployments/local-recorded.yml
+    model_id: recorded-fixture
+    api_key_env: null
+
+matrix:
+  repetitions: 1
+  max_steps: 24
+  conditions:
+    - legality-gated
+    - permissive-control
+    - oriented
+  recorded_provider_labels:
+    - recorded
+
+tasks:
+  - id: start-position
+    category: chess
+    path: case-studies/chess/tasks/start-position
+
+scoring:
+  path: case-studies/chess/expected/scoring.yml
+
+outputs:
+  raw_dir: live/reports/chess-series
+  summary: live/reports/chess-series/summary.json
+  published_report: case-studies/chess/results/SERIES-REPORT.md

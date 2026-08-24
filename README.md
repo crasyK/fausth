@@ -6,6 +6,8 @@ The model proposes. Fausth governs what may run and how the world must prove it 
 
 **Status:** [v0.3.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.3.0-alpha) · contract `counterbalance-contract/v0.2` (+ v0.3 candidates) · **not** production-safe
 
+**Human map:** [`docs/README.md`](docs/README.md) · **Chess research:** [`case-studies/chess/`](case-studies/chess/) · **Issues:** [github.com/crasyK/fausth/issues](https://github.com/crasyK/fausth/issues)
+
 ## Why it exists
 
 | Claim | Meaning |
@@ -15,15 +17,16 @@ The model proposes. Fausth governs what may run and how the world must prove it 
 
 ## Quick start
 
-```bash +code
-corepack enable && pnpm install
+```bash
+corepack enable && pnpm install   # Node 22+
 pnpm test
 pnpm fausth -- help
+pnpm chess:fixtures && pnpm replay   # chess Track A
 ```
 
 Try a harness:
 
-```bash +code
+```bash
 pnpm fausth -- test examples/coding-counterbalance
 pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth.json
 ```
@@ -32,13 +35,17 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 
 | Task | Guide |
 |------|-------|
+| Start here (humans + agents) | [`docs/README.md`](docs/README.md) |
 | Author a harness | [`docs/authoring.md`](docs/authoring.md) |
 | Pack, sign, verify, resolve, MCP | [`docs/HOW-TO.md`](docs/HOW-TO.md) |
+| Chess wind tunnel + research program | [`case-studies/chess/README.md`](case-studies/chess/README.md) |
 | OpenAI-compatible models (KIT / OpenRouter) | [`docs/openai-compatible.md`](docs/openai-compatible.md) |
 | CI quality gate (SLOPATHON-style) | [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md) · [`examples/slopathon-review/`](examples/slopathon-review/) |
-| Case studies (coding pilot) | [`docs/case-studies/`](docs/case-studies/) · [`examples/coding-counterbalance/CASE-STUDY.md`](examples/coding-counterbalance/CASE-STUDY.md) |
+| Case studies | [`docs/case-studies/`](docs/case-studies/) |
+| Evidence pack | [`docs/evidence-pack.md`](docs/evidence-pack.md) |
 | Packaging roadmap (M4–M15) | [`docs/harness-packaging-roadmap.md`](docs/harness-packaging-roadmap.md) |
-| Spec & theory (v0.3 draft) | [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) · [`docs/notion-hub/`](docs/notion-hub/) |
+| Spec & theory | [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) · [`docs/notion-hub/`](docs/notion-hub/) |
+| Known issues | [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md) |
 
 ## What 0.3.0 proves (short)
 
@@ -48,6 +55,7 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 - M15 intervention budgets / triggers + host demo runner
 - Theory drafts: control timing, deny-as-sensor, evidence independence ([`docs/notion-hub/`](docs/notion-hub/))
 - M16 mutable-cell self-editing (`mutable`, `harness.propose_skills_patch`, `fausth select`) — Track A fixtures; example [`examples/mutable-skills/`](examples/mutable-skills/)
+- Chess procedural wind tunnel (Track A + partial live series) — [`case-studies/chess/`](case-studies/chess/)
 
 ## What 0.1.3 proves (short)
 
@@ -57,9 +65,7 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 - MCP connectors: recorded CI + live stdio; live model + MCP (KIT / OpenRouter)
 - Local coding in disposable worktrees; CI review example for event repos
 - Coding Counterbalance case-study protocol + **live** 80-attempt KIT pilot
-  (held-out grader; recorded traces are plumbing only):
-  [`examples/coding-counterbalance/CASE-STUDY.md`](examples/coding-counterbalance/CASE-STUDY.md)
-  · [`docs/case-studies/`](docs/case-studies/)
+  ([`examples/coding-counterbalance/CASE-STUDY.md`](examples/coding-counterbalance/CASE-STUDY.md))
 
 Still **not** claimed: production isolation, universal live-model task completion,
 or agent safety outside the published case-study bounds.
@@ -74,6 +80,8 @@ See [`docs/production-isolation.md`](docs/production-isolation.md) and PROTOCOL 
 ## Spec & theory
 
 [`docs/spec-v0.2.md`](docs/spec-v0.2.md) · [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) · [`docs/spec-v0.1.md`](docs/spec-v0.1.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md) · [`docs/glossary.md`](docs/glossary.md)
+
+Point-in-time release notes: [`docs/archive/releases/`](docs/archive/releases/). Changelog: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
