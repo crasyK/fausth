@@ -6,7 +6,9 @@ The model proposes. Fausth governs what may run and how the world must prove it 
 
 **Status:** [v0.3.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.3.0-alpha) · contract `counterbalance-contract/v0.2` (+ v0.3 candidates) · **not** production-safe
 
-**Human map:** [`docs/README.md`](docs/README.md) · **Chess research:** [`case-studies/chess/`](case-studies/chess/) · **Issues:** [github.com/crasyK/fausth/issues](https://github.com/crasyK/fausth/issues)
+**Human map:** [`docs/README.md`](docs/README.md) · **Issues:** [github.com/crasyK/fausth/issues](https://github.com/crasyK/fausth/issues)
+
+Chess research lives in a **separate project** (`/home/mark/chess-harness`) that installs this runtime. It is not part of Fausth.
 
 ## Why it exists
 
@@ -21,7 +23,6 @@ The model proposes. Fausth governs what may run and how the world must prove it 
 corepack enable && pnpm install   # Node 22+
 pnpm test
 pnpm fausth -- help
-pnpm chess:fixtures && pnpm replay   # chess Track A
 ```
 
 Try a harness:
@@ -38,7 +39,6 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 | Start here (humans + agents) | [`docs/README.md`](docs/README.md) |
 | Author a harness | [`docs/authoring.md`](docs/authoring.md) |
 | Pack, sign, verify, resolve, MCP | [`docs/HOW-TO.md`](docs/HOW-TO.md) |
-| Chess wind tunnel + research program | [`case-studies/chess/README.md`](case-studies/chess/README.md) |
 | OpenAI-compatible models (KIT / OpenRouter) | [`docs/openai-compatible.md`](docs/openai-compatible.md) |
 | CI quality gate (SLOPATHON-style) | [`docs/ci-quality-gate.md`](docs/ci-quality-gate.md) · [`examples/slopathon-review/`](examples/slopathon-review/) |
 | Case studies | [`docs/case-studies/`](docs/case-studies/) |
@@ -55,7 +55,6 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 - M15 intervention budgets / triggers + host demo runner
 - Theory drafts: control timing, deny-as-sensor, evidence independence ([`docs/notion-hub/`](docs/notion-hub/))
 - M16 mutable-cell self-editing (`mutable`, `harness.propose_skills_patch`, `fausth select`) — Track A fixtures; example [`examples/mutable-skills/`](examples/mutable-skills/)
-- Chess procedural wind tunnel (Track A + partial live series) — [`case-studies/chess/`](case-studies/chess/)
 
 ## What 0.1.3 proves (short)
 

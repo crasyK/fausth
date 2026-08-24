@@ -13,7 +13,6 @@ const { parse: parseYaml } = require("yaml");
 
 const DEFAULT_DIRS = [
   "case-studies/swe-bench/results",
-  "case-studies/chess/results",
 ];
 
 function loadClaim(dir) {

@@ -52,5 +52,5 @@ recorded_vs_live: |
   Recorded fixtures prove engine semantics only; not counted toward live sample sizes.
 
 reopen_trigger: |
-  Track S reopens only after chess procedural stability gate passes AND a new lever is documented
+  Track S reopens only after a new lever is documented
   (e.g. scoped test command, worktree pip install -e ., plan burn cap).

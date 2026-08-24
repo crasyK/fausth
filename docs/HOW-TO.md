@@ -144,19 +144,6 @@ pnpm fausth -- audit live/reports/run.jsonl --json
 
 Human summary counts denies, near-misses (deny→retry→deny), `verify_output_failed`, `memory_stale`, and `budget_exceeded`.
 
-## Chess wind tunnel
-
-```bash +code
-pnpm chess:fixtures
-pnpm replay                          # chess-* Track A goldens
-pnpm fausth -- test ../../case-studies/chess/harnesses/legality-gated
-pnpm chess:match                     # KIT two-model series (KIT_AI_API_KEY)
-pnpm live:chess                      # single-agent live scenarios
-pnpm evidence:check
-```
-
-Start at [`case-studies/chess/README.md`](../case-studies/chess/README.md). Next research chapter: [`RESEARCH-PROGRAM.md`](../case-studies/chess/RESEARCH-PROGRAM.md) Phase 1 (`chess:analyze`).
-
 ## Intervention host (budget demo)
 
 ```bash +code

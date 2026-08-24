@@ -46,7 +46,6 @@ Required when `task_success` is 0 or partial. List:
 pnpm evidence:check
 # or
 node scripts/validate-evidence.mjs case-studies/swe-bench/results
-node scripts/validate-evidence.mjs case-studies/chess/results
 ```
 
 Checks (minimal wall):
@@ -61,7 +60,6 @@ Checks (minimal wall):
 ## Examples
 
 - Track S freeze: [`case-studies/swe-bench/results/`](../case-studies/swe-bench/results/)
-- Chess: [`case-studies/chess/results/`](../case-studies/chess/results/) (Track A `claim.yml` + Track B `SERIES-REPORT.md`)
 
 ## Not in scope (v0.1)
 

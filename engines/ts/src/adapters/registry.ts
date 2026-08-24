@@ -4,7 +4,6 @@
  */
 import type { ToolHandler } from "../runtime.js";
 import type { AgentIR, Deployment } from "../types.js";
-import { agentUsesChess, chessWorldFromAgent, createChessTools } from "./chess.js";
 import { createGreenhouseTools } from "../tools/world.js";
 import { createSpawnTool } from "../tools/world.js";
 import { createSimulationCodingAdapter } from "./simulation.js";
@@ -109,15 +108,6 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "actuator.fan.set": "actuator.fan.set",
   "stub.wait": "system.wait",
   "system.wait": "system.wait",
-  "stub.board_observe": "board.observe",
-  "sim.board_observe": "board.observe",
-  "board.observe": "board.observe",
-  "stub.board_move": "board.move",
-  "sim.board_move": "board.move",
-  "board.move": "board.move",
-  "stub.game_claim": "game.claim",
-  "sim.game_claim": "game.claim",
-  "game.claim": "game.claim",
 };
 
 export type ResolveToolsOptions = {
@@ -159,10 +149,7 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
     sensor_healthy: opts.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
   });
   const spawn = createSpawnTool(agent.permissions?.tools ?? []);
-  const chess = agentUsesChess(agent)
-    ? createChessTools(chessWorldFromAgent(agent))
-    : {};
-  return { ...chess, ...greenhouse, ...coding, ...spawn };
+  return { ...greenhouse, ...coding, ...spawn };
 }
 
 /**

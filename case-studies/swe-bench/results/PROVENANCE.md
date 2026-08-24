@@ -35,4 +35,4 @@
 
 ## Reopen
 
-See `claim.yml` `reopen_trigger`. Chess stability gate: [`../../chess/results/PROCEDURAL-RELIABILITY.md`](../../chess/results/PROCEDURAL-RELIABILITY.md).
+See `claim.yml` `reopen_trigger`.

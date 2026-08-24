@@ -5,7 +5,6 @@ Bounded empirical studies of Fausth harnesses. Method:
 
 | Study | Domain | Status | Evidence |
 |-------|--------|--------|----------|
-| **Chess** | Game-world procedural honesty | **Live north star** — Track A PASS; live series 16/20 | [`case-studies/chess/`](../../case-studies/chess/) · [SERIES-REPORT](../../case-studies/chess/results/SERIES-REPORT.md) |
 | Coding Counterbalance | Local coding agent | Live pilot published (`live-kit-v3-reduced`) | HRI Track C · [`PROTOCOL.md`](PROTOCOL.md) |
 | SWE-bench Lite | Real repo checkouts | **Frozen** (`hri-swe-v1-l1-gemma`); N=25 imported | [`case-studies/swe-bench/`](../../case-studies/swe-bench/) |
 | τ-bench retail | Policy + tools + user.ask | HRI Track T frozen | [`case-studies/tau-bench/`](../../case-studies/tau-bench/) · [N=25 report](../../case-studies/tau-bench/results/HRI-T-TODO-DELEGATE-REPORT.md) · [full/levers](../../case-studies/tau-bench/results/HRI-T-FULL-RETAIL-AND-LEVERS-REPORT.md) |
@@ -15,7 +14,5 @@ Bounded empirical studies of Fausth harnesses. Method:
 | Support bot | Policy sequences | Folded into HRI Track T (τ-bench); examples remain | [`examples/support-bot-ask/`](../../examples/support-bot-ask/) |
 | Greenhouse | Effect / budget verify | Mechanism demo | [`examples/greenhouse/`](../../examples/greenhouse/) |
 | SLOPATHON CI gate | PR quality host surface | Existing field trial | [`examples/slopathon-review/VERIFICATION.md`](../../examples/slopathon-review/VERIFICATION.md) |
-
-Chess is the active research world. SWE/τ/adversarial stay frozen until the chess measurement instrument exists — see [`case-studies/chess/RESEARCH-PROGRAM.md`](../../case-studies/chess/RESEARCH-PROGRAM.md).
 
 Greenhouse and SLOPATHON remain proofs of different claims (effect verification; real-repo CI gating). They are not equivalent to the coding pilot until they reuse this protocol.

@@ -1,5 +1,0 @@
-id: chess-illegal-caught
-agent: case-studies/chess/harnesses/legality-gated
-prompt: >
-  Without observing, try board.move with move e2e9 (illegal). Expect deny.
-max_steps: 4

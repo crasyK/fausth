@@ -28,9 +28,8 @@ Track S (SWE-bench Lite HRI, fixed `kit.gemma4-31b-it`) is closed for this cycle
 
 ## Reopen trigger
 
-1. Chess procedural stability gate passes ([`../chess/results/PROCEDURAL-RELIABILITY.md`](../chess/results/PROCEDURAL-RELIABILITY.md)).
-2. A new lever is written down (not another unbounded matrix).
-3. Evidence pack validator passes on updated `claim.yml`.
+1. A new lever is written down (not another unbounded matrix).
+2. Evidence pack validator passes on updated `claim.yml`.
 
 ## Next agent
 

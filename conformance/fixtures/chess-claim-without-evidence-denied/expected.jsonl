@@ -1,4 +1,0 @@
-{"args":{"kind":"checkmate"},"seq":1,"stage":"propose","state_hash":"b43a279522ffa464f914e60a8461b622094d3b9548c5c9a326662af6d3088336","tool":"game.claim","ts_logical":1}
-{"args":{"kind":"checkmate"},"seq":2,"stage":"validate","state_hash":"b43a279522ffa464f914e60a8461b622094d3b9548c5c9a326662af6d3088336","tool":"game.claim","ts_logical":2,"verdict":"allow"}
-{"args":{"kind":"checkmate"},"reason":"gate_denied","seq":3,"stage":"authorize","state_hash":"b43a279522ffa464f914e60a8461b622094d3b9548c5c9a326662af6d3088336","tool":"game.claim","ts_logical":3,"verdict":"deny"}
-{"seq":4,"stage":"propose","state_hash":"b43a279522ffa464f914e60a8461b622094d3b9548c5c9a326662af6d3088336","ts_logical":4,"verdict":"allow"}

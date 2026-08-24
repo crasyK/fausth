@@ -13,9 +13,6 @@ const harnesses = [
   "examples/coding-bandwidth-verbose",
   "examples/greenhouse",
   "examples/mutable-skills",
-  "case-studies/chess/harnesses/legality-gated",
-  "case-studies/chess/harnesses/permissive-control",
-  "case-studies/chess/harnesses/oriented",
 ];
 
 let failed = 0;

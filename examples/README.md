@@ -15,7 +15,6 @@ pnpm ci:library-smoke    # fausth test --skip-fixtures on the wired set
 | `coding-bandwidth-terse/` · `coding-bandwidth-verbose/` | Orientation bandwidth ablation |
 | `greenhouse/` | Effect / budget verify |
 | `mutable-skills/` | M16 skills-patch demo |
-| `case-studies/chess/harnesses/*` | Chess H0/H1/H2 (research world) |
 
 ## Wired elsewhere in CI (not library-smoke)
 

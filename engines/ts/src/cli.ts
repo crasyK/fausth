@@ -30,7 +30,6 @@ import {
 } from "./model/index.js";
 import type { ModelProposal as PortProposal } from "./model/port.js";
 import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
-import { agentUsesChess, chessWorldFromAgent, createChessTools } from "./adapters/chess.js";
 import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
 import { auditJsonlFile, formatAuditHuman } from "./audit.js";
@@ -97,11 +96,7 @@ function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealt
       files[p] = 'export function greet(){ return "hello"; }\n';
     }
   }
-  const chess = agentUsesChess(agent)
-    ? createChessTools(chessWorldFromAgent(agent))
-    : {};
   return {
-    ...chess,
     ...createGreenhouseTools({
       temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
       fan_percent: Number(agent.state.fan_percent ?? 0),

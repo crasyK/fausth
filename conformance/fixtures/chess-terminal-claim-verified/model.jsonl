@@ -1,3 +1,0 @@
-{"type":"tool","name":"board.observe","args":{}}
-{"type":"tool","name":"game.claim","args":{"kind":"checkmate"}}
-{"type":"stop"}

@@ -1,6 +1,6 @@
 # Kaggriculture — watchlist (deferred)
 
-**Status:** Deferred · **Revisit:** after chess procedural stability gate  
+**Status:** Deferred · **Revisit:** not blocked on Fausth  
 **Competition:** [Kaggle Kaggriculture](https://www.kaggle.com/competitions/kaggriculture/overview)
 
 ## Why deferred
@@ -8,7 +8,7 @@
 1. **Framing mismatch:** Competition is RL/simulation optimization (fast `agent(obs)` loop, 720 turns, 1s/action budget) — not an LLM-in-the-loop agent harness flagship.
 2. **No episode-time network:** Rules §2.12 forbid ingress/egress during evaluation → live LLM API calls impossible on leaderboard.
 3. **Resource envelope:** 1.6 vCPU, 6.5 GiB RAM, no GPU, 100 MiB submission — no room for bundled LLM weights.
-4. **Current priority:** Chess wind tunnel proves game-world adapter + procedural gates first.
+4. **Current priority:** Fausth remains a harness runtime; domain labs (e.g. chess-harness) are separate consumers.
 
 ## What recon found (2026-08-03)
 
@@ -49,4 +49,4 @@ Follow [`../../evidence-pack.md`](../../evidence-pack.md). Do not count recorded
 ## Related
 
 - Strategy handoff: `/DATA/myfiles/fausth-strategy-handoff-report.md`
-- Chess gate: [`../../../case-studies/chess/results/PROCEDURAL-RELIABILITY.md`](../../../case-studies/chess/results/PROCEDURAL-RELIABILITY.md)
+- Chess laboratory (sibling, not Fausth): `/home/mark/chess-harness`
