@@ -17,8 +17,8 @@ importers:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
       chess.js:
-        specifier: 1.0.0-beta.8
-        version: 1.0.0-beta.8
+        specifier: 1.4.0
+        version: 1.4.0
       yaml:
         specifier: ^2.7.0
         version: 2.9.0
@@ -205,8 +205,8 @@ packages:
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
 
-  chess.js@1.0.0-beta.8:
-    resolution: {integrity: sha512-UngzUMXmexcQaQA/UEJuJj5vatEy34awYMD5YMOp/FW3HM7lqspp7ymYs5JAmquDq0WROtURRfSffoa/vrCCyw==}
+  chess.js@1.4.0:
+    resolution: {integrity: sha512-BBJgrrtKQOzFLonR0l+k64A98NLemPwNsCskwb+29bRwobUa4iTm51E1kwGPbWXAcfdDa18nad6vpPPKPWarqw==}
 
   esbuild@0.28.1:
     resolution: {integrity: sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==}
@@ -344,7 +344,7 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  chess.js@1.0.0-beta.8: {}
+  chess.js@1.4.0: {}
 
   esbuild@0.28.1:
     optionalDependencies:
