@@ -17,9 +17,9 @@ Tracked on GitHub: [crasyK/fausth/issues](https://github.com/crasyK/fausth/issue
 | [#54](https://github.com/crasyK/fausth/issues/54) | `pnpm evidence:check` not in CI |
 | [#55](https://github.com/crasyK/fausth/issues/55) | Validator schema still contract v0.1; docs say v0.2 normative |
 
-Chess-specific issues were closed when chess moved to `/home/mark/chess-harness`.
+Chess-specific issues were closed when chess moved to `/home/mark/research/chess-harness`.
 
 ## Not bugs (accepted residuals)
 
-- CasaOS / Lab UI live outside this repo (`/home/mark/fausth-lab`)
+- CasaOS / Lab UI live outside this repo (`/home/mark/research/fausth-lab`)
 - SWE / τ / adversarial studies are **frozen**, not broken

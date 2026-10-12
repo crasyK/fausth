@@ -4,12 +4,12 @@ Portable **harness runtime**: the model proposes; Fausth decides what may run an
 
 **Status:** `v0.3.0-alpha` · not production-safe.
 
-Chess is **not** in this repo. The chess laboratory is `/home/mark/chess-harness` and depends on Fausth as `@fausth/engine-ts`.
+Chess is **not** in this repo. The chess laboratory is `/home/mark/research/chess-harness` and depends on Fausth as an editable Python package (`../fausth/engines/py`).
 
 ## 30-second smoke
 
 ```bash
-cd /home/mark/fausth
+cd /home/mark/research/fausth
 corepack enable && pnpm install
 pnpm -C engines/ts test
 pnpm fausth -- test examples/coding-counterbalance
@@ -63,7 +63,7 @@ Claims that mix the two without saying so are invalid. See [`evidence-pack.md`](
 | τ-bench, adversarial | Frozen HRI pins |
 | Mutable cells, harness-optimize | Scaffold / stub |
 | Kaggriculture | Deferred — [`archive/recon/kaggriculture.md`](archive/recon/kaggriculture.md) |
-| CasaOS / Lab UI | Outside this repo (`/home/mark/fausth-lab`) |
+| CasaOS / Lab UI | Outside this repo (`/home/mark/fausth-lab`, removed 2026-10-11) |
 
 ## Specs
 

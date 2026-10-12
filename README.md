@@ -8,7 +8,7 @@ The model proposes. Fausth governs what may run and how the world must prove it 
 
 **Human map:** [`docs/README.md`](docs/README.md) · **Issues:** [github.com/crasyK/fausth/issues](https://github.com/crasyK/fausth/issues)
 
-Chess research lives in a **separate project** (`/home/mark/chess-harness`) that installs this runtime. It is not part of Fausth.
+Chess research lives in a **separate project** (`/home/mark/research/chess-harness`) that installs the Python runtime (`fausth` from `engines/py`). It is not part of Fausth.
 
 ## Why it exists
 

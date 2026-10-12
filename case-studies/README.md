@@ -4,4 +4,4 @@ Bounded empirical studies. Method: [`docs/case-studies/PROTOCOL.md`](../docs/cas
 
 Frozen / published: `swe-bench/`, `tau-bench/`, `adversarial/`, `coding-counterbalance/`, `hri/`. Scaffold: `mutable-cells/`, `harness-optimize/`.
 
-Chess lives in `/home/mark/chess-harness` (Fausth consumer, not this tree).
+Chess lives in `/home/mark/research/chess-harness` (Fausth consumer, not this tree).

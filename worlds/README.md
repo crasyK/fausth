@@ -1,6 +1,6 @@
 # Worlds catalog
 
-Shared catalog of worlds (harness + case-study pointers). The Lab UI that consumed this catalog lives **outside** this repo (`/home/mark/fausth-lab` / CasaOS). The CLI and `case-studies/` are the in-repo entry points.
+Shared catalog of worlds (harness + case-study pointers). The Lab UI that consumed this catalog lives **outside** this repo (`/home/mark/fausth-lab` on CasaOS, removed 2026-10-11). The CLI and `case-studies/` are the in-repo entry points.
 
 | Id | Status | Notes |
 |----|--------|-------|
