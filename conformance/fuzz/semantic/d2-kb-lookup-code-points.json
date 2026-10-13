@@ -1,0 +1,40 @@
+{
+  "world": "replay",
+  "id": "d2-kb-lookup-code-points",
+  "decision": "D2",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {},
+    "tools": [
+      {
+        "id": "kb.lookup",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "kb.lookup",
+      "args": {
+        "query": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "execute",
+        "result": {
+          "ok": 1,
+          "article_id": "kb-😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+        }
+      }
+    ]
+  }
+}

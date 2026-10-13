@@ -1,0 +1,45 @@
+{
+  "world": "replay",
+  "id": "d11-no-plan-block",
+  "decision": "D11",
+  "finding": "PY-8",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {
+      "plan_approved": 1
+    },
+    "tools": [
+      {
+        "id": "user.approve",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    ],
+    "counterbalance": {
+      "orientation": {
+        "emit_each_step": true
+      }
+    }
+  },
+  "model_lines": [],
+  "expect": {
+    "absent_paths": [
+      {
+        "match": {
+          "stage": "orient"
+        },
+        "path": "observation.plan"
+      },
+      {
+        "match": {
+          "stage": "orient"
+        },
+        "path": "observation.completion"
+      }
+    ]
+  }
+}

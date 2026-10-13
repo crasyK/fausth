@@ -1,0 +1,116 @@
+{
+  "n": 30,
+  "ts_failed": [
+    {
+      "case": "d1-astral-key-order [D1]",
+      "problems": [
+        "got {\"😀\":1,\"！\":2}, expected {\"！\":2,\"😀\":1}"
+      ]
+    },
+    {
+      "case": "d1-integer-like-key-order [D1]",
+      "problems": [
+        "got {\"9\":1,\"10\":2}, expected {\"10\":2,\"9\":1}"
+      ]
+    },
+    {
+      "case": "d10-recovery-respects-permissions [PY-15] [D10]",
+      "problems": [
+        "missing event {\"stage\":\"authorize\",\"verdict\":\"deny\",\"reason\":\"gate_denied\",\"tool\":\"actuator.fan.set\",\"args\":{\"percent\":0}}",
+        "missing event {\"stage\":\"record\",\"reason\":\"terminal_failure\"}",
+        "unexpected event {\"reason\":\"recovery_succeeded\"}"
+      ]
+    },
+    {
+      "case": "d11-completion-require-without-tool [PY-8] [D11]",
+      "problems": [
+        "missing event {\"stage\":\"execute\",\"verdict\":\"allow\",\"tool\":\"task.complete\"}",
+        "unexpected event {\"reason\":\"completion_gate_failed\"}"
+      ]
+    },
+    {
+      "case": "d11-no-plan-block [PY-8] [D11]",
+      "problems": [
+        "event 1 has observation.plan",
+        "event 1 has observation.completion"
+      ]
+    },
+    {
+      "case": "d14-unbound-user-channel [D14]",
+      "problems": [
+        "missing event {\"stage\":\"validate\",\"verdict\":\"deny\",\"reason\":\"capability_missing\",\"tool\":\"user.approve\"}",
+        "unexpected event {\"stage\":\"execute\"}"
+      ]
+    },
+    {
+      "case": "d16-no-array-length [D16]",
+      "problems": [
+        "missing event {\"stage\":\"authorize\",\"verdict\":\"deny\",\"reason\":\"gate_denied\"}"
+      ]
+    },
+    {
+      "case": "d2-kb-lookup-code-points [D2]",
+      "problems": [
+        "missing event {\"stage\":\"execute\",\"result\":{\"ok\":1,\"article_id\":\"kb-😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}}"
+      ]
+    },
+    {
+      "case": "d2-message-length-code-points [D2]",
+      "problems": [
+        "missing event {\"stage\":\"verify\",\"verdict\":\"allow\",\"tool\":\"answer.send\"}"
+      ]
+    },
+    {
+      "case": "d3-non-integral-output-denied [D3]",
+      "problems": [
+        "engine error: Non-integer number at $.result.n: 1.5"
+      ]
+    },
+    {
+      "case": "d6-spawn-needs-permission [D6]",
+      "problems": [
+        "missing event {\"stage\":\"validate\",\"verdict\":\"deny\",\"reason\":\"capability_missing\",\"tool\":\"agent.spawn\"}"
+      ]
+    },
+    {
+      "case": "d6-spawn-policy-missing-denied [D6]",
+      "problems": [
+        "missing event {\"stage\":\"authorize\",\"verdict\":\"deny\",\"reason\":\"gate_denied\"}",
+        "unexpected event {\"stage\":\"execute\"}"
+      ]
+    },
+    {
+      "case": "d8-verify-failure-discards-transition [D8]",
+      "problems": [
+        "missing event {\"stage\":\"verify\",\"reason\":\"verify_absence_failed\",\"failure\":{\"kind\":\"transition_discarded\",\"keys\":[\"out_of_scope_writes\"]}}"
+      ]
+    },
+    {
+      "case": "d9-checkpoint-at-authorize [D9]",
+      "problems": [
+        "missing event {\"stage\":\"authorize\",\"verdict\":\"deny\",\"reason\":\"checkpoint_authority_failed\"}",
+        "unexpected event {\"stage\":\"execute\"}"
+      ]
+    },
+    {
+      "case": "py17-dotdot-escape-denied [PY-17] [D7]",
+      "problems": [
+        "missing event {\"stage\":\"authorize\",\"verdict\":\"deny\",\"reason\":\"gate_denied\",\"error\":\"write_scopes escalation\"}"
+      ]
+    },
+    {
+      "case": "py7-ttl-stale-once [PY-7]",
+      "problems": [
+        "{\"reason\":\"memory_stale\"} occurs 5×, expected 1"
+      ]
+    },
+    {
+      "case": "spec16-undeclared-permission-invalid [SPEC-16]",
+      "problems": [
+        "validate ok=true, expected false"
+      ]
+    }
+  ],
+  "py_failed": [],
+  "pass": false
+}

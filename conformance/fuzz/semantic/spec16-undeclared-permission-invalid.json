@@ -1,0 +1,25 @@
+{
+  "world": "replay",
+  "id": "spec16-undeclared-permission-invalid",
+  "finding": "SPEC-16",
+  "kind": "validate",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "x",
+    "state": {},
+    "tools": [
+      {
+        "id": "fs.read"
+      }
+    ],
+    "permissions": {
+      "tools": [
+        "fs.read",
+        "shell.unrestricted"
+      ]
+    }
+  },
+  "expect": {
+    "ok": false
+  }
+}

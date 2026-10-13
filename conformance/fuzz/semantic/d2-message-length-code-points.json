@@ -1,0 +1,47 @@
+{
+  "world": "replay",
+  "id": "d2-message-length-code-points",
+  "decision": "D2",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {},
+    "tools": [
+      {
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "id": "answer.send",
+        "verify": [
+          {
+            "kind": "output",
+            "require": {
+              "path": "message.length",
+              "lte": 3
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "answer.send",
+      "args": {
+        "message": "😀🚀😀"
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "verify",
+        "verdict": "allow",
+        "tool": "answer.send"
+      }
+    ]
+  }
+}
