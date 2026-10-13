@@ -1,52 +1,65 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { AgentIR, Deployment } from "./types.js";
+import type { AgentIR, Deployment, ModelProposal } from "./types.js";
 import { canonicalJson } from "./canonical.js";
 
-export function loadYamlFile(path: string): unknown {
-  return parseYaml(readFileSync(path, "utf8"));
+/** YAML 1.2 core schema (D4): yes/no/on/off are strings; duplicate keys are an error. */
+export const YAML_OPTIONS = {
+  version: "1.2",
+  schema: "core",
+  uniqueKeys: true,
+  merge: false,
+  intAsBigInt: false,
+} as const;
+
+export function parseYamlText(text: string): unknown {
+  return parseYaml(text, YAML_OPTIONS);
 }
 
+export function loadYamlFile(path: string): unknown {
+  return parseYamlText(readFileSync(path, "utf8"));
+}
+
+/**
+ * Normalization shared by every loader and the engine (spec-v0.3 §2.2):
+ * `safe_state` without `fallback_state` ⇒ `fallback_state := safe_state`.
+ * Returns a shallow copy; never mutates the input.
+ */
+export function normalizeAgentIr(agent: AgentIR): AgentIR {
+  const out: AgentIR = { ...agent };
+  if (out.safe_state && !out.fallback_state) out.fallback_state = out.safe_state;
+  return out;
+}
+
+/**
+ * YAML/JSON document → IR. Every top-level key is carried over so validation can reject
+ * unknown ones (a typo like `counterbalnce:` must not silently disappear).
+ */
 export function agentYamlToIr(raw: unknown): AgentIR {
-  const a = raw as Record<string, unknown>;
-  const state = (a.state as Record<string, unknown>) ?? {};
-  const tools = (a.tools as AgentIR["tools"]) ?? [];
-  const ir: AgentIR = {
-    spec: String(a.spec ?? "counterbalance-contract/v0.1"),
-    name: String(a.name ?? "unnamed"),
-    state: { ...state },
-    tools,
-  };
-  if (a.gates) ir.gates = a.gates as AgentIR["gates"];
-  if (a.limits) ir.limits = a.limits as AgentIR["limits"];
-  if (a.fallback_state) ir.fallback_state = a.fallback_state as Record<string, unknown>;
-  if (a.safe_state) {
-    ir.safe_state = a.safe_state as Record<string, unknown>;
-    if (!ir.fallback_state) ir.fallback_state = ir.safe_state;
+  const a = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  // No defaults: a missing spec/name/state/tools is a validation error, not a silent guess.
+  return normalizeAgentIr({ ...a } as unknown as AgentIR);
+}
+
+export function loadAgentFile(path: string): AgentIR {
+  if (path.endsWith(".json")) {
+    return normalizeAgentIr(JSON.parse(readFileSync(path, "utf8")) as AgentIR);
   }
-  if (a.recovery) ir.recovery = a.recovery as AgentIR["recovery"];
-  if (a.permissions) ir.permissions = a.permissions as AgentIR["permissions"];
-  if (a.spawn) ir.spawn = a.spawn as AgentIR["spawn"];
-  if (a.counterbalance) ir.counterbalance = a.counterbalance as AgentIR["counterbalance"];
-  if (a.mutable) ir.mutable = a.mutable as AgentIR["mutable"];
-  if (typeof a.instinct_text === "string") ir.instinct_text = a.instinct_text;
-  if (a.overlays) ir.overlays = a.overlays as AgentIR["overlays"];
-  canonicalJson(ir.state);
-  return ir;
+  return agentYamlToIr(loadYamlFile(path));
 }
 
 export function loadAgentDir(dir: string): { agent: AgentIR; agentPath: string } {
   const yml = join(dir, "agent.yml");
   const json = join(dir, "agent.json");
   if (existsSync(yml)) {
-    return { agent: agentYamlToIr(loadYamlFile(yml)), agentPath: yml };
+    return { agent: loadAgentFile(yml), agentPath: yml };
   }
   if (existsSync(json)) {
-    const ir = JSON.parse(readFileSync(json, "utf8")) as AgentIR;
-    if (ir.safe_state && !ir.fallback_state) ir.fallback_state = ir.safe_state;
-    canonicalJson(ir.state);
-    return { agent: ir, agentPath: json };
+    return { agent: loadAgentFile(json), agentPath: json };
   }
   throw new Error(`No agent.yml or agent.json in ${dir}`);
 }
@@ -67,6 +80,32 @@ export function readJsonl(path: string): unknown[] {
   const text = readFileSync(path, "utf8");
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
   return lines.map((l) => JSON.parse(l));
+}
+
+/**
+ * Recorded model line → proposal (spec-v0.3 §15.4):
+ * `{type: "tool", name, args}` · `{type: "stop", message?}` · `{type: "invalid", reason, message?}`.
+ */
+export function parseRecordedProposal(line: unknown): ModelProposal {
+  const o = (line ?? {}) as Record<string, unknown>;
+  if (o.type === "stop") {
+    return typeof o.message === "string" ? { type: "stop", message: o.message } : { type: "stop" };
+  }
+  if (o.type === "invalid") {
+    return {
+      type: "invalid",
+      reason: typeof o.reason === "string" ? o.reason : "invalid",
+      ...(typeof o.message === "string" ? { message: o.message } : {}),
+    };
+  }
+  if (o.type === "tool" || typeof o.name === "string") {
+    return {
+      type: "tool",
+      name: String(o.name ?? o.tool),
+      args: (o.args as Record<string, unknown>) ?? {},
+    };
+  }
+  throw new Error(`Invalid model.jsonl entry: ${JSON.stringify(line)}`);
 }
 
 export function toCanonicalIrJson(agent: AgentIR): string {
