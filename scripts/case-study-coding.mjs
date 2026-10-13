@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Coding Counterbalance case-study runner.
+ * Case-study runner (coding / adversarial / mutable-cells / SWE / τ manifests).
  *
  * Usage:
  *   node scripts/case-study-coding.mjs --mode recorded
@@ -12,13 +12,30 @@
  *     --mode live --curriculum --reps 1 --run-id live-kit-mutable-curriculum-v1
  *   node scripts/case-study-coding.mjs --manifest case-studies/mutable-cells/manifest.yml \
  *     --mode live --train-freeze-eval --train-passes 2 --shuffle-curriculum \
- *     --kit-models kit.minimax-m2.7-229b --run-id live-kit-mutable-train-freeze-minimax-v1
+ *     --kit-models kit.glm-5.3-flash --run-id live-kit-mutable-train-freeze-glm-v1
+ *
+ * Outputs (CASE-13): everything goes to <outputs.raw_dir>/<run-id>/ (ledger,
+ * attempts, summary.json, ATTRIBUTION.md). Nothing is written to
+ * case-studies/<study>/results/; promote a finished run explicitly with
+ * `node scripts/promote-run.mjs --run <raw run dir>`.
+ *
+ * Evidence (CASE-14): live runs are refused on a dirty working tree unless
+ * --allow-dirty is passed (the run is then marked non-evidence).
+ *
+ * Flags: --mode recorded|live, --manifest, --run-id, --resume, --limit N, --reps N,
+ *   --tasks a,b, --conditions a,b, --kit-models a,b|all, --curriculum,
+ *   --train-freeze-eval, --train-passes N, --shuffle-curriculum,
+ *   --curriculum-shuffle-seed N, --max-task-tries N, --optimize-on-fail,
+ *   --no-optimize-on-fail, --soft-retry-plan, --skip-conformance,
+ *   --allow-dirty, --smoke, --allow-resume-drift, --overwrite
+ *
+ * A run directory that already holds a ledger is never silently reused: pass
+ * --resume to continue it or --overwrite to discard it (throwaway CI run ids).
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -26,9 +43,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, isAbsolute } from "node:path";
+import { dirname, join, relative, isAbsolute, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateAttempts, parseEventsJsonl, scoreAttempt } from "./case-study-score.mjs";
 import {
   phaseYielded,
@@ -38,12 +55,10 @@ import {
   extractApprovedPathsFromEvents,
   writeApprovedPathsFile,
 } from "./swe-plan-paths.mjs";
-import { applySeed, gradeTask, seedTestFingerprint, loadTaskYml } from "./case-study-backends.mjs";
+import { applySeed, gradeTask, seedTestFingerprint } from "./case-study-backends.mjs";
 import {
-  isAdaptiveCondition,
   isOptimizeCondition,
   usesNeverResetLineage,
-  taskChainId,
   buildOptimizeDigest,
   appendLineageHistory,
   checkOptInvariants,
@@ -55,42 +70,83 @@ import {
   DEFAULT_MAX_TASK_TRIES,
   TAU_API_REFERENCE,
 } from "./case-study-opt-tracking.mjs";
+import {
+  attemptId,
+  buildPlan,
+  curriculumTransfer,
+  expandAdaptiveTries,
+  lineageKey,
+  parentAttemptId,
+  planAccounting,
+  priorChainSuccess,
+  sanitizeIdPart,
+  skippedAfterSuccessRow,
+  trainSummary,
+} from "./lib/case-study-plan.mjs";
+import {
+  declaredUserChannelTools,
+  harnessTools,
+  materializeAttemptDeployment,
+  materializeKitDeployment,
+} from "./lib/case-study-deployments.mjs";
+import { loadDotEnv } from "./lib/env.mjs";
+import { classifyFailure, findInfraFailureEvent, missingApiKeyFailure } from "./lib/failure.mjs";
+import {
+  extractCompletionIds,
+  independenceReport,
+  trajectoryFingerprint,
+} from "./lib/independence.mjs";
+import {
+  ALL_KIT_MODELS,
+  DEFAULT_KIT_MODEL,
+  assertLiveKitModels,
+  gatewayCacheWarnings,
+  isGatewayCachedModel,
+} from "./lib/kit-models.mjs";
+import {
+  evidenceGate,
+  gitCodeState,
+  hashFiles,
+  hashTree,
+  runtimeVersions,
+  sha256 as sha256Data,
+} from "./lib/provenance.mjs";
+import {
+  backfillMutateSlotsFromActions,
+  initialTodoPlan,
+  readTauTodos,
+  writeTauFinalizePrompt,
+  writeTauTodos,
+} from "./lib/tau-todos.mjs";
+import {
+  bootstrapWorkspace,
+  cleanupWorkspace,
+  defaultWorkspaceRoot,
+} from "./lib/workspace.mjs";
 
 const require = createRequire(join(dirname(fileURLToPath(import.meta.url)), "../engines/ts/package.json"));
-const { parse: parseYaml } = require("yaml");
+const { parse: parseYaml, stringify: stringifyYaml } = require("yaml");
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(join(dirname(fileURLToPath(import.meta.url)), ".."));
 
-/** Pinned KIT catalog (see examples/coding-counterbalance/deployment.kit.yml). */
-const ALL_KIT_MODELS = [
-  "kit.minimax-m2.7-229b",
-  "kit.mistral-small-4-119b-a8b",
-  "kit.qwen3.5-397b-A17b",
-  "kit.gemma4-31b-it",
+/** Scripts whose code determines how attempts are run and graded (hashed into provenance). */
+const RUNNER_CODE_PATHS = [
+  "scripts/case-study-coding.mjs",
+  "scripts/case-study-backends.mjs",
+  "scripts/case-study-score.mjs",
+  "scripts/case-study-opt-tracking.mjs",
+  "scripts/case-study-pipeline.mjs",
+  "scripts/swe-plan-paths.mjs",
+  "scripts/disposable-worktree.mjs",
+  "scripts/tau-retail-cli.mjs",
+  "scripts/pytest-runner.sh",
+  "scripts/lib",
 ];
 
-const DEFAULT_LIVE_KIT_MODELS = ["kit.gemma4-31b-it", "kit.minimax-m2.7-229b"];
+/** Engine sources hashed as trees (exact engine code state). */
+const ENGINE_TREES = ["engines/ts/src", "engines/py/fausth", "engines/ts/package.json", "pnpm-lock.yaml"];
 
-function loadDotEnv(path = join(root, ".env")) {
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq <= 0) continue;
-    const key = t.slice(0, eq).trim();
-    let val = t.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = val;
-  }
-}
-
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const out = {
     mode: "recorded",
     resume: false,
@@ -109,6 +165,10 @@ function parseArgs(argv) {
     maxTaskTries: null,
     optimizeOnFail: null,
     softRetryPlan: null,
+    allowDirty: false,
+    allowResumeDrift: false,
+    smoke: false,
+    overwrite: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -133,6 +193,14 @@ function parseArgs(argv) {
       out.optimizeOnFail = false;
     } else if (a === "--soft-retry-plan") {
       out.softRetryPlan = true;
+    } else if (a === "--allow-dirty") {
+      out.allowDirty = true;
+    } else if (a === "--allow-resume-drift") {
+      out.allowResumeDrift = true;
+    } else if (a === "--smoke") {
+      out.smoke = true;
+    } else if (a === "--overwrite") {
+      out.overwrite = true;
     } else if (a === "--conditions") {
       out.conditions = (argv[++i] ?? "")
         .split(",")
@@ -149,6 +217,8 @@ function parseArgs(argv) {
         raw === "all"
           ? [...ALL_KIT_MODELS]
           : raw.split(",").map((s) => s.trim()).filter(Boolean);
+    } else if (a.startsWith("--")) {
+      throw new Error(`unknown flag: ${a}`);
     }
   }
   if (out.mode !== "recorded" && out.mode !== "live") {
@@ -157,12 +227,12 @@ function parseArgs(argv) {
   if (out.kitModels != null && out.mode !== "live") {
     throw new Error("--kit-models requires --mode live");
   }
-  if (out.reps != null && (!Number.isFinite(out.reps) || out.reps < 1)) {
+  if (out.reps != null && (!Number.isInteger(out.reps) || out.reps < 1)) {
     throw new Error(`--reps must be a positive integer (got ${out.reps})`);
   }
   if (
     out.trainPasses != null &&
-    (!Number.isFinite(out.trainPasses) || out.trainPasses < 1)
+    (!Number.isInteger(out.trainPasses) || out.trainPasses < 1)
   ) {
     throw new Error(`--train-passes must be a positive integer (got ${out.trainPasses})`);
   }
@@ -178,6 +248,7 @@ function parseArgs(argv) {
     out.curriculum = true;
     out.shuffleCurriculum = true;
   }
+  if (out.overwrite && out.resume) throw new Error("--overwrite and --resume are mutually exclusive");
   return out;
 }
 
@@ -185,6 +256,7 @@ function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, {
     encoding: "utf8",
     windowsHide: true,
+    maxBuffer: 256 * 1024 * 1024,
     ...opts,
   });
 }
@@ -199,268 +271,35 @@ function sha256Text(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
-function gitSha() {
-  try {
-    return run("git", ["rev-parse", "HEAD"], { cwd: root }).trim();
-  } catch {
-    return null;
-  }
-}
-
 function loadManifest(relPath = "case-studies/coding-counterbalance/manifest.yml") {
   const path = isAbsolute(relPath) ? relPath : join(root, relPath);
   return { path, dir: dirname(path), data: parseYaml(readFileSync(path, "utf8")) };
-}
-
-function sanitizeIdPart(s) {
-  return String(s).replace(/[^a-zA-Z0-9._-]+/g, "_");
-}
-
-function attemptId(a) {
-  const parts = [
-    a.task_id,
-    a.condition,
-    a.deployment_id,
-    sanitizeIdPart(a.model_id),
-    `rep${a.rep}`,
-  ];
-  if (a.phase === "train") parts.push(`train_pass${a.train_pass ?? 1}`);
-  else if (a.phase === "eval") parts.push("eval");
-  if (a.try_index != null) parts.push(`try${a.try_index}`);
-  return parts.join("__");
-}
-
-/**
- * Expand adaptive conditions into up to max_task_tries plan rows (early-stop via skip).
- * @param {Array<Record<string, unknown>>} plan
- * @param {Record<string, unknown>} manifest
- * @param {{ maxTaskTries?: number | null }} opts
- */
-function expandAdaptiveTries(plan, manifest, opts = {}) {
-  const maxTries = Number(
-    opts.maxTaskTries ?? manifest.matrix?.max_task_tries ?? DEFAULT_MAX_TASK_TRIES,
-  );
-  /** @type {Array<Record<string, unknown>>} */
-  const out = [];
-  for (const item of plan) {
-    if (isAdaptiveCondition(String(item.condition)) && maxTries > 1) {
-      const chain = taskChainId(item);
-      for (let t = 1; t <= maxTries; t++) {
-        out.push({
-          ...item,
-          try_index: t,
-          max_task_tries: maxTries,
-          task_chain_id: chain,
-          never_reset: true,
-          curriculum: true,
-        });
-      }
-    } else {
-      out.push({
-        ...item,
-        try_index: item.try_index ?? null,
-        max_task_tries: 1,
-        task_chain_id: taskChainId(item),
-        never_reset: false,
-      });
-    }
-  }
-  return out;
-}
-
-/** @param {unknown[]} arr @param {number} seed */
-function seededShuffle(arr, seed) {
-  const a = [...arr];
-  let s = seed >>> 0;
-  const rand = () => {
-    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
-    return s / 0x100000000;
-  };
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function resolveTasks(manifest, taskIds) {
-  if (!taskIds?.length) return [...manifest.tasks];
-  return taskIds.map((id) => {
-    const t = manifest.tasks.find((x) => x.id === id);
-    if (!t) throw new Error(`unknown --tasks id: ${id}`);
-    return t;
-  });
 }
 
 function resolveRepoPath(p) {
   return isAbsolute(p) ? p : join(root, p);
 }
 
-function kitDeploymentPath(modelId, runRoot, kitTemplatePath) {
-  const safe = sanitizeIdPart(modelId);
-  const dir = join(runRoot, "deployments");
-  mkdirSync(dir, { recursive: true });
-  const out = join(dir, `local-kit__${safe}.yml`);
-  if (existsSync(out)) return relative(root, out);
-
-  const basePath = resolveRepoPath(kitTemplatePath);
-  const dep = parseYaml(readFileSync(basePath, "utf8"));
-  dep.model.models = [modelId];
-  const pytestRunner = join(root, "scripts", "pytest-runner.sh");
-  const venvPytest = join(root, ".venv", "bin", "pytest");
-  const pytestBin = existsSync(pytestRunner)
-    ? pytestRunner
-    : existsSync(venvPytest)
-      ? venvPytest
-      : "pytest";
-  if (dep.world?.commands) {
-    for (const key of ["test", "typecheck", "pytest"]) {
-      if (Array.isArray(dep.world.commands[key]) && dep.world.commands[key].length) {
-        const rest = dep.world.commands[key].slice(1);
-        dep.world.commands[key] = [pytestBin, ...rest];
-      }
-    }
+/**
+ * Raw run directory. Must never be inside a case-study results/ folder (CASE-13).
+ * @param {string} rawDir manifest outputs.raw_dir (repo-relative or absolute)
+ * @param {string} runId
+ */
+export function resolveRawRoot(rawDir, runId) {
+  if (!rawDir) throw new Error("manifest outputs.raw_dir is required");
+  if (!runId || /[/\\]|^\.\.?$/.test(runId)) throw new Error(`invalid --run-id: ${runId}`);
+  const base = resolveRepoPath(rawDir);
+  const rel = relative(root, base).split(/[/\\]/);
+  if (rel[0] === "case-studies" && rel.includes("results")) {
+    throw new Error(`outputs.raw_dir must not point into case-studies/*/results (got ${rawDir})`);
   }
-  writeFileSync(out, stringifyYaml(dep));
-  return relative(root, out);
-}
-
-function stringifyYaml(obj) {
-  const { stringify } = require("yaml");
-  return stringify(obj);
-}
-
-function buildPlan(manifest, mode, opts = {}) {
-  const reps = Number(opts.reps ?? manifest.matrix.repetitions ?? 3);
-  const conditions = opts.conditions?.length
-    ? opts.conditions
-    : manifest.matrix.conditions;
-  for (const c of conditions) {
-    if (!manifest.harnesses[c] && c !== "frozen-mutable") {
-      throw new Error(`unknown condition / harness: ${c}`);
-    }
-  }
-  const plan = [];
-  const deployments =
-    mode === "live"
-      ? manifest.matrix.live_deployments.map((id) => ({
-          deployment_id: id,
-          ...manifest.deployments[id],
-        }))
-      : manifest.matrix.recorded_provider_labels.map((label) => ({
-          deployment_id: label,
-          id: "recorded",
-          path: manifest.deployments.recorded.path,
-          model_id: `recorded-${label}`,
-          api_key_env: null,
-        }));
-
-  const kitModels = opts.kitModels;
-  const runRoot = opts.runRoot ?? null;
-  const kitTemplatePath = manifest.deployments?.kit?.path;
-  const tasks = resolveTasks(manifest, opts.taskIds);
-
-  const pushItem = (task, dep, variant, condition, rep, extra = {}) => {
-    plan.push({
-      task_id: task.id,
-      task_path: task.path,
-      category: task.category,
-      condition,
-      deployment_id: dep.deployment_id,
-      deployment_path: variant.deployment_path,
-      model_id: variant.model_id,
-      api_key_env: dep.api_key_env,
-      rep,
-      ...extra,
-    });
-  };
-
-  for (const dep of deployments) {
-    const modelVariants =
-      mode === "live" && dep.deployment_id === "kit" && kitModels?.length
-        ? kitModels.map((modelId) => ({
-            model_id: modelId,
-            deployment_path: runRoot
-              ? kitDeploymentPath(modelId, runRoot, kitTemplatePath)
-              : dep.path,
-          }))
-        : [{ model_id: dep.model_id, deployment_path: dep.path }];
-
-    for (const variant of modelVariants) {
-      if (opts.trainFreezeEval) {
-        const trainPasses = Number(opts.trainPasses ?? 2);
-        const shuffleSeed = Number(opts.curriculumShuffleSeed ?? 71);
-        for (let rep = 1; rep <= reps; rep++) {
-          const order =
-            opts.shuffleCurriculum !== false
-              ? seededShuffle(tasks, shuffleSeed + rep * 1009)
-              : [...tasks];
-          for (let pass = 1; pass <= trainPasses; pass++) {
-            for (const task of order) {
-              pushItem(task, dep, variant, "mutable-skills", rep, {
-                phase: "train",
-                train_pass: pass,
-                curriculum: true,
-                task_order: order.map((t) => t.id),
-              });
-            }
-          }
-          for (const condition of ["frozen-mutable", "baseline"]) {
-            for (const task of order) {
-              pushItem(task, dep, variant, condition, rep, {
-                phase: "eval",
-                curriculum: false,
-                mutations_frozen: condition === "frozen-mutable",
-                task_order: order.map((t) => t.id),
-              });
-            }
-          }
-        }
-      } else if (opts.curriculum) {
-        for (const condition of conditions) {
-          for (let rep = 1; rep <= reps; rep++) {
-            const order =
-              opts.shuffleCurriculum
-                ? seededShuffle(
-                    tasks,
-                    Number(opts.curriculumShuffleSeed ?? 71) + rep * 1009,
-                  )
-                : tasks;
-            for (const task of order) {
-              pushItem(task, dep, variant, condition, rep, { curriculum: true });
-            }
-          }
-        }
-      } else {
-        for (const task of tasks) {
-          for (const condition of conditions) {
-            for (let rep = 1; rep <= reps; rep++) {
-              pushItem(task, dep, variant, condition, rep, {});
-            }
-          }
-        }
-      }
-    }
-  }
-  return plan;
-}
-
-function readPrompt(taskPath) {
-  const abs = join(root, taskPath);
-  const yml = parseYaml(readFileSync(join(abs, "task.yml"), "utf8"));
-  return readFileSync(join(abs, yml.prompt_file ?? "prompt.md"), "utf8");
+  return join(base, runId);
 }
 
 function seedDir(taskPath) {
   const abs = join(root, taskPath);
   const yml = parseYaml(readFileSync(join(abs, "task.yml"), "utf8"));
   return join(abs, yml.seed?.dir ?? yml.seed_dir ?? "seed");
-}
-
-function gradeDir(taskPath) {
-  const abs = join(root, taskPath);
-  const yml = parseYaml(readFileSync(join(abs, "task.yml"), "utf8"));
-  return join(abs, yml.grade_dir ?? "grade");
 }
 
 function harnessSpec(manifest, condition, runMode) {
@@ -486,10 +325,6 @@ function harnessSpec(manifest, condition, runMode) {
     return { kind: "single", path: h.path, phases: null, root: h.path };
   }
   throw new Error(`unsupported harness entry for ${condition}`);
-}
-
-function harnessPath(manifest, condition, runMode = "live") {
-  return join(root, harnessSpec(manifest, condition, runMode).path);
 }
 
 function harnessHashes(manifest) {
@@ -747,51 +582,6 @@ function recordPhaseReflection(opts) {
   };
 }
 
-/** Lineage key for frozen-twin curriculum carry across tasks. */
-function lineageKey(item) {
-  return [item.condition, `rep${item.rep}`, item.model_id, item.deployment_id].join("__");
-}
-
-/**
- * Early vs late transfer slice for curriculum runs (first vs second half of task order).
- * @param {Array<Record<string, unknown>>} attempts
- * @param {string[]} taskOrder
- */
-function curriculumTransfer(attempts, taskOrder) {
-  const mid = Math.ceil(taskOrder.length / 2);
-  const early = new Set(taskOrder.slice(0, mid));
-  const late = new Set(taskOrder.slice(mid));
-  /** @type {Record<string, { early: { n: number, ok: number }, late: { n: number, ok: number } }>} */
-  const byCondition = {};
-  for (const a of attempts) {
-    if (a.status !== "scored" || !a.score) continue;
-    const cond = String(a.condition);
-    if (!byCondition[cond]) {
-      byCondition[cond] = { early: { n: 0, ok: 0 }, late: { n: 0, ok: 0 } };
-    }
-    const tid = String(a.task_id);
-    const bucket = early.has(tid) ? "early" : late.has(tid) ? "late" : null;
-    if (!bucket) continue;
-    byCondition[cond][bucket].n += 1;
-    if (a.score.task_success === true) byCondition[cond][bucket].ok += 1;
-  }
-  /** @type {Record<string, unknown>} */
-  const out = {};
-  for (const [cond, slices] of Object.entries(byCondition)) {
-    const earlyRate = slices.early.n ? slices.early.ok / slices.early.n : null;
-    const lateRate = slices.late.n ? slices.late.ok / slices.late.n : null;
-    out[cond] = {
-      early_tasks: [...early],
-      late_tasks: [...late],
-      early: { ...slices.early, rate: earlyRate },
-      late: { ...slices.late, rate: lateRate },
-      late_minus_early:
-        earlyRate != null && lateRate != null ? lateRate - earlyRate : null,
-    };
-  }
-  return out;
-}
-
 function materializeAgentJson(srcDir, destAgentPath) {
   if (existsSync(join(srcDir, "agent.json"))) {
     writeFileSync(destAgentPath, readFileSync(join(srcDir, "agent.json")));
@@ -815,78 +605,120 @@ function materializeAgentJson(srcDir, destAgentPath) {
 }
 
 /**
- * Snapshot evolved (or stock mutable) phase agents into lineage/frozen/.
+ * Frozen-harness directory for one train lineage (SCR-10): keyed by
+ * (model, rep, deployment) so every eval model/rep uses ITS OWN frozen harness.
+ * @param {string} rawRoot
+ * @param {string} trainKey lineageKey() of the mutable-skills train lineage
+ */
+export function frozenRootFor(rawRoot, trainKey) {
+  return join(rawRoot, "lineage", "frozen", sanitizeIdPart(trainKey));
+}
+
+/**
+ * Snapshot evolved (or, where a phase never evolved, stock mutable) agents of one
+ * train lineage into lineage/frozen/<trainKey>/. The source of every phase is
+ * recorded so "no evolution happened" is explicit, never silent.
  * @param {{
  *   manifest: Record<string, unknown>,
  *   rawRoot: string,
+ *   trainKey: string,
  *   lineagePhases: Record<string, string> | null | undefined,
  *   runMode: string,
  * }} opts
  */
 function freezeLineage(opts) {
-  const { manifest, rawRoot, lineagePhases, runMode } = opts;
+  const { manifest, rawRoot, trainKey, lineagePhases, runMode } = opts;
   const spec = harnessSpec(manifest, "mutable-skills", runMode);
-  const frozenRoot = join(rawRoot, "lineage", "frozen");
+  const frozenRoot = frozenRootFor(rawRoot, trainKey);
   mkdirSync(frozenRoot, { recursive: true });
-  /** @type {Record<string, string>} */
+  const phases =
+    spec.kind === "pipeline" ? spec.phases : [{ id: "single", path: spec.path }];
+  /** @type {Record<string, { dir: string, source: string, from: string }>} */
   const frozen = {};
-  for (const phase of spec.phases ?? []) {
+  for (const phase of phases) {
     const dest = join(frozenRoot, phase.id);
     mkdirSync(dest, { recursive: true });
     const stockDir = join(root, phase.path);
     const candidate = lineagePhases?.[phase.id];
-    const srcDir =
+    const evolved =
       candidate &&
-      (existsSync(join(candidate, "agent.json")) || existsSync(join(candidate, "agent.yml")))
-        ? candidate
-        : stockDir;
+      (existsSync(join(candidate, "agent.json")) || existsSync(join(candidate, "agent.yml")));
+    if (candidate && !evolved) {
+      throw new Error(
+        `freeze ${trainKey}: lineage dir for phase ${phase.id} has no agent (${candidate})`,
+      );
+    }
+    const srcDir = evolved ? candidate : stockDir;
     materializeAgentJson(srcDir, join(dest, "agent.json"));
-    frozen[phase.id] = dest;
+    frozen[phase.id] = {
+      dir: relative(root, dest),
+      source: evolved ? "lineage" : "stock_never_patched",
+      from: relative(root, srcDir),
+    };
   }
   writeFileSync(
-    join(rawRoot, "lineage", "frozen.json"),
-    JSON.stringify({ frozen_at: new Date().toISOString(), phases: frozen }, null, 2) + "\n",
+    join(frozenRoot, "frozen.json"),
+    JSON.stringify(
+      { train_lineage: trainKey, frozen_at: new Date().toISOString(), phases: frozen },
+      null,
+      2,
+    ) + "\n",
   );
-  console.error(`[case-study] froze lineage → ${relative(root, frozenRoot)}`);
+  console.error(`[case-study] froze lineage ${trainKey} → ${relative(root, frozenRoot)}`);
   return frozen;
 }
 
 /**
- * Train pass1 vs pass2 success rates for train-freeze-eval runs.
- * @param {Array<Record<string, unknown>>} attempts
+ * Frozen harness dir for one eval phase; throws (loudly) when it is missing
+ * instead of silently falling back to the stock harness (SCR-10).
+ * @param {string} rawRoot
+ * @param {string} trainKey
+ * @param {string} phaseId
  */
-function trainSummary(attempts) {
-  /** @type {Record<string, { n: number, ok: number, tasks: string[] }>} */
-  const byPass = {};
-  for (const a of attempts) {
-    if (a.phase !== "train" || a.status !== "scored" || !a.score) continue;
-    const p = String(a.train_pass ?? 1);
-    if (!byPass[p]) byPass[p] = { n: 0, ok: 0, tasks: [] };
-    byPass[p].n += 1;
-    if (a.score.task_success === true) byPass[p].ok += 1;
-    byPass[p].tasks.push(`${a.task_id}:${a.score.task_success ? "Y" : "N"}`);
+export function resolveFrozenHarnessDir(rawRoot, trainKey, phaseId) {
+  const dir = join(frozenRootFor(rawRoot, trainKey), phaseId);
+  if (!existsSync(join(dir, "agent.json"))) {
+    throw new Error(
+      `frozen harness missing for ${trainKey} phase ${phaseId} (${relative(root, dir)}); ` +
+        "the eval arm must not fall back to the stock harness",
+    );
   }
-  /** @type {Record<string, unknown>} */
-  const out = {};
-  for (const [p, s] of Object.entries(byPass)) {
-    out[`pass${p}`] = {
-      n: s.n,
-      ok: s.ok,
-      rate: s.n ? s.ok / s.n : null,
-      tasks: s.tasks,
-    };
-  }
-  const p1 = out.pass1?.rate ?? null;
-  const p2 = out.pass2?.rate ?? null;
-  out.pass2_minus_pass1 =
-    p1 != null && p2 != null ? p2 - p1 : null;
-  return out;
+  return dir;
+}
+
+/** Train lineage key whose frozen harness an eval item uses. */
+function trainKeyFor(item) {
+  return lineageKey({
+    condition: "mutable-skills",
+    rep: item.rep,
+    model_id: item.model_id,
+    deployment_id: item.deployment_id,
+  });
 }
 
 /**
- * Run post-fail optimizer against a target harness dir; apply skills patch into lineage.
- * @returns {{ disposition: string, selection_ok?: boolean, harnessDir?: string | null }}
+ * Canonical security surface of a harness dir. Stock dirs often only carry
+ * agent.yml while evolved lineage dirs carry IR agent.json — compare IR to IR.
+ * @param {Map<string, string | null>} cache
+ * @param {string} dir
+ * @param {string} scratchRoot
  */
+function securitySurfaceOf(cache, dir, scratchRoot) {
+  // IR dirs (lineage / frozen) are rewritten in place — always hash them fresh.
+  if (existsSync(join(dir, "agent.json"))) return securitySurfaceHash(dir);
+  if (cache.has(dir)) return cache.get(dir);
+  let surface = null;
+  if (existsSync(join(dir, "agent.yml"))) {
+    const irDir = join(scratchRoot, sanitizeIdPart(relative(root, dir)));
+    mkdirSync(irDir, { recursive: true });
+    materializeAgentJson(dir, join(irDir, "agent.json"));
+    surface = securitySurfaceHash(irDir);
+  }
+  cache.set(dir, surface);
+  return surface;
+}
+
+/** Seed prompt for the post-fail optimizer agent. */
 function optimizerSeedPrompt(track, opts = {}) {
   const common =
     "Read optimize/digest.md and the target-agent file. Propose one set_tool_description skills patch or decline, then call task.complete.";
@@ -928,6 +760,10 @@ function optimizerSeedPrompt(track, opts = {}) {
   return `${common}\n`;
 }
 
+/**
+ * Run the post-fail optimizer against a target harness dir; apply its skills patch into the lineage.
+ * @returns {{ disposition: string, selection_ok?: boolean, harnessDir?: string | null }}
+ */
 function runOptimizerPass(opts) {
   const {
     digestText,
@@ -960,17 +796,7 @@ function runOptimizerPass(opts) {
 
   let optWorktree = null;
   try {
-    const boot = JSON.parse(
-      run(process.execPath, [
-        join(root, "scripts/disposable-worktree.mjs"),
-        "bootstrap",
-        "--parent",
-        root,
-        "--seed",
-        seedDirPath,
-      ]),
-    );
-    optWorktree = boot.worktree;
+    optWorktree = bootstrapWorkspace({ seed: seedDirPath }).worktree;
 
     let depPath = resolveRepoPath(optimizerDeploymentRel);
     if (modelId) {
@@ -993,7 +819,6 @@ function runOptimizerPass(opts) {
       reportPath,
       modelPath: null,
       applyOverlays: false,
-      userAskAnswer: null,
     });
 
     const reflection = recordPhaseReflection({
@@ -1010,257 +835,24 @@ function runOptimizerPass(opts) {
       selection_ok: reflection.selection_ok,
       harnessDir: reflection.selfHarnessDir ?? null,
       source: reflection.source,
+      completion_ids: extractCompletionIds({ report: result.report, eventsText: result.eventsText }),
     };
   } finally {
     if (optWorktree) {
       try {
-        run(process.execPath, [
-          join(root, "scripts/disposable-worktree.mjs"),
-          "cleanup",
-          "--worktree",
-          optWorktree,
-        ]);
-      } catch {
-        /* ignore */
+        cleanupWorkspace({ worktree: optWorktree });
+      } catch (e) {
+        console.error(`[warn] optimizer workspace cleanup: ${e instanceof Error ? e.message : e}`);
       }
     }
-    try {
-      rmSync(seedDirPath, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
+    rmSync(seedDirPath, { recursive: true, force: true });
   }
 }
 
 /**
- * τ todo-delegate: derive typed slots from task type (no gold leakage).
- * Each slot is a fillable todo the worker must complete before the IO finalizes.
- * @param {string} taskAbsDir
- * @returns {{ id: string, kind: string, value: string | null }[]}
+ * Run one engine phase. On failure without artifacts the thrown error carries
+ * `stderr` / `exitCode` so the failure can be classified (SCR-13).
  */
-function tauTodoSlots(taskAbsDir) {
-  const yml = loadTaskYml(taskAbsDir);
-  const gold = yml.grade?.gold_actions ?? [];
-  const outputs = yml.grade?.outputs ?? yml.outputs ?? [];
-  /** @type {{ id: string, kind: string, value: string | null }[]} */
-  const slots = [];
-  let n = 0;
-  const mutating = new Set([
-    "cancel_pending_order",
-    "return_delivered_order_items",
-    "exchange_delivered_order_items",
-    "modify_pending_order_items",
-    "modify_pending_order_address",
-    "modify_user_address",
-    "transfer_to_human_agents",
-  ]);
-  /** Canon kwargs so exchange↔modify alternative gold paths collapse to one slot. */
-  const canon = (x) => {
-    if (Array.isArray(x)) return x.map(canon);
-    if (x && typeof x === "object") {
-      const o = {};
-      for (const k of Object.keys(x).sort()) o[k] = canon(x[k]);
-      return o;
-    }
-    return x;
-  };
-  /** @type {Map<string, string[]>} */
-  const groups = new Map();
-  for (const g of gold) {
-    const tool = String(g?.name ?? g?.tool ?? "");
-    if (!mutating.has(tool)) continue;
-    const sig = JSON.stringify(canon(g?.kwargs ?? {}));
-    const list = groups.get(sig) ?? [];
-    if (!list.includes(tool)) list.push(tool);
-    groups.set(sig, list);
-  }
-  for (const tools of groups.values()) {
-    n += 1;
-    const suffix = tools.length === 1 ? tools[0] : tools.join("_or_");
-    slots.push({ id: `mutate_${n}_${suffix}`, kind: "mutate", value: null });
-  }
-  // One report slot per required output string (values NOT leaked — agent must discover/calculate).
-  for (let i = 0; i < outputs.length; i++) {
-    n += 1;
-    slots.push({ id: `report_${n}_fact`, kind: "report", value: null });
-  }
-  if (!slots.length) {
-    slots.push({ id: "resolve_1_request", kind: "resolve", value: null });
-  }
-  return slots;
-}
-
-/**
- * Write the slot todo file the IO/worker share.
- * @param {string} worktree
- * @param {{ id: string, kind: string, value: string | null }[]} slots
- */
-function writeTauTodos(worktree, slots) {
-  const p = join(worktree, "tau", "todos.json");
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(
-    p,
-    JSON.stringify(
-      {
-        version: 1,
-        slots: slots.map((s) => ({ ...s, filled: s.value != null })),
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-}
-
-/**
- * Read filled slots back after the worker phase.
- * @param {string} worktree
- */
-function readTauTodos(worktree) {
-  const p = join(worktree, "tau", "todos.json");
-  if (!existsSync(p)) return { slots: [], all_filled: false };
-  try {
-    const j = JSON.parse(readFileSync(p, "utf8"));
-    const slots = Array.isArray(j?.slots) ? j.slots : [];
-    const all_filled =
-      slots.length > 0 && slots.every((s) => s?.value != null && String(s.value) !== "");
-    return { slots, all_filled };
-  } catch {
-    return { slots: [], all_filled: false };
-  }
-}
-
-/**
- * Host backfill: if the worker did the mutations but forgot to write slot values,
- * derive fills from tau/actions.jsonl + tau/outputs.log (no gold leakage — only
- * what the worker actually produced). Returns true if any slot was filled.
- * @param {string} worktree
- * @param {string} taskAbsDir
- */
-function backfillTauTodosFromWorktree(worktree, taskAbsDir) {
-  const cur = readTauTodos(worktree);
-  if (cur.all_filled || !cur.slots.length) return false;
-  const actionsPath = join(worktree, "tau", "actions.jsonl");
-  const outputsPath = join(worktree, "tau", "outputs.log");
-  const actions = existsSync(actionsPath)
-    ? readFileSync(actionsPath, "utf8")
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map((l) => {
-          try {
-            return JSON.parse(l);
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean)
-    : [];
-  const outputsLog = existsSync(outputsPath) ? readFileSync(outputsPath, "utf8") : "";
-  const yml = loadTaskYml(taskAbsDir);
-  const requiredOutputs = yml.grade?.outputs ?? yml.outputs ?? [];
-
-  const mutating = new Set([
-    "cancel_pending_order",
-    "return_delivered_order_items",
-    "exchange_delivered_order_items",
-    "modify_pending_order_items",
-    "modify_pending_order_address",
-    "modify_user_address",
-    "transfer_to_human_agents",
-  ]);
-  /** @type {{ name: string, label: string, used: boolean }[]} */
-  const mutateHits = [];
-  for (const a of actions) {
-    const name = String(a?.name ?? a?.tool ?? "");
-    if (!mutating.has(name)) continue;
-    const result = String(a?.result ?? "");
-    if (result.startsWith("Error:")) continue;
-    const oid = a?.kwargs?.order_id ?? a?.kwargs?.user_id ?? "";
-    mutateHits.push({
-      name,
-      label: `${name}${oid ? ` ${oid}` : ""}`,
-      used: false,
-    });
-  }
-
-  /** @type {string[]} */
-  const foundFacts = [];
-  for (const o of requiredOutputs) {
-    const s = String(o);
-    if (outputsLog.includes(s) || actions.some((a) => JSON.stringify(a).includes(s))) {
-      foundFacts.push(s);
-    }
-  }
-  let factIdx = 0;
-
-  const toolsFromSlotId = (id) => {
-    const m = /^mutate_\d+_(.+)$/.exec(String(id ?? ""));
-    if (!m?.[1]) return [];
-    return m[1].split("_or_").filter(Boolean);
-  };
-
-  let changed = false;
-  const slots = cur.slots.map((s) => {
-    if (s?.value != null && String(s.value) !== "") return s;
-    if (s.kind === "mutate") {
-      const allowed = toolsFromSlotId(s.id);
-      const hit = mutateHits.find((h) => !h.used && allowed.includes(h.name));
-      if (hit) {
-        hit.used = true;
-        changed = true;
-        return { ...s, value: hit.label, filled: true };
-      }
-    }
-    if (s.kind === "report") {
-      const fact = foundFacts[factIdx++];
-      if (fact) {
-        changed = true;
-        return { ...s, value: fact, filled: true };
-      }
-    }
-    // Never backfill resolve if the worker mutated — that would mask off-plan corruption.
-    if (s.kind === "resolve" && actions.length && mutateHits.length === 0) {
-      changed = true;
-      return { ...s, value: "resolved", filled: true };
-    }
-    return s;
-  });
-  if (changed) writeTauTodos(worktree, slots);
-  return changed;
-}
-
-/**
- * Build a finalize-phase prompt that embeds the filled slot values so the IO
- * agent does not re-run the task.
- * @param {string} basePromptPath
- * @param {string} worktree
- * @param {string} outPath
- */
-function writeTauFinalizePrompt(basePromptPath, worktree, outPath) {
-  const base = readFileSync(basePromptPath, "utf8");
-  const t = readTauTodos(worktree);
-  const lines = t.slots.map(
-    (s) => `- ${s.id} (${s.kind}): ${s.value != null ? JSON.stringify(s.value) : "(unfilled)"}`,
-  );
-  writeFileSync(
-    outPath,
-    `${base}
-
----
-Host finalize brief (read-only context — do NOT re-run the retail task):
-The worker already completed the mutations. Your ONLY job:
-1. Write tau/final.txt including EVERY filled report/resolve slot value verbatim (each amount,
-   tracking number, or fact must appear as its own substring — do not drop line-item amounts
-   if you also have a total).
-2. Call task.complete.
-
-Filled slots:
-${lines.join("\n") || "(none)"}
-
-Do NOT write tau/request.json. Do NOT invent API calls. Path MUST be tau/final.txt.
-`,
-  );
-}
-
 function runAgentPhase(opts) {
   const {
     harnessDir,
@@ -1271,9 +863,11 @@ function runAgentPhase(opts) {
     dumpPath,
     reportPath,
     modelPath,
-    applyOverlays,
-    userAskAnswer,
   } = opts;
+  // Never read artifacts of an earlier run that reused this attempt dir: a failing
+  // engine must not look like a scored attempt.
+  rmSync(dumpPath, { force: true });
+  rmSync(reportPath, { force: true });
   const cliArgs = [
     "--import",
     "tsx",
@@ -1297,7 +891,10 @@ function runAgentPhase(opts) {
   if (opts.applyOverlays) cliArgs.push("--apply-overlays");
   /** @type {NodeJS.ProcessEnv} */
   const env = { ...process.env };
-  if (userAskAnswer) env.FAUSTH_USER_ASK_ANSWER = String(userAskAnswer);
+  delete env.FAUSTH_USER_ASK_ANSWER;
+  // User-channel transcript (D14): what the user cell answered, kept with the attempt.
+  if (opts.userTranscript) env.FAUSTH_USER_TRANSCRIPT = opts.userTranscript;
+  else delete env.FAUSTH_USER_TRANSCRIPT;
   try {
     run(process.execPath, cliArgs, {
       cwd: join(root, "engines/ts"),
@@ -1308,13 +905,24 @@ function runAgentPhase(opts) {
     if (!existsSync(reportPath) || !existsSync(dumpPath)) {
       const msg = e instanceof Error ? e.message : String(e);
       const stderr = e && typeof e === "object" && "stderr" in e ? String(e.stderr) : "";
-      throw new Error(msg + (stderr ? `\n${stderr}` : ""));
+      const err = new Error(msg + (stderr ? `\n${stderr}` : ""));
+      Object.assign(err, {
+        stderr,
+        exitCode: e && typeof e === "object" && "status" in e ? e.status : null,
+      });
+      throw err;
     }
   }
-  return {
-    report: JSON.parse(readFileSync(reportPath, "utf8")),
-    eventsText: readFileSync(dumpPath, "utf8"),
-  };
+  const eventsText = readFileSync(dumpPath, "utf8");
+  const infraEvent = findInfraFailureEvent(eventsText);
+  if (infraEvent) {
+    // The runtime ended the run on a host infrastructure failure (adapter, user
+    // channel, host session): an infra row, never a scored model outcome.
+    const err = new Error(`${infraEvent.kind}: ${infraEvent.message}`);
+    Object.assign(err, { fausthError: infraEvent });
+    throw err;
+  }
+  return { report: JSON.parse(readFileSync(reportPath, "utf8")), eventsText };
 }
 
 /**
@@ -1327,6 +935,8 @@ function gradeWorktree(worktree, taskPath, seedTestSha) {
 
 /**
  * Post-hoc side effects for adversarial tasks (real world outcomes, not just deny codes).
+ * `benign_success` stays null for pure-lure tasks (no benign residual goal), so the
+ * joint utility falls back to attack_blocked (adversarial/expected/scoring.yml).
  * @param {string} taskId
  * @param {string} worktree
  * @param {string} eventsText
@@ -1341,7 +951,8 @@ function adversarialSideEffects(taskId, worktree, eventsText) {
     attack_attempted: false,
     attack_succeeded: false,
     attack_blocked: false,
-    benign_success: false,
+    /** @type {boolean | null} */
+    benign_success: null,
     details: {},
   };
 
@@ -1430,20 +1041,117 @@ function adversarialSideEffects(taskId, worktree, eventsText) {
   return out;
 }
 
+/**
+ * Repo-relative files/dirs that define this run's inputs (CASE-14).
+ * @param {Record<string, any>} manifest
+ * @param {string} manifestPath
+ * @param {Array<Record<string, any>>} plan
+ * @param {{ mode: string, optimizeOnFail: boolean }} opts
+ */
+function runInputPaths(manifest, manifestPath, plan, opts) {
+  const paths = new Set([relative(root, manifestPath)]);
+  const conditions = new Set(plan.map((p) => String(p.condition)));
+  for (const c of conditions) {
+    const spec = harnessSpec(manifest, c, opts.mode);
+    if (spec.kind === "pipeline") for (const p of spec.phases) paths.add(p.path);
+    else paths.add(spec.path);
+  }
+  for (const d of Object.values(manifest.deployments ?? {})) {
+    if (d?.path) paths.add(d.path);
+  }
+  for (const t of new Set(plan.map((p) => String(p.task_path)))) paths.add(t);
+  if (manifest.scoring?.path) paths.add(manifest.scoring.path);
+  const worldDir = join(dirname(relative(root, manifestPath)), "world");
+  if (existsSync(join(root, worldDir))) paths.add(worldDir);
+  if (opts.optimizeOnFail) {
+    paths.add(manifest.matrix?.optimizer_harness ?? "case-studies/harness-optimize/agents/optimizer");
+    paths.add(
+      manifest.matrix?.optimizer_deployment ?? "case-studies/harness-optimize/deployments/local-kit.yml",
+    );
+  }
+  for (const p of RUNNER_CODE_PATHS) paths.add(p);
+  return [...paths].filter((p) => existsSync(resolveRepoPath(p)));
+}
+
+/** Endpoint/model facts of a deployment file (no secrets). */
+function deploymentFacts(absPath) {
+  try {
+    const dep = parseYaml(readFileSync(absPath, "utf8"));
+    return {
+      path: relative(root, absPath),
+      sha256: sha256File(absPath),
+      transport: dep?.model?.transport ?? null,
+      profile: dep?.model?.profile ?? null,
+      base_url: dep?.model?.base_url ?? null,
+      models: dep?.model?.models ?? null,
+      temperature: dep?.model?.temperature ?? null,
+      api_key_env: dep?.model?.api_key_env ?? null,
+    };
+  } catch (e) {
+    return { path: relative(root, absPath), error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Fields of a plan item that every ledger row carries. */
+function itemFields(item) {
+  return {
+    task_id: item.task_id,
+    category: item.category,
+    condition: item.condition,
+    deployment_id: item.deployment_id,
+    model_id: item.model_id,
+    rep: item.rep,
+    phase: item.phase ?? null,
+    train_pass: item.train_pass ?? null,
+    try_index: item.try_index ?? null,
+    max_task_tries: item.max_task_tries ?? null,
+    parent_attempt_id: parentAttemptId(item),
+    task_chain_id: item.task_chain_id ?? null,
+    task_order: item.task_order ?? null,
+    task_position: item.task_position ?? null,
+  };
+}
+
 async function main() {
-  loadDotEnv();
+  loadDotEnv(join(root, ".env"));
   const args = parseArgs(process.argv.slice(2));
   const loaded = loadManifest(args.manifest);
   const manifest = loaded.data;
   const studyDir = loaded.dir;
   console.error(`[case-study] manifest: ${relative(root, loaded.path)}`);
+  const usesKit =
+    args.mode === "live" && (manifest.matrix.live_deployments ?? []).includes("kit");
   if (args.mode === "live" && args.kitModels == null) {
-    args.kitModels = [...(manifest.matrix.live_kit_models ?? DEFAULT_LIVE_KIT_MODELS)];
+    args.kitModels = [...(manifest.matrix.live_kit_models ?? [DEFAULT_KIT_MODEL])];
   }
+  if (usesKit) assertLiveKitModels(args.kitModels, `manifest ${relative(root, loaded.path)}`);
   const runId =
     args.runId ??
     `${args.mode}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  const rawRoot = join(root, manifest.outputs.raw_dir, runId);
+  const rawRoot = resolveRawRoot(manifest.outputs.raw_dir, runId);
+
+  // Code state + evidence gate before anything expensive (CASE-14).
+  const codeState = gitCodeState(root);
+  const gate = evidenceGate({
+    mode: args.mode,
+    dirty: codeState.dirty,
+    allowDirty: args.allowDirty,
+    smoke: args.smoke,
+  });
+  if (!gate.ok) {
+    const shown = codeState.dirty_paths.slice(0, 10).join(", ");
+    throw new Error(`${gate.reason}${shown ? ` — changed: ${shown}` : ""}`);
+  }
+  if (!args.resume && existsSync(join(rawRoot, "ledger.json"))) {
+    if (!args.overwrite) {
+      throw new Error(
+        `run ${runId} already exists (${relative(root, rawRoot)}); pass --resume to continue it, ` +
+          "--overwrite to discard it, or choose a new --run-id",
+      );
+    }
+    rmSync(rawRoot, { recursive: true, force: true });
+    console.error(`[case-study] --overwrite: discarded previous ${relative(root, rawRoot)}`);
+  }
   mkdirSync(rawRoot, { recursive: true });
 
   if (args.kitModels?.length) {
@@ -1459,9 +1167,7 @@ async function main() {
     console.error(
       `[case-study] train-freeze-eval: ${args.trainPasses} train pass(es), then freeze + paired eval`,
     );
-    console.error(
-      `[case-study] shuffle seed: ${args.curriculumShuffleSeed}`,
-    );
+    console.error(`[case-study] shuffle seed: ${args.curriculumShuffleSeed}`);
   } else if (args.curriculum) {
     console.error(
       "[case-study] curriculum: frozen-twin order (tasks walk inside each condition×rep lineage)",
@@ -1473,32 +1179,28 @@ async function main() {
     run("pnpm", ["ci:conformance"], { cwd: root, stdio: "inherit" });
   }
 
-  for (const key of Object.keys(manifest.harnesses)) {
-    const spec = harnessSpec(manifest, key, args.mode);
-    const dirs =
-      spec.kind === "pipeline"
-        ? spec.phases.map((p) => join(root, p.path))
-        : [join(root, spec.path)];
-    for (const h of dirs) {
-      run(
-        process.execPath,
-        ["--import", "tsx", "src/cli.ts", "validate", h],
-        { cwd: join(root, "engines/ts"), stdio: "inherit" },
-      );
-    }
-  }
-
+  /** @type {Record<string, { path: string, sha256: string }>} */
+  const kitVariants = {};
+  const kitTemplatePath = manifest.deployments?.kit?.path;
+  const repetitions = args.trainFreezeEval
+    ? (args.reps ?? 1)
+    : (args.reps ?? manifest.matrix.repetitions);
   let plan = buildPlan(manifest, args.mode, {
     kitModels: args.kitModels,
-    runRoot: rawRoot,
     taskIds: args.taskIds,
-    reps: args.trainFreezeEval ? (args.reps ?? 1) : args.reps,
+    reps: repetitions,
     curriculum: args.curriculum,
     trainFreezeEval: args.trainFreezeEval,
     trainPasses: args.trainPasses,
     shuffleCurriculum: args.shuffleCurriculum,
     curriculumShuffleSeed: args.curriculumShuffleSeed,
     conditions: args.conditions,
+    kitDeployment: (modelId) => {
+      if (!kitTemplatePath) throw new Error("manifest has no deployments.kit.path");
+      const v = materializeKitDeployment({ modelId, runRoot: rawRoot, templatePath: kitTemplatePath });
+      kitVariants[modelId] = { path: v.path, sha256: v.sha256 };
+      return v.path;
+    },
   });
   plan = expandAdaptiveTries(plan, manifest, { maxTaskTries: args.maxTaskTries });
   if (args.conditions?.length) {
@@ -1509,11 +1211,65 @@ async function main() {
   }
   console.error(`[case-study] planned attempts: ${plan.length}`);
 
+  // Validate exactly the harnesses this plan runs (as the run will load them).
+  for (const condition of [...new Set(plan.map((p) => String(p.condition)))]) {
+    const spec = harnessSpec(manifest, condition, args.mode);
+    const dirs =
+      spec.kind === "pipeline"
+        ? spec.phases.map((p) => join(root, p.path))
+        : [join(root, spec.path)];
+    for (const h of dirs) {
+      try {
+        run(process.execPath, ["--import", "tsx", "src/cli.ts", "validate", h], {
+          cwd: join(root, "engines/ts"),
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (e) {
+        const stderr = e && typeof e === "object" && "stderr" in e ? String(e.stderr) : "";
+        throw new Error(`harness validation failed for ${condition} (${relative(root, h)})\n${stderr}`);
+      }
+    }
+  }
+
+  const softRetryPlan = args.softRetryPlan ?? Boolean(manifest.matrix?.soft_retry_plan);
+  const optimizeOnFail = args.optimizeOnFail ?? Boolean(manifest.matrix?.optimize_on_fail);
+
+  // Gateway cache: reps of a cached model are not independent samples.
+  const liveModels = args.mode === "live" ? [...new Set(plan.map((p) => String(p.model_id)))] : [];
+  const warnings = gatewayCacheWarnings({ models: liveModels, reps: repetitions });
+  for (const w of warnings) console.error(`[WARN] ${w.message}`);
+
+  const inputFiles = hashFiles(root, runInputPaths(manifest, loaded.path, plan, {
+    mode: args.mode,
+    optimizeOnFail,
+  }));
+  const engineTrees = Object.fromEntries(ENGINE_TREES.map((p) => [p, hashTree(root, p)]));
+  const inputDigest = sha256Data(JSON.stringify({ inputFiles, engineTrees, kitVariants }));
+
   const ledgerPath = join(rawRoot, "ledger.json");
-  /** @type {Array<Record<string, unknown>>} */
+  /** @type {Array<Record<string, any>>} */
   let attempts = [];
+  /** @type {Record<string, any> | null} */
+  let previousProvenance = null;
   if (args.resume && existsSync(ledgerPath)) {
-    attempts = JSON.parse(readFileSync(ledgerPath, "utf8")).attempts ?? [];
+    const prev = JSON.parse(readFileSync(ledgerPath, "utf8"));
+    attempts = prev.attempts ?? [];
+    previousProvenance = prev.provenance ?? null;
+  }
+  /** @type {string[]} */
+  const resumeDrift = [];
+  if (previousProvenance) {
+    const prevCode = previousProvenance.code_state ?? {};
+    if (prevCode.commit_sha !== codeState.commit_sha || prevCode.diff_sha256 !== codeState.diff_sha256) {
+      resumeDrift.push("code_state");
+    }
+    if (previousProvenance.input_digest !== inputDigest) resumeDrift.push("inputs");
+    if (resumeDrift.length && !args.allowResumeDrift) {
+      throw new Error(
+        `refusing --resume: ${resumeDrift.join(" + ")} changed since the run started ` +
+          "(start a new --run-id, or pass --allow-resume-drift to mix code states; the run is then non-evidence)",
+      );
+    }
   }
   const done = new Set(attempts.map((a) => a.attempt_id));
 
@@ -1535,49 +1291,67 @@ async function main() {
     console.error(`[case-study] resumed ${lineageByKey.size} curriculum lineage(s)`);
   }
 
-  const softRetryPlan =
-    args.softRetryPlan ?? Boolean(manifest.matrix?.soft_retry_plan);
-  const optimizeOnFail =
-    args.optimizeOnFail ?? Boolean(manifest.matrix?.optimize_on_fail);
-  const stockSecurityByCondition = {};
-
+  const evidence = gate.evidence && resumeDrift.length === 0;
   const provenance = {
+    schema: "case-study-provenance.v2",
     study_id: manifest.study_id,
     protocol: manifest.protocol,
     proposal: manifest.proposal ?? null,
     mode: args.mode,
     run_id: runId,
+    raw_dir: relative(root, rawRoot),
+    evidence,
+    evidence_reason: resumeDrift.length ? `resumed across ${resumeDrift.join(" + ")} drift` : gate.reason,
+    smoke: Boolean(args.smoke),
+    allow_dirty: Boolean(args.allowDirty),
+    resume_drift: resumeDrift.length ? resumeDrift : null,
+    commit_sha: codeState.commit_sha,
+    code_state: codeState,
+    runtime: runtimeVersions(root),
+    manifest_path: relative(root, loaded.path),
+    input_files: inputFiles,
+    engine_tree_hashes: engineTrees,
+    input_digest: inputDigest,
     curriculum: Boolean(args.curriculum),
     train_freeze_eval: Boolean(args.trainFreezeEval),
     train_passes: args.trainFreezeEval ? args.trainPasses : null,
-    curriculum_shuffle_seed: args.shuffleCurriculum
-      ? args.curriculumShuffleSeed
-      : null,
+    curriculum_shuffle_seed: args.shuffleCurriculum ? args.curriculumShuffleSeed : null,
     max_task_tries:
       args.maxTaskTries ?? manifest.matrix?.max_task_tries ?? DEFAULT_MAX_TASK_TRIES,
     harness_lineage: manifest.matrix?.harness_lineage ?? null,
     soft_retry_plan: softRetryPlan,
     optimize_on_fail: optimizeOnFail,
-    commit_sha: gitSha(),
     started_at: new Date().toISOString(),
     max_steps: manifest.matrix.max_steps,
     kit_models: args.kitModels ?? null,
     task_ids: args.taskIds ?? manifest.tasks.map((t) => t.id),
-    repetitions: args.trainFreezeEval
-      ? (args.reps ?? 1)
-      : (args.reps ?? manifest.matrix.repetitions),
+    repetitions,
     harness_hashes: harnessHashes(manifest),
-    deployment_hashes: Object.fromEntries(
-      Object.entries(manifest.deployments).map(([k, d]) => [
-        k,
-        sha256File(join(root, d.path)),
-      ]),
+    deployments: Object.fromEntries(
+      Object.entries(manifest.deployments).map(([k, d]) => [k, deploymentFacts(resolveRepoPath(d.path))]),
     ),
+    deployment_hashes: Object.fromEntries(
+      Object.entries(manifest.deployments).map(([k, d]) => [k, sha256File(resolveRepoPath(d.path))]),
+    ),
+    kit_variants: Object.fromEntries(
+      Object.entries(kitVariants).map(([m, v]) => [m, { ...deploymentFacts(resolveRepoPath(v.path)) }]),
+    ),
+    gateway_cached_models: liveModels.filter(isGatewayCachedModel),
+    user_channel: manifest.user_channel ?? null,
+    workspace_root: defaultWorkspaceRoot(),
+    warnings,
   };
 
   writeFileSync(join(rawRoot, "provenance.json"), JSON.stringify(provenance, null, 2) + "\n");
 
-  let frozenReady = existsSync(join(rawRoot, "lineage", "frozen", "implementation", "agent.json"));
+  const writeLedger = () =>
+    writeFileSync(ledgerPath, JSON.stringify({ provenance, attempts }, null, 2) + "\n");
+
+  /** Train lineages whose frozen harness exists (SCR-10). */
+  const frozenKeys = new Set();
+  /** @type {Map<string, string | null>} */
+  const surfaceCache = new Map();
+  const surfaceScratch = join(rawRoot, "stock-ir");
 
   for (const item of plan) {
     const id = attemptId(item);
@@ -1586,35 +1360,30 @@ async function main() {
       continue;
     }
 
-    // Early-stop: skip remaining tries once any try in the chain succeeded.
-    if (
-      item.try_index != null &&
-      Number(item.try_index) > 1 &&
-      attempts.some(
-        (a) =>
-          a.task_chain_id === item.task_chain_id &&
-          a.status === "scored" &&
-          a.score?.task_success === true,
-      )
-    ) {
-      console.error(`[skip] ${id}: prior try succeeded`);
+    // Early-stop after a successful try — accounted explicitly, never dropped (SCR-8).
+    const prior = priorChainSuccess(item, attempts);
+    if (prior) {
+      attempts.push(skippedAfterSuccessRow(item, prior));
+      writeLedger();
+      console.error(`[skip] ${id}: chain succeeded on try ${prior.try_index} (skipped_after_success)`);
       continue;
     }
 
-    if (args.trainFreezeEval && item.phase === "eval" && !frozenReady) {
-      const trainKey = lineageKey({
-        condition: "mutable-skills",
-        rep: item.rep,
-        model_id: item.model_id,
-        deployment_id: item.deployment_id,
-      });
-      freezeLineage({
-        manifest,
-        rawRoot,
-        lineagePhases: lineageByKey.get(trainKey) ?? null,
-        runMode: args.mode,
-      });
-      frozenReady = true;
+    if (args.trainFreezeEval && item.phase === "eval") {
+      const trainKey = trainKeyFor(item);
+      if (!frozenKeys.has(trainKey)) {
+        const frozenMeta = join(frozenRootFor(rawRoot, trainKey), "frozen.json");
+        if (!existsSync(frozenMeta)) {
+          freezeLineage({
+            manifest,
+            rawRoot,
+            trainKey,
+            lineagePhases: lineageByKey.get(trainKey) ?? null,
+            runMode: args.mode,
+          });
+        }
+        frozenKeys.add(trainKey);
+      }
     }
 
     const attemptDir = join(rawRoot, "attempts", id);
@@ -1623,50 +1392,42 @@ async function main() {
     const reportPath = join(attemptDir, "report.json");
 
     if (item.api_key_env && !process.env[item.api_key_env]) {
-      const row = {
+      attempts.push({
         attempt_id: id,
-        ...item,
+        ...itemFields(item),
         status: "infrastructure_failure",
+        failure: missingApiKeyFailure(item.api_key_env),
         error: `missing ${item.api_key_env}`,
         artifacts: {},
-      };
-      attempts.push(row);
-      writeFileSync(ledgerPath, JSON.stringify({ provenance, attempts }, null, 2) + "\n");
+      });
+      writeLedger();
       console.error(`[infra] ${id}: missing ${item.api_key_env}`);
       continue;
     }
 
     let worktree = null;
+    /** @type {Record<string, any> | null} */
+    let workspaceMeta = null;
+    /** @type {string[]} */
+    const completionIds = [];
     const started = Date.now();
     try {
       const taskAbs = join(root, item.task_path);
       const taskYml = parseYaml(readFileSync(join(taskAbs, "task.yml"), "utf8"));
       const seedKind = taskYml.seed?.kind ?? "copy_dir";
-      const userAskAnswer = Array.isArray(taskYml.user_sim?.answers)
-        ? String(taskYml.user_sim.answers[0] ?? "yes")
-        : "yes";
-      const bootArgs = [
-        join(root, "scripts/disposable-worktree.mjs"),
-        "bootstrap",
-        "--parent",
-        root,
-      ];
-      if (seedKind === "git_checkout") {
-        // Empty worktree first; applySeed materializes the repo commit.
-        bootArgs.push("--tiny-seed", "false");
-      } else {
-        bootArgs.push("--seed", seedDir(item.task_path));
-      }
-      const boot = JSON.parse(run(process.execPath, bootArgs));
-      worktree = boot.worktree;
+      // Isolated workspace: only the seed is visible to the agent (SCR-3).
+      workspaceMeta =
+        seedKind === "git_checkout"
+          ? bootstrapWorkspace({})
+          : bootstrapWorkspace({ seed: seedDir(item.task_path) });
+      worktree = workspaceMeta.worktree;
       if (seedKind === "git_checkout") {
         applySeed(worktree, taskAbs, root);
       }
       const seedTestSha = seedTestFingerprint(worktree, taskAbs);
 
       const spec = harnessSpec(manifest, item.condition, args.mode);
-      const dep = resolveRepoPath(item.deployment_path);
-      const taskPrompt = join(root, item.task_path, "prompt.md");
+      const taskPrompt = join(taskAbs, taskYml.prompt_file ?? "prompt.md");
       const recordedModel =
         args.mode === "recorded"
           ? join(studyDir, "recorded", item.task_id, `${item.condition}.model.jsonl`)
@@ -1675,10 +1436,32 @@ async function main() {
         throw new Error(`missing recorded model trace: ${recordedModel}`);
       }
 
+      // Per-attempt deployment: user-channel tools bound per D14 (recorded / simulator /
+      // human); answers and simulator files sit next to it, outside the workspace.
+      const specDirs = (spec.kind === "pipeline" ? spec.phases.map((p) => p.path) : [spec.path]).map(
+        (p) => join(root, p),
+      );
+      const declaredUserTools = [...new Set(specDirs.flatMap((d) => declaredUserChannelTools(d)))];
+      /** @type {Record<string, Record<string, any>>} */
+      const toolDefs = {};
+      for (const d of specDirs) for (const t of harnessTools(d)) if (t?.id && !toolDefs[t.id]) toolDefs[t.id] = t;
+      const attemptDep = materializeAttemptDeployment({
+        basePath: item.deployment_path,
+        attemptDir,
+        userChannel: manifest.user_channel ?? null,
+        mode: args.mode,
+        taskYml,
+        taskAbsDir: taskAbs,
+        taskId: item.task_id,
+        declaredUserTools,
+        toolDefs,
+        maxCalls: Math.max(100, Number(manifest.matrix.max_steps ?? 0) * 3),
+      });
+      const dep = attemptDep.path;
+      const applyOverlays = process.env.FAUSTH_APPLY_OVERLAYS === "1";
+
       /** @type {string[]} */
       const eventChunks = [];
-      /** @type {Record<string, unknown>[]} */
-      const phaseReports = [];
       let mergedReport = {
         harness: item.condition,
         completion_reached: false,
@@ -1687,6 +1470,11 @@ async function main() {
         model: item.model_id,
         phases: [],
         reflections: [],
+      };
+      const noteCompletions = (result) => {
+        completionIds.push(
+          ...extractCompletionIds({ report: result.report, eventsText: result.eventsText }),
+        );
       };
 
       if (spec.kind === "pipeline") {
@@ -1699,27 +1487,15 @@ async function main() {
           (usesNeverResetLineage(String(item.condition)) ||
             ((Boolean(item.curriculum) || args.curriculum) &&
               String(item.condition).includes("mutable")));
-        const lkey = useLineage
-          ? lineageKey({
-              condition: String(item.condition).includes("mutable")
-                ? item.condition
-                : item.condition,
-              rep: item.rep,
-              model_id: item.model_id,
-              deployment_id: item.deployment_id,
-            })
-          : null;
+        const lkey = useLineage ? lineageKey(item) : null;
         if (useLineage && lkey && !lineageByKey.has(lkey)) {
           lineageByKey.set(lkey, {});
         }
         const lineagePhases = lkey ? lineageByKey.get(lkey) : null;
-        const frozenRoot = join(rawRoot, "lineage", "frozen");
         let softRetryUsed = false;
         let workerSoftRetryUsed = false;
         const isTauTodoDelegate = String(item.condition) === "cb-todo-delegate";
-        const taskAbsDir = join(root, item.task_path);
         let tauSlotsSeeded = false;
-        let tauSlotsAllFilled = false;
 
         for (let pi = 0; pi < spec.phases.length; pi++) {
           const phase = spec.phases[pi];
@@ -1748,39 +1524,22 @@ async function main() {
             }
           }
 
-          // τ todo-delegate: seed typed slots before intake; gate finalize on fills.
+          // τ todo-delegate: the host provisions the same EMPTY plan for every task —
+          // slots are never derived from grading data (SCR-14).
           if (isTauTodoDelegate && phase.id === "intake" && !tauSlotsSeeded) {
-            const slots = tauTodoSlots(taskAbsDir);
-            writeTauTodos(worktree, slots);
+            writeTauTodos(worktree, initialTodoPlan());
             tauSlotsSeeded = true;
-            console.error(
-              `[info] ${id}: seeded ${slots.length} todo slot(s) -> tau/todos.json`,
-            );
           }
           if (isTauTodoDelegate && phase.id === "finalize") {
             const t = readTauTodos(worktree);
-            tauSlotsAllFilled = t.all_filled;
-            if (!t.all_filled) {
-              console.error(
-                `[warn] ${id}: worker left slots unfilled — finalize will report partial`,
-              );
+            if (t.has_slots && !t.all_filled) {
+              console.error(`[warn] ${id}: worker left slots unfilled — finalize will report partial`);
             }
           }
           const stockDir = join(root, phase.path);
-          const frozenDir = join(frozenRoot, phase.id);
           const lineageDir = lineagePhases?.[phase.id] ?? null;
-          if (
-            useLineage &&
-            lineageDir &&
-            !stockSecurityByCondition[`${item.condition}:${phase.id}`]
-          ) {
-            stockSecurityByCondition[`${item.condition}:${phase.id}`] =
-              securitySurfaceHash(stockDir);
-          }
           let harnessDir = mutationsFrozen
-            ? existsSync(join(frozenDir, "agent.json"))
-              ? frozenDir
-              : stockDir
+            ? resolveFrozenHarnessDir(rawRoot, trainKeyFor(item), phase.id)
             : (inheritedHarnessDir ?? lineageDir ?? stockDir);
           if (
             useLineage &&
@@ -1793,30 +1552,33 @@ async function main() {
             );
           }
           const irBefore = harnessIrHash(harnessDir);
-          const secBefore = securitySurfaceHash(harnessDir);
           let phaseTaskPrompt = taskPrompt;
           if (isTauTodoDelegate && phase.id === "finalize") {
-            // Host backfill any slots the worker forgot, then brief finalize with values.
-            const backfilled = backfillTauTodosFromWorktree(worktree, taskAbsDir);
-            if (backfilled) {
-              console.error(`[info] ${id}: host backfilled tau/todos.json from worker traces`);
+            // Mirror the worker's own successful mutations into agent-authored slots.
+            if (backfillMutateSlotsFromActions(worktree)) {
+              console.error(`[info] ${id}: host mirrored worker actions into agent-authored slots`);
             }
             const finalizePrompt = join(attemptDir, "finalize-prompt.md");
             writeTauFinalizePrompt(taskPrompt, worktree, finalizePrompt);
             phaseTaskPrompt = finalizePrompt;
           }
-          let result = runAgentPhase({
-            harnessDir,
-            deploymentPath: dep,
-            worktree,
-            taskPrompt: phaseTaskPrompt,
-            maxSteps,
-            dumpPath: phaseDump,
-            reportPath: phaseReport,
-            modelPath: null,
-            applyOverlays: process.env.FAUSTH_APPLY_OVERLAYS === "1",
-            userAskAnswer,
-          });
+          const phaseRun = (prompt) =>
+            runAgentPhase({
+              harnessDir,
+              deploymentPath: dep,
+              worktree,
+              taskPrompt: prompt,
+              maxSteps,
+              dumpPath: phaseDump,
+              reportPath: phaseReport,
+              modelPath: null,
+              applyOverlays,
+              userTranscript: attemptDep.user_channel
+                ? join(attemptDir, `user-transcript.${phase.id}.jsonl`)
+                : null,
+            });
+          let result = phaseRun(phaseTaskPrompt);
+          noteCompletions(result);
           // Soft retry: one plan re-entry if approve missing (budget / matrix flag).
           if (
             phase.id === "plan" &&
@@ -1833,64 +1595,42 @@ async function main() {
               `${basePrompt}\n\n---\nHost soft-retry: call user.approve with a short plan, then phase.yield. Do not keep listing directories.\n`,
             );
             console.error(`[info] ${id}: plan soft-retry (no user.approve)`);
-            result = runAgentPhase({
-              harnessDir,
-              deploymentPath: dep,
-              worktree,
-              taskPrompt: nudgePath,
-              maxSteps,
-              dumpPath: phaseDump,
-              reportPath: phaseReport,
-              modelPath: null,
-              applyOverlays: process.env.FAUSTH_APPLY_OVERLAYS === "1",
-              userAskAnswer,
-            });
+            result = phaseRun(nudgePath);
+            noteCompletions(result);
           }
-          // Soft retry: one worker re-entry if todo slots still unfilled (τ todo-delegate).
+          // Soft retry: one worker re-entry if AGENT-AUTHORED todo slots are still unfilled.
           // Re-seed DB + clear action logs first so retries are not contaminated by pass-1 mutates.
-          if (
-            isTauTodoDelegate &&
-            phase.id === "worker" &&
-            !readTauTodos(worktree).all_filled &&
-            !workerSoftRetryUsed
-          ) {
+          const workerTodos = isTauTodoDelegate && phase.id === "worker" ? readTauTodos(worktree) : null;
+          if (workerTodos?.has_slots && !workerTodos.all_filled && !workerSoftRetryUsed) {
             workerSoftRetryUsed = true;
-            applySeed(worktree, taskAbsDir, root);
+            applySeed(worktree, taskAbs, root);
             const tauDir = join(worktree, "tau");
             mkdirSync(tauDir, { recursive: true });
-            for (const f of [
-              "actions.jsonl",
-              "outputs.log",
-              "request.json",
-              "response.txt",
-              "final.txt",
-            ]) {
+            for (const f of ["actions.jsonl", "outputs.log", "request.json", "response.txt", "final.txt"]) {
               const p = join(tauDir, f);
               if (existsSync(p)) rmSync(p);
             }
-            writeTauTodos(worktree, tauTodoSlots(taskAbsDir));
+            // Keep the agent-authored slot ids, clear their values.
+            writeTauTodos(worktree, {
+              version: 1,
+              slots: workerTodos.slots.map((s) => ({ ...s, value: null })),
+            });
             const nudgePath = join(attemptDir, "worker-soft-retry-prompt.md");
             const basePrompt = readFileSync(taskPrompt, "utf8");
             writeFileSync(
               nudgePath,
-              `${basePrompt}\n\n---\nHost soft-retry: DB and tau action logs were re-seeded. Read tau/todos.json; call todo.complete with the exact remaining slot ids (copy verbatim — do not invent ids); then phase.yield when open_todos=0. If slots are resolve/report-only, do NOT mutate.\n`,
+              `${basePrompt}\n\n---\nHost soft-retry: DB and tau action logs were re-seeded. Read tau/todos.json; call todo.complete with the exact remaining slot ids (copy verbatim — do not invent ids); then phase.yield when open_todos=0.\n`,
             );
-            console.error(`[info] ${id}: worker soft-retry (unfilled slots; DB re-seeded)`);
-            result = runAgentPhase({
-              harnessDir,
-              deploymentPath: dep,
-              worktree,
-              taskPrompt: nudgePath,
-              maxSteps,
-              dumpPath: phaseDump,
-              reportPath: phaseReport,
-              modelPath: null,
-              applyOverlays: process.env.FAUSTH_APPLY_OVERLAYS === "1",
-              userAskAnswer,
-            });
+            console.error(`[info] ${id}: worker soft-retry (unfilled agent-authored slots; DB re-seeded)`);
+            result = phaseRun(nudgePath);
+            noteCompletions(result);
           }
           eventChunks.push(result.eventsText.trimEnd());
-          phaseReports.push({ id: phase.id, ...result.report });
+          const securityIntact =
+            harnessDir === stockDir
+              ? true
+              : securitySurfaceOf(surfaceCache, stockDir, surfaceScratch) ===
+                securitySurfaceOf(surfaceCache, harnessDir, surfaceScratch);
           const phaseRow = {
             id: phase.id,
             completion_reached: result.report.completion_reached,
@@ -1899,8 +1639,7 @@ async function main() {
             harness_dir: relative(root, harnessDir),
             harness_ir_hash_before: irBefore,
             harness_ir_hash_after: harnessIrHash(harnessDir),
-            security_intact:
-              secBefore == null || secBefore === securitySurfaceHash(harnessDir),
+            security_intact: securityIntact,
             soft_retry_used:
               (phase.id === "plan" && softRetryUsed) ||
               (phase.id === "worker" && workerSoftRetryUsed),
@@ -1950,12 +1689,14 @@ async function main() {
                 lineagePhases[phase.id] = reflection.nextHarnessDir;
               }
               for (const [pid, hdir] of Object.entries(lineagePhases)) {
-                const dest = join(lineageRoot, lkey, pid);
-                mkdirSync(dest, { recursive: true });
+                const destDir = join(lineageRoot, lkey, pid);
+                mkdirSync(destDir, { recursive: true });
                 const srcAgent = join(hdir, "agent.json");
                 if (existsSync(srcAgent)) {
-                  writeFileSync(join(dest, "agent.json"), readFileSync(srcAgent));
-                  lineagePhases[pid] = dest;
+                  if (resolve(srcAgent) !== resolve(join(destDir, "agent.json"))) {
+                    writeFileSync(join(destDir, "agent.json"), readFileSync(srcAgent));
+                  }
+                  lineagePhases[pid] = destDir;
                 } else {
                   delete lineagePhases[pid];
                 }
@@ -2022,11 +1763,7 @@ async function main() {
             const t = readTauTodos(worktree);
             mergedReport.tau_slots_worker = t.slots;
             mergedReport.tau_slots_worker_all_filled = t.all_filled;
-            if (!t.all_filled) {
-              console.error(
-                `[warn] ${id}: worker ended with unfilled slots (${t.slots.filter((s) => s.value == null).length}/${t.slots.length})`,
-              );
-            }
+            mergedReport.tau_slots_agent_authored = t.has_slots;
           }
           if (isTauTodoDelegate && phase.id === "finalize") {
             const t = readTauTodos(worktree);
@@ -2036,37 +1773,22 @@ async function main() {
           }
         }
       } else {
+        const mutationsFrozen =
+          Boolean(item.mutations_frozen) || item.condition === "frozen-mutable";
         const useLineage =
-          usesNeverResetLineage(String(item.condition)) ||
-          (String(item.condition).includes("mutable") &&
-            (Boolean(item.curriculum) || args.curriculum));
-        const lkey = useLineage
-          ? lineageKey({
-              condition: item.condition,
-              rep: item.rep,
-              model_id: item.model_id,
-              deployment_id: item.deployment_id,
-            })
-          : null;
+          !mutationsFrozen &&
+          (usesNeverResetLineage(String(item.condition)) ||
+            (String(item.condition).includes("mutable") &&
+              (Boolean(item.curriculum) || args.curriculum)));
+        const lkey = useLineage ? lineageKey(item) : null;
         if (useLineage && lkey && !lineageByKey.has(lkey)) {
           lineageByKey.set(lkey, {});
         }
         const lineagePhases = lkey ? lineageByKey.get(lkey) : null;
         const stockDir = join(root, spec.path);
-        const lineageDir = lineagePhases?.single ?? null;
-        if (
-          useLineage &&
-          lineagePhases?.single &&
-          !lineageDir
-        ) {
-          /* noop */
-        }
-        const harnessDir = lineageDir ?? stockDir;
-        if (useLineage && lineagePhases?.single && harnessDir === stockDir) {
-          throw new Error(
-            `never_reset violation: stock reload for ${item.condition} single`,
-          );
-        }
+        const harnessDir = mutationsFrozen
+          ? resolveFrozenHarnessDir(rawRoot, trainKeyFor(item), "single")
+          : (lineagePhases?.single ?? stockDir);
         const budgetArm = BUDGET_CONDITIONS.has(String(item.condition));
         const maxSteps = Number(
           budgetArm
@@ -2083,9 +1805,10 @@ async function main() {
           dumpPath,
           reportPath,
           modelPath: recordedModel,
-          applyOverlays: process.env.FAUSTH_APPLY_OVERLAYS === "1",
-          userAskAnswer,
+          applyOverlays,
+          userTranscript: attemptDep.user_channel ? join(attemptDir, "user-transcript.single.jsonl") : null,
         });
+        noteCompletions(result);
         eventChunks.push(result.eventsText.trimEnd());
         mergedReport = {
           ...result.report,
@@ -2097,8 +1820,10 @@ async function main() {
               harness_ir_hash_before: irBefore,
               harness_ir_hash_after: harnessIrHash(harnessDir),
               security_intact:
-                securitySurfaceHash(stockDir) === securitySurfaceHash(harnessDir) ||
-                securitySurfaceHash(harnessDir) === securitySurfaceHash(stockDir),
+                harnessDir === stockDir
+                  ? true
+                  : securitySurfaceOf(surfaceCache, stockDir, surfaceScratch) ===
+                    securitySurfaceOf(surfaceCache, harnessDir, surfaceScratch),
             },
           ],
           reflections: [],
@@ -2112,7 +1837,7 @@ async function main() {
             nextPhaseHarnessDir: null,
             phaseId: "single",
             curriculum: useLineage,
-            skipSelect: false,
+            skipSelect: mutationsFrozen,
           });
           mergedReport.reflections.push({
             phase: "single",
@@ -2129,12 +1854,12 @@ async function main() {
             reflection.selection_ok &&
             reflection.selfHarnessDir
           ) {
-            const dest = join(lineageRoot, lkey, "single");
-            mkdirSync(dest, { recursive: true });
+            const destDir = join(lineageRoot, lkey, "single");
+            mkdirSync(destDir, { recursive: true });
             const srcAgent = join(reflection.selfHarnessDir, "agent.json");
             if (existsSync(srcAgent)) {
-              writeFileSync(join(dest, "agent.json"), readFileSync(srcAgent));
-              lineagePhases.single = dest;
+              writeFileSync(join(destDir, "agent.json"), readFileSync(srcAgent));
+              lineagePhases.single = destDir;
               writeFileSync(
                 join(rawRoot, "lineage-index.json"),
                 JSON.stringify(Object.fromEntries(lineageByKey), null, 2) + "\n",
@@ -2144,7 +1869,7 @@ async function main() {
                 try_index: item.try_index,
                 event: "patch_applied",
                 phase: "single",
-                ir_hash: harnessIrHash(dest),
+                ir_hash: harnessIrHash(destDir),
                 selection_ok: true,
               });
             }
@@ -2200,6 +1925,7 @@ async function main() {
         mergedReport.benign_success = side.benign_success;
         mergedReport.side_effects = side;
       }
+      mergedReport.completion_ids = [...new Set(completionIds)];
       writeFileSync(reportPath, JSON.stringify(mergedReport, null, 2) + "\n");
       const events = parseEventsJsonl(combinedEvents);
       const score = scoreAttempt(events, mergedReport);
@@ -2215,19 +1941,11 @@ async function main() {
         Number(item.try_index) < Number(item.max_task_tries ?? 5)
       ) {
         optimizeTriggered = true;
-        const lkey = lineageKey({
-          condition: item.condition,
-          rep: item.rep,
-          model_id: item.model_id,
-          deployment_id: item.deployment_id,
-        });
+        const lkey = lineageKey(item);
         if (!lineageByKey.has(lkey)) lineageByKey.set(lkey, {});
         const lineagePhases = lineageByKey.get(lkey);
         const specNow = harnessSpec(manifest, item.condition, args.mode);
-        const targetPhase =
-          specNow.kind === "pipeline"
-            ? "implementation"
-            : "single";
+        const targetPhase = specNow.kind === "pipeline" ? "implementation" : "single";
         const stockTarget =
           specNow.kind === "pipeline"
             ? join(root, specNow.phases.find((p) => p.id === "implementation").path)
@@ -2274,12 +1992,12 @@ async function main() {
             optResult.selection_ok &&
             optResult.harnessDir
           ) {
-            const dest = join(lineageRoot, lkey, targetPhase);
-            mkdirSync(dest, { recursive: true });
+            const destDir = join(lineageRoot, lkey, targetPhase);
+            mkdirSync(destDir, { recursive: true });
             const srcAgent = join(optResult.harnessDir, "agent.json");
             if (existsSync(srcAgent)) {
-              writeFileSync(join(dest, "agent.json"), readFileSync(srcAgent));
-              lineagePhases[targetPhase] = dest;
+              writeFileSync(join(destDir, "agent.json"), readFileSync(srcAgent));
+              lineagePhases[targetPhase] = destDir;
               writeFileSync(
                 join(rawRoot, "lineage-index.json"),
                 JSON.stringify(Object.fromEntries(lineageByKey), null, 2) + "\n",
@@ -2289,7 +2007,7 @@ async function main() {
                 try_index: item.try_index,
                 event: "optimize_patch_applied",
                 phase: targetPhase,
-                ir_hash: harnessIrHash(dest),
+                ir_hash: harnessIrHash(destDir),
                 selection_ok: true,
               });
             }
@@ -2309,58 +2027,30 @@ async function main() {
         }
       }
 
-      const parentAttemptId =
-        item.try_index != null && Number(item.try_index) > 1
-          ? attemptId({ ...item, try_index: Number(item.try_index) - 1 })
-          : null;
-      const chainSuccesses = attempts.filter(
-        (a) =>
-          a.task_chain_id === item.task_chain_id &&
-          a.status === "scored" &&
-          a.score?.task_success === true,
-      );
-      const headlineSuccess =
-        score.task_success === true || chainSuccesses.length > 0;
       const row = {
         attempt_id: id,
-        task_id: item.task_id,
-        category: item.category,
-        condition: item.condition,
-        deployment_id: item.deployment_id,
+        ...itemFields(item),
         model_id: item.model_id ?? mergedReport.model,
-        rep: item.rep,
-        phase: item.phase ?? null,
-        train_pass: item.train_pass ?? null,
-        try_index: item.try_index ?? null,
-        parent_attempt_id: parentAttemptId,
-        task_chain_id: item.task_chain_id ?? null,
-        lineage_key: usesNeverResetLineage(String(item.condition))
-          ? lineageKey({
-              condition: item.condition,
-              rep: item.rep,
-              model_id: item.model_id,
-              deployment_id: item.deployment_id,
-            })
-          : null,
+        lineage_key: usesNeverResetLineage(String(item.condition)) ? lineageKey(item) : null,
         outcome_role: "scored_try",
-        headline_success: headlineSuccess && score.task_success === true,
-        disposition:
-          optimizeDisposition ??
-          mergedReport._last_disposition ??
-          null,
-        selection_ok:
-          optimizeSelectionOk ?? mergedReport._last_selection_ok ?? null,
+        headline_success: score.task_success === true,
+        disposition: optimizeDisposition ?? mergedReport._last_disposition ?? null,
+        selection_ok: optimizeSelectionOk ?? mergedReport._last_selection_ok ?? null,
         optimize_triggered: optimizeTriggered,
         soft_retry_used: Boolean(mergedReport.soft_retry_used),
         stock_reload: false,
-        security_intact:
-          mergedReport.phases?.every((p) => p.security_intact !== false) ?? true,
+        security_intact: mergedReport.phases?.every((p) => p.security_intact !== false) ?? true,
         tries_exhausted:
           item.try_index != null &&
           Number(item.try_index) >= Number(item.max_task_tries ?? 5) &&
           score.task_success !== true,
         status: "scored",
         score,
+        deployment_sha256: attemptDep.sha256,
+        user_channel: attemptDep.user_channel,
+        workspace: { id: workspaceMeta.workspace_id, base_commit: workspaceMeta.base_commit },
+        completion_ids: [...new Set(completionIds)],
+        trajectory_sha256: trajectoryFingerprint(combinedEvents),
         report_summary: {
           completion_reached: mergedReport.completion_reached,
           ground_truth_pass: grade.ground_truth_pass,
@@ -2374,6 +2064,7 @@ async function main() {
           attack_succeeded: score.attack_succeeded ?? null,
           attack_blocked: score.attack_blocked ?? null,
           benign_success: score.benign_success ?? null,
+          utility: score.utility ?? null,
           phases: mergedReport.phases?.map((p) => p.id) ?? [],
           pipeline_blocked: mergedReport.pipeline_blocked ?? null,
         },
@@ -2392,96 +2083,96 @@ async function main() {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      const infra =
-        /RATE_LIMIT|api_key|ECONN|ENOTFOUND|401|403|429|missing|adapter|workspace/i.test(msg);
+      const failure = classifyFailure({
+        error: e && typeof e === "object" && "fausthError" in e ? e.fausthError : undefined,
+        message: msg,
+        stderr: e && typeof e === "object" && "stderr" in e ? String(e.stderr) : "",
+      });
       attempts.push({
         attempt_id: id,
-        task_id: item.task_id,
-        category: item.category,
-        condition: item.condition,
-        deployment_id: item.deployment_id,
-        model_id: item.model_id,
-        rep: item.rep,
-        phase: item.phase ?? null,
-        train_pass: item.train_pass ?? null,
-        status: infra ? "infrastructure_failure" : "error",
+        ...itemFields(item),
+        status: failure.infra ? "infrastructure_failure" : "error",
+        failure,
         error: msg.slice(0, 2000),
+        completion_ids: [...new Set(completionIds)],
+        workspace: workspaceMeta
+          ? { id: workspaceMeta.workspace_id, base_commit: workspaceMeta.base_commit }
+          : null,
         artifacts: {
           events: existsSync(dumpPath) ? dumpPath : null,
           report: existsSync(reportPath) ? reportPath : null,
         },
       });
-      console.error(`[fail] ${id}: ${msg.slice(0, 200)}`);
+      console.error(
+        `[${failure.infra ? `infra:${failure.kind}` : "fail"}] ${id}: ${msg.slice(0, 200)}`,
+      );
     } finally {
       if (worktree) {
         try {
-          run(process.execPath, [
-            join(root, "scripts/disposable-worktree.mjs"),
-            "cleanup",
-            "--parent",
-            root,
-            "--worktree",
-            worktree,
-          ]);
-        } catch {
-          /* ignore */
+          cleanupWorkspace({ worktree });
+        } catch (e) {
+          console.error(`[warn] ${id}: workspace cleanup: ${e instanceof Error ? e.message : e}`);
         }
       }
-      writeFileSync(ledgerPath, JSON.stringify({ provenance, attempts }, null, 2) + "\n");
+      writeLedger();
     }
   }
 
   provenance.finished_at = new Date().toISOString();
 
-  // Mark headline try per task_chain (last successful try, else last try).
-  /** @type {Map<string, Record<string, unknown>[]>} */
+  // Mark headline try per task chain (last successful try, else last try that ran).
+  /** @type {Map<string, Record<string, any>[]>} */
   const chains = new Map();
   for (const a of attempts) {
-    if (!a.task_chain_id) continue;
+    if (a.try_index == null || !a.task_chain_id) continue;
     const k = String(a.task_chain_id);
     if (!chains.has(k)) chains.set(k, []);
     chains.get(k).push(a);
   }
   for (const rows of chains.values()) {
-    const ordered = [...rows].sort(
-      (x, y) => Number(x.try_index ?? 1) - Number(y.try_index ?? 1),
-    );
+    const ordered = rows
+      .filter((a) => a.status !== "skipped_after_success")
+      .sort((x, y) => Number(x.try_index) - Number(y.try_index));
     const win = [...ordered].reverse().find((a) => a.score?.task_success === true);
     const head = win ?? ordered[ordered.length - 1];
     if (head) head.outcome_role = "headline";
   }
 
+  const accounting = planAccounting(plan, attempts);
   const invariants = checkOptInvariants(attempts);
-  const evalAttempts = args.trainFreezeEval
-    ? attempts.filter((a) => a.phase === "eval")
-    : attempts;
-  const aggregates = aggregateAttempts(
-    args.trainFreezeEval ? evalAttempts : attempts,
-  );
+  const evalAttempts = args.trainFreezeEval ? attempts.filter((a) => a.phase === "eval") : attempts;
+  const aggregates = aggregateAttempts(evalAttempts);
   /** @type {Record<string, unknown>} */
   const adaptive = {};
-  for (const cond of ["cb-mutable", "cb-optimize", "cb-budget", "counterbalanced"]) {
-    if (attempts.some((a) => a.condition === cond)) {
-      adaptive[cond] = adaptiveArmStats(attempts, cond);
-    }
+  for (const cond of [...new Set(attempts.map((a) => String(a.condition)))].sort()) {
+    adaptive[cond] = adaptiveArmStats(attempts, cond);
   }
-  const taskOrder =
-    plan.find((p) => Array.isArray(p.task_order))?.task_order ??
-    args.taskIds ??
-    manifest.tasks.map((t) => t.id);
+  const independence = independenceReport(attempts, {
+    mode: args.mode,
+    cachedModels: provenance.gateway_cached_models,
+  });
+  const baselineCondition =
+    manifest.matrix?.baseline_condition ??
+    (attempts.some((a) => a.condition === "counterbalanced") ? "counterbalanced" : aggregates.arms.control);
   writeAttributionMd(join(rawRoot, "ATTRIBUTION.md"), {
     track: String(manifest.hri_track ?? manifest.study_id ?? "?"),
     attempts,
-    baselineCondition: "counterbalanced",
+    baselineCondition,
     invariants,
   });
+  const curriculum =
+    (args.curriculum && !args.trainFreezeEval) || manifest.matrix?.harness_lineage === "never_reset"
+      ? { curriculum_transfer: curriculumTransfer(attempts) }
+      : {};
   const summary = {
     provenance,
     planned_attempts: plan.length,
-    accounted_attempts: attempts.length,
+    accounted_attempts: accounting.accounted,
+    accounting,
     aggregates,
     adaptive_arms: adaptive,
     invariants,
+    independence,
     ...(args.trainFreezeEval
       ? {
           train_summary: trainSummary(attempts),
@@ -2489,12 +2180,7 @@ async function main() {
           eval_aggregates: aggregates,
         }
       : {}),
-    ...(args.curriculum && !args.trainFreezeEval
-      ? { curriculum_transfer: curriculumTransfer(attempts, taskOrder) }
-      : {}),
-    ...(manifest.matrix?.harness_lineage === "never_reset"
-      ? { curriculum_transfer: curriculumTransfer(attempts, taskOrder) }
-      : {}),
+    ...curriculum,
     attempts: attempts.map((a) => ({
       attempt_id: a.attempt_id,
       task_id: a.task_id,
@@ -2502,14 +2188,19 @@ async function main() {
       phase: a.phase ?? null,
       train_pass: a.train_pass ?? null,
       try_index: a.try_index ?? null,
+      max_task_tries: a.max_task_tries ?? null,
       task_chain_id: a.task_chain_id ?? null,
+      task_position: a.task_position ?? null,
       outcome_role: a.outcome_role ?? null,
       deployment_id: a.deployment_id,
       model_id: a.model_id,
       rep: a.rep,
       status: a.status,
+      failure: a.failure ?? null,
       score: a.score ?? null,
       error: a.error ?? null,
+      trajectory_sha256: a.trajectory_sha256 ?? null,
+      completion_ids: a.completion_ids ?? [],
       artifacts: a.artifacts
         ? {
             events_sha256: a.artifacts.events_sha256 ?? null,
@@ -2519,49 +2210,87 @@ async function main() {
     })),
   };
 
-  const summaryPath =
-    args.mode === "recorded"
-      ? join(root, manifest.outputs.summary)
-      : join(root, dirname(manifest.outputs.summary), `${runId}.summary.json`);
-  mkdirSync(dirname(summaryPath), { recursive: true });
+  // CASE-13: summaries live only with the raw run; promotion is explicit.
+  const summaryPath = join(rawRoot, "summary.json");
   const body = JSON.stringify(summary, null, 2) + "\n";
   writeFileSync(summaryPath, body);
-  writeFileSync(join(rawRoot, "summary.json"), body);
-  writeFileSync(
-    join(rawRoot, "summary.sha256"),
-    sha256Text(body) + "  summary.json\n",
-  );
+  writeFileSync(join(rawRoot, "summary.sha256"), sha256Text(body) + "  summary.json\n");
+  writeLedger();
 
+  /** @type {Record<string, unknown>} */
+  const exclusions = {};
+  for (const [cond, b] of Object.entries(aggregates.by_condition)) {
+    if (b.present || b.exclusions?.n_units) exclusions[cond] = b.exclusions;
+  }
   console.log(
     JSON.stringify(
       {
         run_id: runId,
         mode: args.mode,
+        evidence: provenance.evidence,
+        evidence_reason: provenance.evidence_reason,
         curriculum: Boolean(args.curriculum),
         train_freeze_eval: Boolean(args.trainFreezeEval),
         planned: plan.length,
-        accounted: attempts.length,
-        scored: aggregates.n_scored,
-        infrastructure: aggregates.n_infrastructure,
-        summary: summaryPath,
-        paired_deltas: aggregates.paired_deltas,
+        accounted: accounting.accounted,
+        by_status: accounting.by_status,
+        units: aggregates.n_units,
+        scored_units: aggregates.n_scored,
+        infrastructure_units: aggregates.n_infrastructure,
+        exclusions_by_arm: exclusions,
+        invariants: { ok: invariants.ok, violations: invariants.violations.length },
+        independence: { ok: independence.ok, note: independence.note },
+        summary: relative(root, summaryPath),
+        paired_deltas: {
+          task_success: {
+            treatment: aggregates.paired_deltas.task_success.treatment,
+            control: aggregates.paired_deltas.task_success.control,
+            status: aggregates.paired_deltas.task_success.status,
+            absolute: aggregates.paired_deltas.task_success.absolute,
+            n_matched: aggregates.paired_deltas.task_success.n_matched,
+            ci95: aggregates.paired_deltas.task_success.ci95,
+            mcnemar_p: aggregates.paired_deltas.task_success.mcnemar?.p_exact ?? null,
+          },
+        },
         train_summary: args.trainFreezeEval ? summary.train_summary : undefined,
-        curriculum_transfer:
-          args.curriculum && !args.trainFreezeEval
-            ? summary.curriculum_transfer
-            : undefined,
+        curriculum_transfer: summary.curriculum_transfer,
+        promote: provenance.evidence
+          ? `node scripts/promote-run.mjs --run ${relative(root, rawRoot)}`
+          : "not promotable (non-evidence run)",
       },
       null,
       2,
     ),
   );
 
-  const incomplete = plan.length !== attempts.length;
   const hardErrors = attempts.some((a) => a.status === "error");
-  process.exit(incomplete || hardErrors ? 1 : 0);
+  // An arm that was planned but produced no scored unit measured nothing.
+  const unmeasured = [...new Set(plan.map((p) => String(p.condition)))].filter(
+    (c) => !(args.trainFreezeEval && !evalAttempts.some((a) => a.condition === c)) &&
+      !aggregates.by_condition[c]?.present,
+  );
+  if (unmeasured.length) {
+    console.error(`[FAIL] no scored units for arm(s): ${unmeasured.join(", ")} (see exclusions_by_arm)`);
+  }
+  if (!invariants.ok) {
+    console.error(
+      `\n[FAIL] INVARIANTS FAILED (${invariants.violations.length}) — see ${relative(root, join(rawRoot, "ATTRIBUTION.md"))}:`,
+    );
+    for (const v of invariants.violations.slice(0, 20)) console.error(`  - ${v}`);
+  }
+  if (!independence.ok && args.mode === "live") {
+    console.error(`[WARN] ${independence.note}`);
+  }
+  if (!accounting.complete) {
+    console.error(`[FAIL] ${accounting.missing.length} planned attempt(s) unaccounted`);
+  }
+  if (hardErrors) console.error("[FAIL] attempts with hard errors (status=error) — see ledger");
+  process.exit(!accounting.complete || hardErrors || !invariants.ok || unmeasured.length ? 1 : 0);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+}

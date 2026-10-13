@@ -6,7 +6,7 @@
  * Usage: node scripts/live-mcp-stdio.mjs
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,8 +38,15 @@ function runTs(dump) {
   );
 }
 
+/** This checkout's Python engine (PYTHONPATH below) under the repo .venv or PATH python. */
+function pythonBin() {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  const venv = join(root, ".venv", "bin", "python");
+  return existsSync(venv) ? venv : "python";
+}
+
 function runPy(dump) {
-  execFileSync("python", ["-m", "fausth", "run", harness, "--deployment", deployment, "--dump", dump], {
+  execFileSync(pythonBin(), ["-m", "fausth", "run", harness, "--deployment", deployment, "--dump", dump], {
     cwd: join(root, "engines/py"),
     env: {
       ...process.env,

@@ -24,29 +24,23 @@ import {
   readdirSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadDotEnv } from "./lib/env.mjs";
+import {
+  ALL_KIT_MODELS,
+  KIT_BASE_URL,
+  assertLiveKitModels,
+  shortKitModel,
+} from "./lib/kit-models.mjs";
+import { repoActivation, shellQuote } from "./lib/shell.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-const ALL_KIT_MODELS = [
-  "kit.gemma4-31b-it",
-  "kit.minimax-m2.7-229b",
-  "kit.qwen3.5-397b-A17b",
-  "kit.mistral-small-4-119b-a8b",
-];
-
-const MODEL_SHORT = {
-  "kit.gemma4-31b-it": "gemma",
-  "kit.minimax-m2.7-229b": "minimax",
-  "kit.qwen3.5-397b-A17b": "qwen",
-  "kit.mistral-small-4-119b-a8b": "mistral",
-};
 
 const DEFAULT_PROBE_TASKS = ["01-fix-add", "02-add-multiply"];
 const TASK_BAND_A = ["01-fix-add", "02-add-multiply"];
 const TASK_BAND_B = ["05-rename-greet", "06-fix-null-guard"];
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const cmd = argv[0] ?? "help";
   const out = {
     cmd,
@@ -59,6 +53,7 @@ function parseArgs(argv) {
     skipConformance: true,
     dryRun: false,
     rawDir: null,
+    models: [...ALL_KIT_MODELS],
   };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
@@ -71,6 +66,9 @@ function parseArgs(argv) {
       out.conditions = (argv[++i] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     } else if (a === "--manifest") out.manifest = argv[++i];
     else if (a === "--raw-dir") out.rawDir = argv[++i];
+    else if (a === "--kit-models") {
+      out.models = (argv[++i] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    }
     else if (a === "--no-skip-conformance") out.skipConformance = false;
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--curriculum" || a === "--train-freeze-eval") {
@@ -82,25 +80,30 @@ function parseArgs(argv) {
   if (![1, 2, 4, 8].includes(out.level) && cmd === "launch") {
     throw new Error(`--level must be 1|2|4|8 (got ${out.level})`);
   }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(out.runIdPrefix)) {
+    throw new Error(`--run-id-prefix must match [A-Za-z0-9._-]+ (got ${JSON.stringify(out.runIdPrefix)})`);
+  }
+  if (!out.models.length) throw new Error("--kit-models must name at least one model");
+  assertLiveKitModels(out.models, "kit-tmux-shard");
   return out;
 }
 
-function shortModel(model) {
-  return MODEL_SHORT[model] ?? model.replace(/^kit\./, "").replace(/[^a-z0-9]+/gi, "-");
-}
+const shortModel = shortKitModel;
 
 /**
- * Build shard list for a probe ladder level.
- * @param {{ level: number, runIdPrefix: string, tasks: string[]|null, reps: number }} opts
+ * Build shard list for a probe ladder level. Shards cycle over `opts.models`
+ * (default: every allowed KIT model).
+ * @param {{ level: number, runIdPrefix: string, tasks: string[]|null, reps: number, models?: string[] }} opts
  */
 export function buildShards(opts) {
   const tasks = opts.tasks?.length ? opts.tasks : DEFAULT_PROBE_TASKS;
   const { level, runIdPrefix, reps } = opts;
+  const models = opts.models?.length ? opts.models : ALL_KIT_MODELS;
   /** @type {Array<{ session: string, runId: string, models: string[], tasks: string[], reps: number }>} */
   const shards = [];
 
   if (level === 1) {
-    const model = ALL_KIT_MODELS[0];
+    const model = models[0];
     shards.push({
       session: `${runIdPrefix}-l1-${shortModel(model)}`,
       runId: `${runIdPrefix}-l1-${shortModel(model)}`,
@@ -109,7 +112,7 @@ export function buildShards(opts) {
       reps,
     });
   } else if (level === 2) {
-    for (const model of ALL_KIT_MODELS.slice(0, 2)) {
+    for (const model of models.slice(0, 2)) {
       shards.push({
         session: `${runIdPrefix}-l2-${shortModel(model)}`,
         runId: `${runIdPrefix}-l2-${shortModel(model)}`,
@@ -119,7 +122,7 @@ export function buildShards(opts) {
       });
     }
   } else if (level === 4) {
-    for (const model of ALL_KIT_MODELS) {
+    for (const model of models) {
       shards.push({
         session: `${runIdPrefix}-l3-${shortModel(model)}`,
         runId: `${runIdPrefix}-l3-${shortModel(model)}`,
@@ -129,7 +132,7 @@ export function buildShards(opts) {
       });
     }
   } else if (level === 8) {
-    for (const model of ALL_KIT_MODELS) {
+    for (const model of models) {
       for (const [bandName, bandTasks] of [
         ["a", opts.tasks?.length ? tasks.slice(0, Math.ceil(tasks.length / 2)) : TASK_BAND_A],
         ["b", opts.tasks?.length ? tasks.slice(Math.ceil(tasks.length / 2)) : TASK_BAND_B],
@@ -149,35 +152,39 @@ export function buildShards(opts) {
 }
 
 function shellActivate() {
-  return [
-    `cd ${JSON.stringify(root)}`,
-    `export NVM_DIR="$HOME/.nvm"`,
-    `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
-    `nvm use >/dev/null`,
-    `export PATH="$NVM_DIR/versions/node/$(nvm version)/bin:$PATH"`,
-    `[ -f .venv/bin/activate ] && . .venv/bin/activate`,
-    `set -a; [ -f .env ] && . ./.env; set +a`,
-    `mkdir -p live/reports/kit-probe`,
-  ].join(" && ");
+  return repoActivation(root, { mkdirs: ["live/reports/kit-probe"] });
 }
 
-function shardCommand(shard, opts) {
-  const parts = [
-    "node scripts/case-study-coding.mjs",
-    "--mode live",
-    `--manifest ${JSON.stringify(opts.manifest)}`,
-    `--kit-models ${shard.models.join(",")}`,
-    `--tasks ${shard.tasks.join(",")}`,
-    `--reps ${shard.reps}`,
-    `--run-id ${shard.runId}`,
+/**
+ * Full `bash -lc` command for one shard. Every interpolated value is quoted
+ * (SCR-17); pipefail makes `EXIT:` report the runner's status, not tee's, and a
+ * failed activation never falls through to the run (SCR-18).
+ * @param {{ runId: string, models: string[], tasks: string[], reps: number }} shard
+ * @param {{ manifest: string, skipConformance?: boolean, conditions?: string[] | null }} opts
+ * @param {string} [activate] shell prelude (defaults to repo + nvm + .venv activation)
+ */
+export function shardCommand(shard, opts, activate = shellActivate()) {
+  const argv = [
+    "node",
+    "scripts/case-study-coding.mjs",
+    "--mode",
+    "live",
+    "--manifest",
+    opts.manifest,
+    "--kit-models",
+    shard.models.join(","),
+    "--tasks",
+    shard.tasks.join(","),
+    "--reps",
+    String(shard.reps),
+    "--run-id",
+    shard.runId,
     "--resume",
   ];
-  if (opts.skipConformance) parts.push("--skip-conformance");
-  if (opts.conditions?.length) {
-    parts.push(`--conditions ${opts.conditions.join(",")}`);
-  }
-  const log = `live/reports/kit-probe/${shard.runId}.log`;
-  return `${parts.join(" ")} 2>&1 | tee ${JSON.stringify(log)}; echo EXIT:$? | tee -a ${JSON.stringify(log)}`;
+  if (opts.skipConformance) argv.push("--skip-conformance");
+  if (opts.conditions?.length) argv.push("--conditions", opts.conditions.join(","));
+  const log = shellQuote(`live/reports/kit-probe/${shard.runId}.log`);
+  return `set -o pipefail; ${activate}; ${argv.map(shellQuote).join(" ")} 2>&1 | tee ${log}; echo "EXIT:$?" | tee -a ${log}`;
 }
 
 function tmuxExists(session) {
@@ -204,7 +211,7 @@ function launch(opts) {
   console.log(`Wrote ${path} (${shards.length} shards)`);
 
   for (const shard of shards) {
-    const full = `${shellActivate()} && ${shardCommand(shard, opts)}`;
+    const full = shardCommand(shard, opts);
     console.log(`\n=== ${shard.session} ===`);
     console.log(`run_id=${shard.runId} models=${shard.models.join(",")} tasks=${shard.tasks.join(",")}`);
     if (opts.dryRun) {
@@ -227,15 +234,15 @@ function launch(opts) {
 }
 
 /** Fast concurrent chat probes (auth + one completion) to bound gateway N without full case studies. */
-async function probeChat(level) {
-  loadDotEnvQuiet();
+async function probeChat(level, kitModels = ALL_KIT_MODELS) {
+  loadDotEnv(join(root, ".env"));
   const key = process.env.KIT_AI_API_KEY;
   if (!key) throw new Error("KIT_AI_API_KEY missing");
-  const base = "https://ki-toolbox.scc.kit.edu/api/v1";
+  const base = KIT_BASE_URL;
   const n = level === 1 ? 1 : level === 2 ? 2 : level === 4 ? 4 : 8;
   const models = [];
   for (let i = 0; i < n; i++) {
-    models.push(ALL_KIT_MODELS[i % ALL_KIT_MODELS.length]);
+    models.push(kitModels[i % kitModels.length]);
   }
   const started = Date.now();
   const results = await Promise.all(
@@ -295,53 +302,58 @@ async function probeChat(level) {
   return summary;
 }
 
-function loadDotEnvQuiet() {
-  const path = join(root, ".env");
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq <= 0) continue;
-    const key = t.slice(0, eq).trim();
-    let val = t.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = val;
-  }
-}
-
-function resolveRawDirs(prefix) {
-  const candidates = [
-    join(root, "live/reports/case-studies/coding-counterbalance"),
-    join(root, "live/reports/case-studies/mutable-cells"),
-    join(root, "live/reports/case-studies/adversarial"),
-    join(root, "live/reports/case-studies/support-policy"),
-  ];
+/**
+ * Run directories that belong to `prefix`: exactly the run ids recorded in the
+ * prefix's shard maps (fallback: names of the form `<prefix>-l<level>-...`).
+ * Substring matches are not used — `kit-probe` must not pick up `kit-probe-v2` (SCR-18).
+ * @param {string} prefix
+ * @param {string} [base] repo root (tests)
+ */
+export function resolveRawDirs(prefix, base = root) {
+  const runsRoot = join(base, "live/reports/case-studies");
+  const probe = join(base, "live/reports/kit-probe");
+  /** @type {Set<string>} */
+  const runIds = new Set();
   /** @type {string[]} */
-  const found = [];
-  for (const base of candidates) {
-    if (!existsSync(base)) continue;
-    for (const name of readdirSync(base)) {
-      if (name.startsWith(prefix) || name.includes(prefix)) {
-        found.push(join(base, name));
-      }
-    }
-  }
-  // Also direct kit-probe logs
-  const probe = join(root, "live/reports/kit-probe");
+  const shardMaps = [];
   if (existsSync(probe)) {
     for (const name of readdirSync(probe)) {
-      if (name.startsWith(prefix) && name.endsWith("-shards.json")) {
-        found.push(join(probe, name));
+      if (new RegExp(`^${escapeRegExp(prefix)}-l\\d+-shards\\.json$`).test(name)) {
+        shardMaps.push(join(probe, name));
+        try {
+          const map = JSON.parse(readFileSync(join(probe, name), "utf8"));
+          for (const sh of map.shards ?? []) if (sh.runId) runIds.add(String(sh.runId));
+        } catch {
+          /* unreadable map */
+        }
       }
     }
   }
-  return found;
+  const ownName = new RegExp(`^${escapeRegExp(prefix)}-l\\d+-`);
+  /** @type {string[]} */
+  const found = [];
+  if (existsSync(runsRoot)) {
+    for (const study of readdirSync(runsRoot)) {
+      const studyDir = join(runsRoot, study);
+      let names = [];
+      try {
+        names = readdirSync(studyDir);
+      } catch {
+        continue;
+      }
+      for (const name of names) {
+        if (runIds.has(name) || (!runIds.size && ownName.test(name))) {
+          found.push(join(studyDir, name));
+        }
+      }
+    }
+  }
+  return [...found.sort(), ...shardMaps.sort()];
+}
+
+/** @param {string} s */
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function loadLedger(runDir) {
@@ -447,11 +459,14 @@ Commands:
   aggregate  --run-id-prefix <id>
   chat-probe --level 1|2|4|8   # concurrent one-shot chat (fast N bound)
 
+Options:
+  --kit-models a,b   models to shard over (default: ${ALL_KIT_MODELS.join(", ")})
+
 Levels:
-  1 → 1 session (gemma)
-  2 → 2 sessions (gemma, minimax)
-  4 → 4 sessions (all KIT models)
-  8 → 8 sessions (4 models × 2 task bands)
+  1 → 1 session (first model)
+  2 → 2 sessions (first two models)
+  4 → one session per model
+  8 → one session per model × 2 task bands
 
 Never use with --curriculum / --train-freeze-eval.`);
 }
@@ -461,11 +476,13 @@ async function main() {
   if (opts.cmd === "launch") launch(opts);
   else if (opts.cmd === "status") status(opts);
   else if (opts.cmd === "aggregate") aggregate(opts);
-  else if (opts.cmd === "chat-probe") await probeChat(opts.level);
+  else if (opts.cmd === "chat-probe") await probeChat(opts.level, opts.models);
   else help();
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+}

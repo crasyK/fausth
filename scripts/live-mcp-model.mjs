@@ -8,38 +8,33 @@
  *   node scripts/live-mcp-model.mjs kit
  *   node scripts/live-mcp-model.mjs openrouter
  *
- * Skips (exit 0) when the required API key is missing.
+ * Skips (exit 0) when the required API key is missing; exit 2 = infrastructure failure.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadDotEnv } from "./lib/env.mjs";
+import { classifyFailure } from "./lib/failure.mjs";
+import { DEFAULT_KIT_MODEL } from "./lib/kit-models.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const harness = join(root, "examples/primitives/mcp-connectors");
 const reportDir = join(root, "live/reports");
 mkdirSync(reportDir, { recursive: true });
+const YAML = createRequire(join(root, "engines/ts/package.json"))("yaml");
 
-function loadDotEnv(path = join(root, ".env")) {
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq <= 0) continue;
-    const key = t.slice(0, eq).trim();
-    let val = t.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = val;
-  }
+loadDotEnv(join(root, ".env"));
+
+/** KIT runs use the D15 model regardless of the example's pinned list. */
+function kitDeployment() {
+  const dep = YAML.parse(readFileSync(join(harness, "deployment.stdio-kit.yml"), "utf8"));
+  dep.model = { ...(dep.model ?? {}), models: [DEFAULT_KIT_MODEL] };
+  const out = join(reportDir, "live-mcp-model-kit.deployment.yml");
+  writeFileSync(out, YAML.stringify(dep));
+  return out;
 }
-
-loadDotEnv();
 
 const whichArg = process.argv[2];
 const prefer =
@@ -54,7 +49,7 @@ const cfg =
     ? {
         name: "kit",
         keyEnv: "KIT_AI_API_KEY",
-        deployment: join(harness, "deployment.stdio-kit.yml"),
+        deployment: null,
       }
     : {
         name: "openrouter",
@@ -66,6 +61,7 @@ if (!process.env[cfg.keyEnv]) {
   console.log(JSON.stringify({ skipped: true, reason: `missing ${cfg.keyEnv}` }));
   process.exit(0);
 }
+if (cfg.name === "kit") cfg.deployment = kitDeployment();
 
 const dump = join(reportDir, `live-mcp-model-${cfg.name}.jsonl`);
 const prompt =
@@ -102,12 +98,13 @@ try {
   );
 } catch (e) {
   const err = e;
-  const msg = String(err.stderr || err.stdout || err.message || err);
-  if (/rate.?limit|429|empty catalog|no models/i.test(msg)) {
-    console.log(JSON.stringify({ skipped: true, reason: "rate_limited_or_catalog", provider: cfg.name }));
-    process.exit(0);
+  const failure = classifyFailure({ message: String(err.message ?? ""), stderr: String(err.stderr ?? "") });
+  if (failure.infra) {
+    // Exit 2: infrastructure (rate limit / auth / gateway / network) — reported, not a pass.
+    console.log(JSON.stringify({ infra_failure: failure, provider: cfg.name }));
+    process.exit(2);
   }
-  console.error(msg);
+  console.error(String(err.stderr || err.stdout || err.message || err));
   process.exit(1);
 }
 

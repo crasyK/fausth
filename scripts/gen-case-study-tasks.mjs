@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
- * One-shot generator for coding case-study tasks + recorded model traces.
- * Run: node scripts/gen-case-study-tasks.mjs
+ * ONE-SHOT GENERATOR (historical; not part of CI or any experiment run).
+ *
+ * Regenerates the committed coding case-study task fixtures and recorded traces
+ * under case-studies/coding-counterbalance/{tasks,recorded}/ — overwriting them.
+ * Those files are now maintained by hand; this script only documents how they
+ * were bootstrapped. It refuses to write unless --write is passed.
+ *
+ * Run: node scripts/gen-case-study-tasks.mjs --write
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -235,6 +241,14 @@ export function average(nums) {
 `,
   },
 ];
+
+if (!process.argv.includes("--write")) {
+  console.error(
+    "gen-case-study-tasks: one-shot generator; it would OVERWRITE committed task fixtures. " +
+      "Pass --write to regenerate them deliberately.",
+  );
+  process.exit(2);
+}
 
 const tasksRoot = join(root, "case-studies/coding-counterbalance/tasks");
 const recordedRoot = join(root, "case-studies/coding-counterbalance/recorded");
