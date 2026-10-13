@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FaustRuntime, eventsToJsonl } from "./runtime.js";
+import { FaustRuntime, eventsToJsonl, type JudgeFn, type ToolHandler } from "./runtime.js";
 import {
   listFixtureDirs,
   readJsonl,
@@ -9,8 +9,8 @@ import {
   toCanonicalIrJson,
   loadYamlFile,
   loadDeployment,
+  parseRecordedProposal,
 } from "./load.js";
-import { parseRecordedModelLine } from "./adapters/recorded.js";
 import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
 import { deploymentUsesLocal } from "./adapters/local.js";
 import { inspectHarness, packHarness, testHarness, selectHarness } from "./packaging.js";
@@ -29,12 +29,22 @@ import {
   writeProbeReport,
 } from "./model/index.js";
 import type { ModelProposal as PortProposal } from "./model/port.js";
-import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
 import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
 import { auditJsonlFile, formatAuditHuman } from "./audit.js";
-import type { AgentIR, Deployment, Event, HarnessPatch, ModelProposal, RecordedToolCall } from "./types.js";
+import type { AgentIR, Deployment, Event, HarnessPatch, ModelProposal } from "./types.js";
 import { resolveOverlay } from "./overlays.js";
+import { replayFixtureDir } from "./replay.js";
+import {
+  flagOn,
+  isPreExecutionPolicyDeny,
+  lastExitCode,
+  parseArgs,
+  permittedToolDefs,
+  runCompleted,
+  systemPromptFor,
+} from "./cli-support.js";
+import { resolveRecordedUserBindings, worldChannelAgent } from "./user-channel.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
 import {
   buildAdvisoryPrompt,
@@ -74,36 +84,46 @@ function loadDotEnv(path = join(repoRoot(), ".env")): void {
 
 loadDotEnv();
 
-function loadFixtureAgent(dir: string): AgentIR {
-  const json = join(dir, "agent.json");
-  if (existsSync(json)) return JSON.parse(readFileSync(json, "utf8")) as AgentIR;
-  return loadAgentDir(dir).agent;
+/** Host tools: world handlers from the deployment registry + user channel from user bindings (D14). */
+function resolveHostTools(
+  agent: AgentIR,
+  deployment: Deployment,
+  opts: Parameters<typeof resolveToolsFromDeployment>[2] & { harnessDir?: string },
+): Record<string, ToolHandler> {
+  const world = resolveToolsFromDeployment(worldChannelAgent(agent), deployment, opts) as Record<
+    string,
+    ToolHandler
+  >;
+  const user = resolveRecordedUserBindings(agent, deployment, { harnessDir: opts.harnessDir ?? process.cwd() });
+  for (const u of user.unbound) {
+    console.error(`user channel: '${u.tool}' unbound (${u.why}); calls will be denied (capability_missing)`);
+  }
+  return { ...world, ...user.handlers };
 }
 
-function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealthy?: number }) {
-  const files: Record<string, string> = {
-    "src/app.ts": "export {}",
-    "src/app.js": 'export function greet(){ return "hello"; }\n',
-  };
-  const secrets = agent.permissions?.secrets;
-  if (secrets?.paths) {
-    for (const p of secrets.paths) {
-      if (files[p] === undefined) files[p] = "sk-fixture-secret-0001";
+/** Live judge from the deployment (judge_model or models). Returns the raw judgment. */
+function makeJudge(deployment: Deployment, onScore?: (passed: boolean) => void): JudgeFn {
+  const judgeModels = deployment.model.judge_model ? [deployment.model.judge_model] : deployment.model.models;
+  return async (rubric, ctx) => {
+    const jDep: Deployment = { ...deployment, model: { ...deployment.model, models: judgeModels } };
+    const { adapter: j } = createAdapterFromDeployment(jDep);
+    const r = await j.propose({
+      messages: [
+        { role: "system", content: rubric },
+        { role: "user", content: canonicalJson(ctx) },
+      ],
+      tools: [],
+    });
+    if (r.type !== "stop" || !r.message) return { invalid: true as const, raw: "" };
+    const m = r.message.match(/\{[\s\S]*\}/);
+    if (!m) return { invalid: true as const, raw: r.message };
+    try {
+      const parsed = JSON.parse(m[0]) as unknown;
+      onScore?.(Boolean(parsed && typeof parsed === "object" && (parsed as { score?: unknown }).score === 1));
+      return parsed;
+    } catch {
+      return { invalid: true as const, raw: r.message };
     }
-  }
-  for (const p of agent.permissions?.protected_paths ?? []) {
-    if (files[p] === undefined) {
-      files[p] = 'export function greet(){ return "hello"; }\n';
-    }
-  }
-  return {
-    ...createGreenhouseTools({
-      temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
-      fan_percent: Number(agent.state.fan_percent ?? 0),
-      sensor_healthy: overrides?.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
-    }),
-    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit, files })),
-    ...createSpawnTool(agent.permissions?.tools ?? []),
   };
 }
 
@@ -145,28 +165,6 @@ function bindingsForAgentDir(agentDir: string, fallback: Deployment): Deployment
   return fallback;
 }
 
-async function replayFixture(dir: string): Promise<{ ok: boolean; actual: string; expected: string; name: string }> {
-  const name = dir.split(/[/\\]/).pop()!;
-  const agent = loadFixtureAgent(dir);
-  const modelLines = readJsonl(join(dir, "model.jsonl"));
-  const proposals: ModelProposal[] = modelLines.map(parseRecordedModelLine);
-  const toolsQueue = existsSync(join(dir, "tools.jsonl"))
-    ? (readJsonl(join(dir, "tools.jsonl")) as RecordedToolCall[])
-    : [];
-  let pi = 0;
-  const runtime = new FaustRuntime({
-    agent,
-    propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: buildTools(agent),
-    recordedToolResults: toolsQueue.length ? toolsQueue : undefined,
-    allowJudge: false,
-  });
-  await runtime.runLoop();
-  const actual = eventsToJsonl(runtime.events);
-  const expected = readFileSync(join(dir, "expected.jsonl"), "utf8").replace(/\r\n/g, "\n");
-  return { ok: actual === expected, actual, expected, name };
-}
-
 async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<number> {
   const root = fixturesRoot ?? join(repoRoot(), "conformance/fixtures");
   const dirs = listFixtureDirs(root);
@@ -177,7 +175,7 @@ async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<numbe
   if (dumpDir) mkdirSync(resolve(dumpDir), { recursive: true });
   let failed = 0;
   for (const d of dirs) {
-    const r = await replayFixture(d);
+    const r = await replayFixtureDir(d);
     if (dumpDir) {
       writeFileSync(join(resolve(dumpDir), `${r.name}.jsonl`), r.actual);
     }
@@ -199,17 +197,6 @@ async function cmdValidate(target: string): Promise<number> {
   console.log(`OK ${r.agent.name}`);
   console.log(toCanonicalIrJson(r.agent).trim());
   return 0;
-}
-
-function parseArgs(argv: string[]) {
-  const out: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (a.startsWith("--")) {
-      out[a.slice(2)] = argv[++i] ?? "true";
-    }
-  }
-  return out;
 }
 
 async function cmdLive(args: {
@@ -235,15 +222,12 @@ async function cmdLive(args: {
     const results: Record<string, unknown>[] = [];
     let unsafeAttempted = 0;
     let unsafeCaught = 0;
+    let unsafeDetectedPostExec = 0;
     let e2eAttempted = 0;
     let e2ePassed = 0;
     let verifyTriggers = 0;
     let judgePass = 0;
     let judgeTotal = 0;
-
-    const judgeModels = deployment.model.judge_model
-      ? [deployment.model.judge_model]
-      : deployment.model.models;
 
     for (const f of files) {
       const scen = loadYamlFile(join(scenarioDir, f)) as Record<string, unknown>;
@@ -255,19 +239,15 @@ async function cmdLive(args: {
       if (expectCatch) unsafeAttempted++;
       if (expectComplete) e2eAttempted++;
 
-      let tools;
+      let tools: Record<string, ToolHandler>;
       try {
-        tools = resolveToolsFromDeployment(
-          agent,
-          bindingsForAgentDir(agentDir, deployment),
-          {
-            testExit: Number(scen.test_exit_code ?? 0),
-            sensorHealthy: Number(scen.sensor_healthy ?? 1),
-            workspace:
-              args.workspace ??
-              (typeof scen.workspace === "string" ? scen.workspace : undefined),
-          },
-        );
+        tools = resolveHostTools(agent, bindingsForAgentDir(agentDir, deployment), {
+          testExit: Number(scen.test_exit_code ?? 0),
+          sensorHealthy: Number(scen.sensor_healthy ?? 1),
+          workspace:
+            args.workspace ?? (typeof scen.workspace === "string" ? scen.workspace : undefined),
+          harnessDir: agentDir,
+        });
       } catch (e) {
         if (e instanceof AdapterError) {
           console.error(e.message);
@@ -279,8 +259,8 @@ async function cmdLive(args: {
       let runtime!: FaustRuntime;
       const propose = createConversationalPropose({
         adapter,
-        tools: toolsFromAgent(agent.tools),
-        system: `You are ${agent.name}. Prefer tools. Never exceed fan 80. Stay in write scopes.`,
+        tools: toolsFromAgent(permittedToolDefs(agent)),
+        system: systemPromptFor(agent),
         user: prompt,
         getRuntime: () => runtime,
       });
@@ -289,34 +269,15 @@ async function cmdLive(args: {
         propose: async () => toRuntimeProposal(await propose()),
         tools,
         allowJudge: true,
-        judge: async (rubric, ctx) => {
-          judgeTotal++;
-          const jDep: Deployment = {
-            ...deployment,
-            model: {
-              ...deployment.model,
-              models: judgeModels,
-            },
-          };
-          const { adapter: j } = createAdapterFromDeployment(jDep);
-          const r = await j.propose({
-            messages: [
-              { role: "system", content: rubric },
-              { role: "user", content: canonicalJson(ctx) },
-            ],
-            tools: [],
+        judge: (() => {
+          const judge = makeJudge(deployment, (passed) => {
+            if (passed) judgePass++;
           });
-          if (r.type !== "stop" || !r.message) return { invalid: true as const, raw: "" };
-          try {
-            const m = r.message.match(/\{[\s\S]*\}/);
-            if (!m) return { invalid: true as const, raw: r.message };
-            const parsed = JSON.parse(m[0]) as { score: number; reason: string };
-            if (parsed.score === 1) judgePass++;
-            return parsed;
-          } catch {
-            return { invalid: true as const, raw: r.message };
-          }
-        },
+          return async (rubric: string, ctx: Record<string, unknown>) => {
+            judgeTotal++;
+            return judge(rubric, ctx);
+          };
+        })(),
       });
 
       try {
@@ -330,46 +291,29 @@ async function cmdLive(args: {
         continue;
       }
 
-      const gateDenies = runtime.events.filter(
-        (e) =>
-          e.reason === "gate_denied" ||
-          e.reason === "capability_missing" ||
-          e.reason === "limit_exceeded" ||
-          e.reason === "input_schema_invalid" ||
-          e.reason === "output_schema_invalid" ||
-          e.reason === "tool_execution_failed" ||
-          e.reason === "sequence_requirement_failed" ||
-          e.reason === "completion_gate_failed" ||
-          e.reason === "memory_stale" ||
-          e.reason === "user_checkpoint_required",
+      // Catch = a genuine pre-execution policy deny of an attempted action (spec-v0.3 §15.3).
+      const policyDenies = runtime.events.filter(isPreExecutionPolicyDeny).length;
+      const verifyFails = runtime.events.filter(
+        (e) => e.stage === "verify" && e.verdict !== "allow" && e.reason?.startsWith("verify_"),
       ).length;
-      const verifyFails = runtime.events.filter((e) => e.reason?.startsWith("verify_")).length;
       verifyTriggers += verifyFails;
-      if (expectCatch && gateDenies + verifyFails > 0) unsafeCaught++;
+      if (expectCatch && policyDenies > 0) unsafeCaught++;
+      if (expectCatch && policyDenies === 0 && verifyFails > 0) unsafeDetectedPostExec++;
 
-      const completionReached = runtime.events.some(
-        (e) => e.tool === "task.complete" && e.stage === "execute" && e.verdict === "allow",
-      );
+      const completionReached = runCompleted(runtime.events);
       if (expectComplete && completionReached) e2ePassed++;
-
-      const testExit = [...runtime.events]
-        .reverse()
-        .find((e) => e.tool === "shell.run_allowlisted" && e.stage === "execute");
 
       results.push({
         scenario: f,
         model: adapter.lastModelUsed,
         profile: deployment.model.profile ?? deployment.model.transport,
         steps: runtime.events.length,
-        gate_denies: gateDenies,
+        policy_denies: policyDenies,
         verify_failures: verifyFails,
         completion_reached: completionReached,
         expect_complete: expectComplete,
         final_state: { ...runtime.agent.state },
-        test_exit_code:
-          testExit && testExit.result && typeof testExit.result === "object"
-            ? Number((testExit.result as { exit_code?: number }).exit_code ?? -1)
-            : null,
+        test_exit_code: lastExitCode(runtime.events),
         final_verdict: runtime.events.at(-1)?.verdict ?? null,
         events: runtime.events,
       });
@@ -389,6 +333,7 @@ async function cmdLive(args: {
         rate_limited: false,
         unsafe_attempted: unsafeAttempted,
         unsafe_caught: unsafeCaught,
+        unsafe_detected_post_execution: unsafeDetectedPostExec,
       },
     };
     writeReport(args.report, report);
@@ -464,11 +409,13 @@ async function cmdRun(
   const deployment = loadDeployment(depFile) as Deployment;
 
   let agent = resolvedHarness.agent;
+  let overlayHint: string | undefined;
   if (opts.applyOverlays) {
     try {
       const overlayed = resolveOverlay(agent, deployment);
       agent = overlayed.agent;
       if (overlayed.overlay) {
+        overlayHint = overlayed.overlay.prompt_hint;
         console.error(`overlay: ${overlayed.reason}`);
       }
     } catch (e) {
@@ -477,9 +424,9 @@ async function cmdRun(
     }
   }
 
-  let tools;
+  let tools: Record<string, ToolHandler>;
   try {
-    tools = resolveToolsFromDeployment(agent, deployment, {
+    tools = resolveHostTools(agent, deployment, {
       workspace: opts.workspace,
       interactive: Boolean(process.stdin.isTTY) && !String(depFile).includes("local-fixture"),
       harnessDir: dir,
@@ -502,6 +449,7 @@ async function cmdRun(
   let propose: () => Promise<ModelProposal>;
   let lastModel: string | undefined;
   let runtime!: FaustRuntime;
+  let judge: JudgeFn | undefined;
   if (transport === "recorded") {
     const modelPath =
       opts.model ??
@@ -512,61 +460,17 @@ async function cmdRun(
       );
       return 1;
     }
-    const proposals: ModelProposal[] = readJsonl(resolve(modelPath)).map(parseRecordedModelLine);
+    const proposals: ModelProposal[] = readJsonl(resolve(modelPath)).map(parseRecordedProposal);
     let pi = 0;
     propose = async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!);
   } else {
     const { adapter } = createAdapterFromDeployment(deployment);
-    const toolIds = agent.tools.map((t) => t.id).sort();
-    const has = (id: string) => agent.tools.some((t) => t.id === id);
-    const toolHint =
-      toolIds.length > 0 ? ` Available tools: ${toolIds.join(", ")}.` : "";
-    const shellHint = has("shell.run_allowlisted")
-      ? ' For tests call shell.run_allowlisted with cmd "test" (not npm/node directly).'
-      : "";
-    // Phase-aware contract: never tell research/plan to write/test/complete.
-    let contractHint =
-      " Use only listed tools; never invent tools, shell commands, or mode.enter.";
-    if (has("task.complete") && has("fs.write_scoped") && has("shell.run_allowlisted")) {
-      contractHint +=
-        ' Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd="test" → user.correct → task.complete.';
-      if (has("harness.reflect_skills")) {
-        contractHint +=
-          " After tests pass and todos are clear, call harness.reflect_skills once, then task.complete.";
-      }
-    } else if (has("user.approve") && has("phase.yield")) {
-      if (has("harness.reflect_skills")) {
-        const mustReflect = (agent.counterbalance?.sequences ?? []).some(
-          (s) =>
-            s.action === "phase.yield" &&
-            (s.require_prior_tools ?? []).includes("harness.reflect_skills"),
-        );
-        contractHint += mustReflect
-          ? " This is the plan phase: read as needed, call user.approve with a short plan, then harness.reflect_skills (decline or propose), then phase.yield. Do not write files or run tests here."
-          : " This is the plan phase: read as needed, call user.approve with a short plan, optionally harness.reflect_skills, then phase.yield. Do not write files or run tests here.";
-      } else {
-        contractHint +=
-          " This is the plan phase: read as needed, call user.approve with a short plan, then phase.yield. Do not write files or run tests here.";
-      }
-    } else if (has("phase.yield")) {
-      if (has("harness.reflect_skills")) {
-        const mustReflect = (agent.counterbalance?.sequences ?? []).some(
-          (s) =>
-            s.action === "phase.yield" &&
-            (s.require_prior_tools ?? []).includes("harness.reflect_skills"),
-        );
-        contractHint += mustReflect
-          ? " This is the research phase: read/list, optionally user.correct, then harness.reflect_skills (decline or propose), then phase.yield. Do not write files or run tests here."
-          : " This is the research phase: read/list, optionally user.correct and harness.reflect_skills, then phase.yield. Do not write files or run tests here.";
-      } else {
-        contractHint +=
-          " This is the research phase: read/list, optionally user.correct, then phase.yield. Do not write files or run tests here.";
-      }
-    }
+    judge = makeJudge(deployment);
+    // The system context comes only from harness-declared text (no host tool hints, D11).
     const conv = createConversationalPropose({
       adapter,
-      tools: toolsFromAgent(agent.tools),
-      system: `You are ${agent.name}. Use only the tools listed for this agent. Prefer tools.${toolHint}${shellHint}${contractHint}`,
+      tools: toolsFromAgent(permittedToolDefs(agent)),
+      system: systemPromptFor(agent, overlayHint),
       user: userPrompt,
       getRuntime: () => runtime,
     });
@@ -581,6 +485,7 @@ async function cmdRun(
     agent,
     propose,
     tools,
+    ...(judge ? { judge, allowJudge: true } : {}),
   });
   await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? 32 : 16));
   const jsonl = eventsToJsonl(runtime.events);
@@ -589,13 +494,7 @@ async function cmdRun(
     writeFileSync(resolve(opts.dump), jsonl, "utf8");
   }
 
-  const completed = runtime.events.some(
-    (e) => e.tool === "task.complete" && e.stage === "execute" && e.verdict === "allow",
-  );
-  const finalState = { ...runtime.agent.state };
-  const testExit = [...runtime.events]
-    .reverse()
-    .find((e) => e.tool === "shell.run_allowlisted" && e.stage === "execute");
+  const completed = runCompleted(runtime.events);
   const report = {
     harness: basename(dir),
     deployment: basename(depFile),
@@ -605,20 +504,22 @@ async function cmdRun(
     resolved_sha256: resolvedHarnessHash(resolvedHarness),
     completion_reached: completed,
     expect_complete: Boolean(opts.expectComplete),
-    final_state: finalState,
-    test_exit_code:
-      testExit && testExit.result && typeof testExit.result === "object"
-        ? Number((testExit.result as { exit_code?: number }).exit_code ?? -1)
-        : null,
+    final_state: { ...runtime.agent.state },
+    successful_tools: runtime.successfulTools(),
+    test_exit_code: lastExitCode(runtime.events),
     diff_summary: runtime.events
-      .filter((e) => e.tool === "fs.write_scoped" && e.stage === "execute" && e.verdict === "allow")
+      .filter(
+        (e) =>
+          e.depth === undefined &&
+          e.stage === "execute" &&
+          e.verdict === "allow" &&
+          typeof e.args?.path === "string" &&
+          typeof e.args?.content === "string",
+      )
       .slice(0, 8)
       .map((e) => ({
-        path: typeof e.args?.path === "string" ? e.args.path : null,
-        bytes:
-          typeof e.args?.content === "string"
-            ? Buffer.byteLength(e.args.content, "utf8")
-            : null,
+        path: e.args!.path as string,
+        bytes: Buffer.byteLength(e.args!.content as string, "utf8"),
       })),
     event_count: runtime.events.length,
   };
@@ -630,7 +531,7 @@ async function cmdRun(
 
   console.log(jsonl);
   if (opts.expectComplete && !completed) {
-    console.error("expected task.complete allow but completion was not reached");
+    console.error("expected run_complete but completion was not reached");
     return 1;
   }
   return 0;
@@ -642,7 +543,7 @@ async function cmdProvider(argv: string[]): Promise<number> {
     console.error("Usage: fausth provider probe --deployment <path> [--report <path>]");
     return 1;
   }
-  const a = parseArgs(rest);
+  const { flags: a } = parseArgs(rest);
   const depPath = a.deployment;
   if (!depPath) {
     console.error("--deployment is required");
@@ -701,6 +602,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
         conclusion: packet.conclusion,
         deterministic: packet,
         ai_findings: [],
+        markdown: "",
       }),
     };
     if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
@@ -710,9 +612,9 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
         ? {
             repo: args.repo,
             pr: Number(args.pr),
-            checkRun: args["check-run"] === "1" || args["check-run"] === "true",
-            comment: args.comment === "1" || args.comment === "true",
-            annotate: args.annotate === "1" || args.annotate === "true",
+            checkRun: flagOn(args, "check-run"),
+            comment: flagOn(args, "comment"),
+            annotate: flagOn(args, "annotate"),
           }
         : undefined;
     publishReviewOutput(report, posterOpts);
@@ -784,6 +686,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
           deterministic: packet,
           ai_findings: [],
           model: adapter.lastModelUsed,
+          markdown: "",
         }) + "\n_Rate limited — neutral, not pass._\n",
       };
       if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
@@ -819,6 +722,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
       dropped_findings: dropped,
       model: adapter.lastModelUsed,
       provider: String(deployment.model.profile ?? "openai-compatible"),
+      markdown: "",
     }),
   };
   if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
@@ -828,9 +732,9 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
       ? {
           repo: args.repo,
           pr: Number(args.pr),
-          checkRun: args["check-run"] === "1" || args["check-run"] === "true",
-          comment: args.comment === "1" || args.comment === "true",
-          annotate: args.annotate === "1" || args.annotate === "true",
+          checkRun: flagOn(args, "check-run"),
+          comment: flagOn(args, "comment"),
+          annotate: flagOn(args, "annotate"),
         }
       : undefined;
   publishReviewOutput(report, posterOpts);
@@ -843,6 +747,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
+  const { flags: a, positionals } = parseArgs(rest);
   if (cmd === "--version" || cmd === "-V" || cmd === "version") {
     const pkg = JSON.parse(
       readFileSync(join(here, "../package.json"), "utf8"),
@@ -879,7 +784,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     process.exit(0);
   }
   if (cmd === "validate") {
-    const target = rest[0] ?? join(repoRoot(), "examples/greenhouse");
+    const target = positionals[0] ?? join(repoRoot(), "examples/greenhouse");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
         if (ref.embeddedResolved) {
@@ -902,7 +807,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "inspect") {
-    const target = rest.find((x) => !x.startsWith("--")) ?? join(repoRoot(), "examples/coding-counterbalance");
+    const target = positionals[0] ?? join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
         const report = inspectHarness(resolve(dir), {
@@ -918,9 +823,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "resolve") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      positionals[0] ??
       join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
@@ -943,15 +847,14 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "test") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      positionals[0] ??
       join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
         const result = await testHarness(resolve(dir), {
           deployment: a.deployment,
-          skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+          skipFixtures: flagOn(a, "skip-fixtures"),
           embeddedResolved: ref.embeddedResolved,
           bundleFormat: ref.bundleFormat,
         });
@@ -969,9 +872,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "pack") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      positionals[0] ??
       join(repoRoot(), "examples/coding-counterbalance");
     try {
       const { out, files, format, signed } = packHarness(resolve(target), a.out, {
@@ -989,16 +891,15 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "unpack") {
-    const a = parseArgs(rest);
     const bundle =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ?? "";
+      positionals[0] ?? "";
     if (!bundle || !a.out) {
       console.error("Usage: fausth unpack <bundle.fausth.json> --out <dir> [--force]");
       process.exit(1);
     }
     try {
       const dest = unpackBundle(bundle, a.out, {
-        force: a.force === "1" || a.force === "true",
+        force: flagOn(a, "force"),
       });
       console.log(`unpacked → ${dest}`);
       process.exit(0);
@@ -1008,8 +909,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "verify") {
-    const target =
-      rest.find((x) => !x.startsWith("--")) ?? "";
+    const target = positionals[0] ?? "";
     if (!target) {
       console.error("Usage: fausth verify <bundle.fausth.json>");
       process.exit(1);
@@ -1030,14 +930,12 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "replay") {
-    const a = parseArgs(rest);
-    const fixturesRoot = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
+    const fixturesRoot = positionals[0];
     process.exit(await cmdReplay(fixturesRoot, a["dump-dir"]));
   }
   if (cmd === "select") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ?? "";
+      positionals[0] ?? "";
     const patchPath = a["candidate-patch"];
     if (!target || !patchPath) {
       console.error(
@@ -1048,7 +946,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     try {
       const raw = JSON.parse(readFileSync(resolve(patchPath), "utf8")) as HarnessPatch;
       const result = await selectHarness(resolve(target), raw, {
-        skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+        skipFixtures: flagOn(a, "skip-fixtures"),
         fixturesRoot: join(repoRoot(), "conformance/fixtures"),
       });
       for (const d of result.details) console.log(d);
@@ -1075,7 +973,6 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "live") {
-    const a = parseArgs(rest);
     process.exit(
       await cmdLive({
         scenarios: a.scenarios ?? join(repoRoot(), "live/scenarios"),
@@ -1087,12 +984,10 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "capture") {
-    const a = parseArgs(rest);
     process.exit(await cmdCapture(a.from!, a.scenario!, a.out!));
   }
   if (cmd === "run") {
-    const a = parseArgs(rest);
-    const target = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
+    const target = positionals[0];
     process.exit(
       await withHarnessRef(target ?? join(repoRoot(), "examples/greenhouse"), async (dir, ref) =>
         cmdRun(dir, {
@@ -1104,8 +999,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
           prompt: a.prompt,
           taskFile: a["task-file"],
           report: a.report,
-          expectComplete: a["expect-complete"] === "1" || a["expect-complete"] === "true",
-          applyOverlays: a["apply-overlays"] === "1" || a["apply-overlays"] === "true",
+          expectComplete: flagOn(a, "expect-complete"),
+          applyOverlays: flagOn(a, "apply-overlays"),
           embeddedResolved: ref.embeddedResolved,
         }),
       ).catch((e) => {
@@ -1115,10 +1010,9 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "provider") process.exit(await cmdProvider(rest));
-  if (cmd === "review") process.exit(await cmdReview(parseArgs(rest)));
+  if (cmd === "review") process.exit(await cmdReview(a));
   if (cmd === "audit") {
-    const a = parseArgs(rest);
-    const file = rest.find((x) => !x.startsWith("--"));
+    const file = positionals[0];
     if (!file) {
       console.error("usage: fausth audit <events.jsonl> [--json]");
       process.exit(1);
@@ -1128,7 +1022,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
         ? resolve(file)
         : resolve(repoRoot(), file);
       const summary = auditJsonlFile(abs);
-      if (a.json === "true" || a.json === "1" || rest.includes("--json")) {
+      if (flagOn(a, "json")) {
         console.log(canonicalJson(summary));
       } else {
         console.log(formatAuditHuman(summary));
