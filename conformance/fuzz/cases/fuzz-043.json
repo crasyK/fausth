@@ -2,7 +2,7 @@
   "id": "fuzz-043",
   "seed": 42,
   "index": 43,
-  "expect_valid_hint": true,
+  "expect_valid_hint": false,
   "agent": {
     "spec": "counterbalance-contract/v0.1",
     "name": "fuzz-case-043",

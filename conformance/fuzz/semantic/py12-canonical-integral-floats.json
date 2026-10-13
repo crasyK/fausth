@@ -1,0 +1,11 @@
+{
+  "world": "replay",
+  "id": "py12-canonical-integral-floats",
+  "finding": "PY-12",
+  "decision": "D3",
+  "kind": "canonical",
+  "json_text": "{\"a\":1.0,\"b\":1e3,\"c\":-0.0}",
+  "expect": {
+    "out": "{\"a\":1,\"b\":1000,\"c\":0}"
+  }
+}

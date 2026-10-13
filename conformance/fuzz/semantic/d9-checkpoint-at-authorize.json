@@ -1,0 +1,58 @@
+{
+  "world": "replay",
+  "id": "d9-checkpoint-at-authorize",
+  "decision": "D9",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {
+      "open_todos": 1,
+      "plan_approved": 0
+    },
+    "tools": [
+      {
+        "id": "user.correct",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    ],
+    "counterbalance": {
+      "checkpoints": [
+        {
+          "tool": "user.correct",
+          "allow_set_keys": [
+            "open_todos"
+          ]
+        }
+      ]
+    }
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "user.correct",
+      "args": {
+        "set": {
+          "plan_approved": 1
+        }
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "authorize",
+        "verdict": "deny",
+        "reason": "checkpoint_authority_failed"
+      }
+    ],
+    "absent": [
+      {
+        "stage": "execute"
+      }
+    ]
+  }
+}

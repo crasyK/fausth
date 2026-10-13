@@ -1,0 +1,56 @@
+{
+  "world": "replay",
+  "id": "d6-spawn-needs-permission",
+  "decision": "D6",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {},
+    "tools": [
+      {
+        "id": "agent.spawn",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "id": "fs.read",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    ],
+    "spawn": {
+      "allow": true
+    },
+    "permissions": {
+      "tools": [
+        "fs.read"
+      ]
+    }
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "agent.spawn",
+      "args": {
+        "tools": [
+          "fs.read"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "validate",
+        "verdict": "deny",
+        "reason": "capability_missing",
+        "tool": "agent.spawn"
+      }
+    ]
+  }
+}
