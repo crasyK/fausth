@@ -27,6 +27,7 @@ from typing import Any, Callable
 from .adapter_error import AdapterError
 from .canonical import canonical_json
 from .mcp import resolve_harness_file
+from .schema_validate import validate_against_schema
 
 USER_CHANNEL_SOURCES = ("recorded", "simulator", "human")
 
@@ -272,6 +273,10 @@ def create_user_channel_handler(
             answer = ask(req)
             if not isinstance(answer, dict) or not isinstance(answer.get("output"), dict):
                 _fail(f"user channel '{tool_id}': human answer must provide an output object")
+            # Fail closed like TS: the answer must satisfy the tool's declared output schema.
+            ok, _errors = validate_against_schema(tool.get("output"), answer["output"])
+            if not ok:
+                _fail(f"user channel '{tool_id}': human answer does not match the output schema")
             if isinstance(answer.get("set"), dict):
                 why = check_user_set(answer["set"], list(allow_set_keys or []), state_types)
                 if why:

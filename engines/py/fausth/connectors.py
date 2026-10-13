@@ -9,15 +9,14 @@ TS and Python engines produce identical pins on CRLF and LF checkouts. Files mus
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from .canonical import canonical_json
-from .registry import load_agent_dir
+from .canonical import canonical_json, json_loads
+from .registry import load_agent_dir, load_yaml_text
 
 CONNECTORS_FORMAT = "fausth-connectors/v0.1"
 CONNECTOR_MANIFEST_FORMAT = "fausth-connector-manifest/v0.1"
@@ -102,9 +101,11 @@ def read_pinned_text(abs_path: Path, rel: str) -> tuple[str, str]:
 
 
 def _parse_document(content: str, as_json: bool, what: str) -> Any:
+    """Parse like the TS engine: ``JSON.parse`` semantics (integral numbers are ints, D3;
+    NaN/Infinity rejected) and YAML 1.2 core schema (D4) — never PyYAML's 1.1 rules."""
     try:
-        return json.loads(content) if as_json else yaml.safe_load(content)
-    except (json.JSONDecodeError, yaml.YAMLError) as e:
+        return json_loads(content) if as_json else load_yaml_text(content)
+    except (ValueError, yaml.YAMLError) as e:
         kind = "JSON" if as_json else "YAML"
         raise ConnectorError("connectors_invalid", f"{what} is not valid {kind}: {e}") from e
 
