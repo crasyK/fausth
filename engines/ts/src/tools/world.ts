@@ -353,13 +353,14 @@ export function createCodingTools(world: CodingWorld = defaultCodingWorld()): Re
             },
           };
         }
+        // World feedback only (D11): what "tests pass" means for memory is the IR's
+        // declared effect on result.exit_code, never a state key written here by name.
         return {
           output: {
             exit_code: code,
             cmd,
             ...(protect ? { protected_modified: 0 } : {}),
           },
-          state_transition: code === 0 ? { set: { test_evidence_current: 1 } } : undefined,
         };
       }
       return {
@@ -371,25 +372,23 @@ export function createCodingTools(world: CodingWorld = defaultCodingWorld()): Re
         },
       };
     },
-    "user.approve": (): ToolResultEnvelope => ({ output: { approved: 0 } }),
-    "user.correct": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
+    // No user.approve / user.correct / user.ask here: the user cell is answered only by the
+    // host user channel (D14). Memory effects (kb_cited, handoff, phase_yielded, …) are the
+    // IR's declared tool effects (D11); world handlers only report what happened.
     "task.complete": (): ToolResultEnvelope => ({
       output: { ok: 1 },
     }),
     "phase.yield": (): ToolResultEnvelope => ({
       output: { ok: 1 },
-      state_transition: { set: { phase_yielded: 1, researched: 1 } },
     }),
     "kb.lookup": (args): ToolResultEnvelope => ({
       output: { ok: 1, article_id: `kb-${Array.from(String(args.query ?? "x")).slice(0, 24).join("")}` },
-      state_transition: { set: { kb_cited: 1 } },
     }),
     "answer.send": (): ToolResultEnvelope => ({
       output: { ok: 1 },
     }),
     "human.handoff": (): ToolResultEnvelope => ({
       output: { ok: 1 },
-      state_transition: { set: { handoff: 1 } },
     }),
     "refund.request": (): ToolResultEnvelope => ({
       output: { ok: 1 },

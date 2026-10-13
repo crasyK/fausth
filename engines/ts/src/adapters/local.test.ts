@@ -187,15 +187,13 @@ describe("local adapter worktree", () => {
 
     const shell = await tools["shell.run_allowlisted"]!({ cmd: "test" }, { state: {} });
     assert.equal((shell as { output: { exit_code: number } }).output.exit_code, 0);
+    // World feedback only: test evidence is the harness's declared effect (D11).
+    assert.equal((shell as { state_transition?: unknown }).state_transition, undefined);
 
-    const approve = await tools["__local.user_approve_auto"]!(
-      { plan: "Edit src/app.ts to fix the bug." },
-      { state: {} },
-    );
-    assert.equal((approve as { output: { approved: number } }).output.approved, 1);
-    const approveState = (approve as { state_transition?: { set?: Record<string, unknown> } })
-      .state_transition?.set;
-    assert.deepEqual(approveState?.allowed_write_paths, ["src/app.ts"]);
+    // No scripted user: approvals/corrections only through the user channel (D14).
+    assert.equal(tools["__local.user_approve_auto"], undefined);
+    assert.equal(tools["user.approve"], undefined);
+    assert.equal(tools["user.correct"], undefined);
   });
 
   it("warns then denies off-plan writes when approved paths are set", async () => {
@@ -270,7 +268,7 @@ describe("local adapter worktree", () => {
     assert.match(actions, /"result"/);
   });
 
-  it("todo.complete fills a slot and sets open_todos when all filled", async () => {
+  it("todo.complete fills a slot and reports all_filled (open_todos is the harness's effect)", async () => {
     const agent = loadAgentDir(
       join(root, "case-studies/tau-bench/harnesses/cb-todo-delegate/agents/worker"),
     ).agent;
@@ -349,7 +347,8 @@ describe("local adapter worktree", () => {
     });
     assert.equal(out.output.ok, 1);
     assert.equal(out.output.all_filled, 1);
-    assert.equal(out.state_transition?.set?.open_todos, 0);
+    // Only the world-derived counter; "all filled ⇒ open_todos 0" is the harness's effect (D11).
+    assert.deepEqual(out.state_transition?.set, { slots_filled: 1 });
     const todos = JSON.parse(readFileSync(join(worktree, "tau", "todos.json"), "utf8"));
     assert.equal(todos.slots[0].value, "exchanged #W1");
     assert.equal(todos.slots[0].filled, true);

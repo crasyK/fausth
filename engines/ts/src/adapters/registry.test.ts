@@ -114,15 +114,73 @@ describe("EDGE-20: simulated bindings enforce the same policy as the local adapt
     assert.equal(leak.output.secret_leak, 1);
   });
 
-  it("sim shell sets test evidence on exit 0 (also with a scripted exit code)", async () => {
+  it("sim shell reports the exit code only; the IR's declared effect sets test evidence (D11)", async () => {
     const tools = resolveToolsFromDeployment(simAgent, simDeployment, { testExit: 0 });
     const r = (await tools["shell.run_allowlisted"]!({ cmd: "test" }, { state: {} })) as Env;
     assert.equal(r.output.exit_code, 0);
-    assert.equal(r.state_transition?.set?.test_evidence_current, 1);
+    assert.equal(r.state_transition, undefined);
     const failing = resolveToolsFromDeployment(simAgent, simDeployment, { testExit: 2 });
     const f = (await failing["shell.run_allowlisted"]!({ cmd: "test" }, { state: {} })) as Env;
     assert.equal(f.output.exit_code, 2);
     assert.equal(f.state_transition, undefined);
+
+    const { FaustRuntime } = await import("../runtime.js");
+    const withEffect: AgentIR = {
+      spec: "counterbalance-contract/v0.1",
+      name: "fx",
+      state: { test_evidence_current: 0 },
+      tools: [
+        {
+          id: "shell.run_allowlisted",
+          input: { type: "object" },
+          output: { type: "object" },
+          effects: [{ when: { path: "result.exit_code", eq: 0 }, set: { test_evidence_current: 1 } }],
+        },
+      ],
+      permissions: { tools: ["shell.run_allowlisted"] },
+    };
+    for (const [testExit, want] of [[0, 1], [2, 0]] as const) {
+      const queue = [{ type: "tool" as const, name: "shell.run_allowlisted", args: { cmd: "test" } }];
+      const rt = new FaustRuntime({
+        agent: withEffect,
+        propose: async () => queue.shift() ?? { type: "stop" },
+        tools: resolveToolsFromDeployment(
+          withEffect,
+          { model: { transport: "recorded" }, bindings: { "shell.run_allowlisted": { native: "stub.shell" } } },
+          { testExit },
+        ),
+      });
+      await rt.runLoop();
+      assert.equal(rt.agent.state.test_evidence_current, want, `exit ${testExit}`);
+    }
+  });
+
+  it("D14: no scripted or stub user natives remain", () => {
+    const userAgent: AgentIR = {
+      spec: "counterbalance-contract/v0.1",
+      name: "u",
+      state: {},
+      tools: [{ id: "user.approve", input: { type: "object" }, output: { type: "object" } }],
+    };
+    for (const native of [
+      "stub.approve",
+      "sim.approve",
+      "local.user_approve",
+      "local.user_approve_auto",
+      "stub.user_correct",
+      "local.user_correct_auto",
+    ]) {
+      assert.throws(
+        () =>
+          resolveToolsFromDeployment(
+            userAgent,
+            { model: { transport: "recorded" }, bindings: { "user.approve": { native } } },
+            { workspace: "/nonexistent" },
+          ),
+        /D14/,
+        native,
+      );
+    }
   });
 
   it("sim reads do not fall back to write scopes; declared read scopes are enforced", async () => {

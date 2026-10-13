@@ -5,8 +5,14 @@
  * generic local world:
  *  - host control files under tau/ that the agent can never write (API request/response,
  *    action log, todo slots) — host-derived state is read back only from these;
- *  - one declarative write effect: writing the final answer file finalizes the episode;
  *  - the `tau` world command is reserved for tau.invoke (not runnable via the shell tool).
+ *
+ * Like every adapter it writes no harness memory key by name (D11): results report what
+ * happened (`ok`, `all_filled`, `path`, …) plus world-derived counters (`slots_filled`,
+ * `off_plan_mutations`); the τ harnesses map results to memory with declared tool effects,
+ * e.g. todo.complete `{when: {path: result.all_filled, eq: 1}, set: {open_todos: 0}}` and
+ * fs.write_scoped `{when: {all: [{path: result.ok, eq: 1}, {path: result.path, eq:
+ * "tau/final.txt"}]}, set: {finalized: 1, open_todos: 0}}`.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,7 +32,6 @@ const ACTIONS = `${TAU_DIR}/actions.jsonl`;
 const REQUEST = `${TAU_DIR}/request.json`;
 const RESPONSE = `${TAU_DIR}/response.txt`;
 const OUTPUTS = `${TAU_DIR}/outputs.log`;
-const FINAL = `${TAU_DIR}/final.txt`;
 
 export function deploymentUsesTauWorld(deployment: Deployment): boolean {
   return Object.values(deployment.bindings ?? {}).some(
@@ -37,7 +42,6 @@ export function deploymentUsesTauWorld(deployment: Deployment): boolean {
 /** Hooks the τ world registers in the generic local world. */
 export const TAU_WORLD_EXTENSION: LocalWorldExtension = {
   controlPaths: [TODOS, ACTIONS, REQUEST, RESPONSE, OUTPUTS],
-  writeEffects: [{ path: FINAL, set: { finalized: 1, open_todos: 0 } }],
   claimedCommands: ["tau"],
 };
 
@@ -179,7 +183,6 @@ export function createTauWorldTools(world: LocalWorld): Record<string, ToolHandl
           stderr: r.stderr,
           truncated: r.truncated ? 1 : 0,
         },
-        state_transition: { set: { test_evidence_current: 1, researched: 1 } },
       };
     }
     if (result) writeFileSync(abs(OUTPUTS), `${result}\n`, { flag: "a" });
@@ -288,7 +291,8 @@ export function createTauWorldTools(world: LocalWorld): Record<string, ToolHandl
         slots_total: slots.length,
         all_filled: allFilled ? 1 : 0,
       },
-      state_transition: { set: { slots_filled: filled, ...(allFilled ? { open_todos: 0 } : {}) } },
+      // World-derived counter only; "all slots filled ⇒ open_todos 0" is the harness's effect.
+      state_transition: { set: { slots_filled: filled } },
     };
     return envelope;
   };

@@ -99,8 +99,13 @@ describe("local adapter trust boundary", () => {
       protected_paths: ["tests/x.py"],
       secrets: { values: ["sk-or-v1-realsecretvalue0000000000000000"] },
     });
-    const { tools } = makeTools({ workspace: wt.worktree, agent, deployment: deploymentWith() });
-    const state = { allowed_write_paths: ["src/app.ts"], off_plan_writes: 0 };
+    const { tools } = makeTools({
+      workspace: wt.worktree,
+      agent,
+      deployment: deploymentWith(),
+      approvedWritePaths: ["src/app.ts"],
+    });
+    const state = {};
     const original = readFileSync(join(wt.worktree, "tests/x.py"), "utf8");
 
     const prot = await call(tools, "fs.write_scoped", { path: "tests/x.py", content: "def test_x():\n    pass\n" }, state);
@@ -193,18 +198,26 @@ describe("local adapter trust boundary", () => {
       assert.deepEqual(JSON.parse(readFileSync(join(wt.worktree, ".fausth/approved_paths.json"), "utf8")).paths, [
         "src/app.ts",
       ]);
-      // Even if something rewrites the record mid-run, the world keeps the host snapshot.
+      // Even if something rewrites the record mid-run, the world keeps the host snapshot:
+      // src/evil.ts stays off-plan (first write warns, second is denied).
       writeFileSync(join(wt.worktree, ".fausth/approved_paths.json"), JSON.stringify({ paths: ["src/evil.ts"] }));
-      const r = await call(tools, "fs.write_scoped", { path: "src/evil.ts", content: "x" }, { off_plan_writes: 1 });
+      const warned = await call(tools, "fs.write_scoped", { path: "src/evil.ts", content: "x" });
+      assert.equal(warned.output.off_plan, 1);
+      const r = await call(tools, "fs.write_scoped", { path: "src/evil.ts", content: "x" });
       assert.equal(r.output.ok, 0);
       assert.equal(r.output.error, "off_plan_path");
+      // Harness state cannot widen the host's approvals (D11: never read by key name).
+      const viaState = await call(tools, "fs.write_scoped", { path: "src/evil.ts", content: "x" }, {
+        allowed_write_paths: ["src/evil.ts"],
+      });
+      assert.equal(viaState.output.error, "off_plan_path");
     } finally {
       rmSync(join(wt.worktree, "src", "ctl"), { force: true });
       rmSync(join(wt.worktree, ".fausth"), { recursive: true, force: true });
     }
   });
 
-  it("EDGE-6: τ control files are host-only; final answer write is a declared effect; tau command is not shell-runnable", async () => {
+  it("EDGE-6: τ control files are host-only; the final-answer write carries no host effect; tau command is not shell-runnable", async () => {
     const agent = agentWith({ filesystem: { write_scopes: ["tau/", "data/"], read_scopes: ["."] } });
     const deployment = deploymentWith({ commands: { tau: ["node", "-e", "process.exit(0)"] } });
     const world = createLocalWorld({
@@ -221,20 +234,49 @@ describe("local adapter trust boundary", () => {
       assert.equal(r.output.error, "host_reserved", path);
       assert.equal(r.state_transition?.set?.open_todos, undefined, path);
     }
+    // The adapter reports the write; "final answer written ⇒ finalized" is the harness's
+    // declared effect on result.path (D11), never a host write of `finalized` by name.
     const fin = await call(tools, "fs.write_scoped", { path: "tau/final.txt", content: "done" });
     assert.equal(fin.output.ok, 1);
-    assert.deepEqual(fin.state_transition?.set, { finalized: 1, open_todos: 0 });
+    assert.equal(fin.output.path, "tau/final.txt");
+    assert.equal(fin.state_transition, undefined);
     const sh = await call(tools, "shell.run_allowlisted", { cmd: "tau" });
     assert.equal(sh.output.exit_code, 1);
     assert.match(String(sh.output.error), /not allowlisted/);
     assert.ok(createTauWorldTools(world)["local.tau_invoke"]);
     rmSync(join(wt.worktree, "tau"), { recursive: true, force: true });
+  });
 
-    // Without the τ extension the generic adapter attaches no meaning to tau/final.txt.
-    const generic = makeTools({ workspace: wt.worktree, agent, deployment: deploymentWith() });
-    const plain = await call(generic.tools, "fs.write_scoped", { path: "tau/final.txt", content: "done" });
-    assert.equal(plain.output.ok, 1);
-    assert.equal(plain.state_transition, undefined);
+  it("D11: declared IR effects, not the adapter, turn local results into memory", async () => {
+    const agent: AgentIR = {
+      spec: "counterbalance-contract/v0.1",
+      name: "fx",
+      state: { finalized: 0, open_todos: 1 },
+      tools: [
+        {
+          id: "fs.write_scoped",
+          input: { type: "object" },
+          output: { type: "object" },
+          effects: [
+            {
+              when: { all: [{ path: "result.ok", eq: 1 }, { path: "result.path", eq: "tau/final.txt" }] },
+              set: { finalized: 1, open_todos: 0 },
+            },
+          ],
+        },
+      ],
+      permissions: { tools: ["fs.write_scoped"], filesystem: { write_scopes: ["tau/"] } },
+    };
+    const { FaustRuntime } = await import("../runtime.js");
+    const { tools } = makeTools({ workspace: wt.worktree, agent, deployment: deploymentWith() });
+    const queue = [
+      { type: "tool" as const, name: "fs.write_scoped", args: { path: "tau/notes.txt", content: "n" } },
+      { type: "tool" as const, name: "fs.write_scoped", args: { path: "tau/final.txt", content: "done" } },
+    ];
+    const rt = new FaustRuntime({ agent, propose: async () => queue.shift() ?? { type: "stop" }, tools });
+    await rt.runLoop();
+    assert.equal(rt.agent.state.finalized, 1);
+    assert.equal(rt.agent.state.open_todos, 0);
     rmSync(join(wt.worktree, "tau"), { recursive: true, force: true });
   });
 
@@ -329,7 +371,7 @@ describe("local adapter trust boundary", () => {
     assert.equal(verbose.output.exit_code, 0);
     assert.equal(verbose.output.truncated, 1);
     assert.ok([...String(verbose.output.stdout)].length <= 1000);
-    assert.equal(verbose.state_transition?.set?.test_evidence_current, 1);
+    assert.equal(verbose.state_transition, undefined, "evidence is the harness's declared effect (D11)");
     const failing = await call(tools, "shell.run_allowlisted", { cmd: "typecheck" });
     assert.equal(failing.output.exit_code, 3);
     assert.equal(failing.output.stderr, "bad");

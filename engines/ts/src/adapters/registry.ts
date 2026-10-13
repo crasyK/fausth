@@ -76,16 +76,6 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "sim.shell": "shell.run_allowlisted",
   "local.shell": "shell.run_allowlisted",
   "shell.run_allowlisted": "shell.run_allowlisted",
-  "stub.approve": "user.approve",
-  "sim.approve": "user.approve",
-  "local.user_approve": "user.approve",
-  "local.user_approve_auto": "user.approve",
-  "user.approve": "user.approve",
-  "stub.user_correct": "user.correct",
-  "sim.user_correct": "user.correct",
-  "local.user_correct": "user.correct",
-  "local.user_correct_auto": "user.correct",
-  "user.correct": "user.correct",
   "stub.task_complete": "task.complete",
   "sim.task_complete": "task.complete",
   "local.task_complete": "task.complete",
@@ -129,10 +119,27 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
 };
 
 /**
- * Natives removed because they answered the user cell from the acting model's own args
- * (D14). Kept as a closed list only to produce an actionable error.
+ * Natives removed because they answered the user cell without a user (D14): echoes of the
+ * model's own args, scripted auto-approvals/corrections, fixed stub answers and ad-hoc
+ * prompts. Approvals, corrections and questions come only from the user channel. Kept as a
+ * closed list only to produce an actionable error.
  */
-const REMOVED_USER_NATIVES = new Set(["stub.ask", "user.ask", "local.user_ask", "local.user_ask_auto"]);
+const REMOVED_USER_NATIVES = new Set([
+  "stub.ask",
+  "user.ask",
+  "local.user_ask",
+  "local.user_ask_auto",
+  "stub.approve",
+  "sim.approve",
+  "user.approve",
+  "local.user_approve",
+  "local.user_approve_auto",
+  "stub.user_correct",
+  "sim.user_correct",
+  "user.correct",
+  "local.user_correct",
+  "local.user_correct_auto",
+]);
 
 export type ResolveToolsOptions = {
   testExit?: number;
@@ -251,6 +258,17 @@ function bindToolsInner(
   opts: ResolveToolsOptions,
   cleanups: Array<() => void>,
 ): Record<string, ToolHandler> {
+  // Removed user natives fail first, with the actionable D14 message (before any host world
+  // or session is created).
+  for (const [id, b] of Object.entries((deployment.bindings ?? {}) as Record<string, unknown>)) {
+    const n = b && typeof b === "object" ? (b as { native?: unknown }).native : undefined;
+    if (typeof n === "string" && REMOVED_USER_NATIVES.has(n)) {
+      throw new AdapterError(
+        "adapter_unresolved",
+        `adapter failure: native '${n}' was removed — the user cell is answered only by the user channel (D14); bind '${id}' with user: {source: recorded|simulator|human} (adapter_unresolved)`,
+      );
+    }
+  }
   assertBindingFamilyConsistency(deployment);
   const usesLocal = deploymentUsesLocal(deployment);
   if (usesLocal && deploymentUsesMcp(deployment)) {
@@ -287,7 +305,6 @@ function bindToolsInner(
       workspace: opts.workspace,
       agent,
       deployment,
-      interactive: opts.interactive,
       approvedWritePaths: opts.approvedWritePaths,
       extensions,
     });
@@ -393,7 +410,7 @@ function bindToolsInner(
     if (REMOVED_USER_NATIVES.has(native)) {
       throw new AdapterError(
         "adapter_unresolved",
-        `adapter failure: native '${native}' was removed — it answered the user from the model's own args (D14); bind '${id}' with user: {source: recorded|simulator|human} (adapter_unresolved)`,
+        `adapter failure: native '${native}' was removed — the user cell is answered only by the user channel (D14); bind '${id}' with user: {source: recorded|simulator|human} (adapter_unresolved)`,
       );
     }
     let mapped =

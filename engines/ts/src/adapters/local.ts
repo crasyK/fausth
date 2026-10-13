@@ -1,10 +1,12 @@
 /**
  * Real local coding adapter — FS/process/checkpoints only inside a linked disposable worktree.
  *
- * Generic: contains no domain/harness-specific file names. Domain worlds (e.g. the τ retail
- * world in ./worlds/tau.ts) plug in through {@link LocalWorldExtension}: host control paths
- * the agent may never write, declarative write effects, and command keys reserved for host
- * natives.
+ * Generic: contains no domain/harness-specific file names and writes no harness state key
+ * by name (D11) — handlers report what happened in the world (outputs and world-derived
+ * counters); the IR's declared tool `effects` map results to memory. Domain worlds (e.g. the
+ * τ retail world in ./worlds/tau.ts) plug in through {@link LocalWorldExtension}: host control
+ * paths the agent may never write and command keys reserved for host natives. The user cell
+ * (approvals, corrections, questions) is never answered here — only by the user channel (D14).
  *
  * Trust boundary (see docs/production-isolation.md): this is NOT a sandbox. Commands run
  * with the operator's uid. What the adapter does guarantee:
@@ -29,7 +31,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createInterface } from "node:readline";
 import type { ToolHandler } from "../runtime.js";
 import type { AgentIR, Deployment, ToolResultEnvelope } from "../types.js";
 import {
@@ -45,7 +46,7 @@ import {
   scopeCovered,
   validateLinkedWorktree,
 } from "./sandbox-path.js";
-import { extractPlanPaths, loadApprovedWritePaths } from "./plan-paths.js";
+import { loadApprovedWritePaths } from "./plan-paths.js";
 import { SHELL_NOT_ALLOWLISTED_ERROR } from "../tools/world.js";
 import {
   buildChildEnv,
@@ -57,15 +58,10 @@ import {
 
 export { SHELL_NOT_ALLOWLISTED_ERROR };
 
-/** Declarative state effect of a successful agent write to an exact path. */
-export type WriteEffect = { path: string; set: Record<string, unknown> };
-
 /** Domain-world hooks into the generic local world. */
 export type LocalWorldExtension = {
   /** Host control files (exact) or directories (ending in '/') — never agent-writable. */
   controlPaths?: string[];
-  /** State effects applied after a successful agent write to the exact path. */
-  writeEffects?: WriteEffect[];
   /** `deployment.world.commands` keys reserved for host natives (not runnable via shell). */
   claimedCommands?: string[];
 };
@@ -74,9 +70,9 @@ export type LocalWorldOptions = {
   workspace: string;
   agent: AgentIR;
   deployment: Deployment;
-  /** Interactive terminal checkpoints (default true). */
+  /** @deprecated unused: checkpoints are answered by the user channel (D14). */
   interactive?: boolean;
-  /** Force auto-approve/correct for disposable E2E (only with *_auto natives). */
+  /** @deprecated unused: there are no auto-approving natives (D14). */
   autoApprove?: boolean;
   /** Host-approved plan write paths; take precedence over the worktree snapshot file. */
   approvedWritePaths?: string[];
@@ -97,9 +93,9 @@ export type LocalWorld = {
   shellTimeoutMs: number;
   commands: Map<string, string[]>;
   claimedCommands: Set<string>;
-  interactive: boolean;
-  autoApprove: boolean;
   outOfScopeWrites: number;
+  /** Off-plan writes so far (world-derived counter; warn once, then deny). */
+  offPlanWrites: number;
   secretPaths: string[];
   secretValues: Set<string>;
   denyWriteContains: boolean;
@@ -107,7 +103,6 @@ export type LocalWorld = {
   /** Baseline bytes; null = missing at init. */
   protectedBaseline: Map<string, Buffer | null>;
   controlPaths: string[];
-  writeEffects: WriteEffect[];
   /** Host-approved write paths captured before the agent acts (null = none). */
   approvedWritePaths: string[] | null;
   childEnv: Record<string, string>;
@@ -232,16 +227,12 @@ export function createLocalWorld(opts: LocalWorldOptions): LocalWorld {
     }
   }
   const controlPaths = [HOST_CONTROL_DIR];
-  const writeEffects: WriteEffect[] = [];
   const claimedCommands = new Set<string>();
   for (const ext of opts.extensions ?? []) {
     for (const c of ext.controlPaths ?? []) {
       const isDir = c.endsWith("/");
       const n = normalizeDeclaredPath(c);
       controlPaths.push(isDir ? `${n}/` : n);
-    }
-    for (const eff of ext.writeEffects ?? []) {
-      writeEffects.push({ path: normalizeDeclaredPath(eff.path), set: { ...eff.set } });
     }
     for (const k of ext.claimedCommands ?? []) claimedCommands.add(k);
   }
@@ -257,16 +248,14 @@ export function createLocalWorld(opts: LocalWorldOptions): LocalWorld {
     shellTimeoutMs: world.shell_timeout_ms ?? 30_000,
     commands: validateCommands(world.commands),
     claimedCommands,
-    interactive: opts.interactive ?? true,
-    autoApprove: opts.autoApprove ?? false,
     outOfScopeWrites: 0,
+    offPlanWrites: 0,
     secretPaths,
     secretValues,
     denyWriteContains,
     protectedPaths,
     protectedBaseline,
     controlPaths,
-    writeEffects,
     approvedWritePaths:
       opts.approvedWritePaths?.map((p) => normalizeToolPath(p)) ?? loadApprovedWritePaths(root),
     childEnv: buildChildEnv(
@@ -297,16 +286,6 @@ function trackPrivateHome(dir: string): void {
 export function disposeLocalWorld(world: LocalWorld): void {
   privateHomes.delete(world.privateHome);
   rmSync(world.privateHome, { recursive: true, force: true });
-}
-
-async function promptLine(question: string): Promise<string | null> {
-  if (!process.stdin.isTTY) return null;
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try {
-    return await new Promise<string>((resolve) => rl.question(question, resolve));
-  } finally {
-    rl.close();
-  }
 }
 
 function protectionActive(world: LocalWorld): boolean {
@@ -534,10 +513,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
         const t = content.trim();
         if (t) world.secretValues.add(t);
       }
-      return {
-        output: { path: access.rel, content, found: 1 },
-        state_transition: { set: { researched: 1 } },
-      };
+      return { output: { path: access.rel, content, found: 1 } };
     } catch (e) {
       if (e instanceof SandboxPathError) return refused(e.code);
       const code = (e as NodeJS.ErrnoException).code;
@@ -565,10 +541,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
       const entries = readdirSync(access.abs)
         .filter((n) => n.toLowerCase() !== ".git")
         .sort();
-      return {
-        output: { path: access.rel, entries, found: 1 },
-        state_transition: { set: { researched: 1 } },
-      };
+      return { output: { path: access.rel, entries, found: 1 } };
     } catch (e) {
       if (e instanceof SandboxPathError) return refused(e.code);
       throw e;
@@ -576,7 +549,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
   };
 
   /** Every check runs before any byte is written (EDGE-2). */
-  const decideWrite = (requested: string, content: string, state: Record<string, unknown>): WriteDecision => {
+  const decideWrite = (requested: string, content: string): WriteDecision => {
     const leakCheck = world.denyWriteContains;
     const unified = requested.replace(/\\/g, "/");
     const outOfScope = (error?: string): WriteDecision => {
@@ -647,19 +620,12 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
         }
       }
     }
-    // 5) Plan paths (warn-then-deny); host snapshot wins over state.
-    const statePaths = Array.isArray(state.allowed_write_paths)
-      ? (state.allowed_write_paths as unknown[]).map((p) => String(p))
-      : null;
+    // 5) Plan paths (warn-then-deny). Approvals are host-provided (deployment option or the
+    //    host record snapshotted at world creation) — never read from harness state (D11).
     const allowedPaths =
-      world.approvedWritePaths && world.approvedWritePaths.length > 0
-        ? world.approvedWritePaths
-        : statePaths && statePaths.length > 0
-          ? statePaths
-          : null;
+      world.approvedWritePaths && world.approvedWritePaths.length > 0 ? world.approvedWritePaths : null;
     if (allowedPaths && !scopeCovered(access.rel, allowedPaths)) {
-      const offPlan = Number(state.off_plan_writes ?? 0);
-      if (offPlan >= 1) {
+      if (world.offPlanWrites >= 1) {
         return {
           kind: "deny",
           envelope: {
@@ -680,21 +646,20 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     return { kind: "write", abs: access.abs, rel: access.rel, realRel: access.realRel, offPlan: false };
   };
 
-  const fsWrite: ToolHandler = (args, ctx) => {
+  const fsWrite: ToolHandler = (args) => {
     const content = String(args.content ?? "");
-    const decision = decideWrite(String(args.path ?? ""), content, ctx.state);
+    const decision = decideWrite(String(args.path ?? ""), content);
     if (decision.kind === "deny") return decision.envelope;
     const leakCheck = world.denyWriteContains;
     mkdirSync(dirname(decision.abs), { recursive: true });
     const tmp = `${decision.abs}.fausth-tmp-${process.pid}-${Date.now()}`;
     writeFileSync(tmp, content, { encoding: "utf8", flag: "wx" });
     renameSync(tmp, decision.abs);
+    // Only a world-derived counter is reported as a transition (spec-v0.3 §2.3).
     const set: Record<string, unknown> = {};
-    for (const eff of world.writeEffects) {
-      if (eff.path === decision.rel || eff.path === decision.realRel) Object.assign(set, eff.set);
-    }
     if (decision.offPlan) {
-      set.off_plan_writes = Number(ctx.state.off_plan_writes ?? 0) + 1;
+      world.offPlanWrites += 1;
+      set.off_plan_writes = world.offPlanWrites;
     }
     return {
       output: {
@@ -730,73 +695,15 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     if (r.tampered) {
       return { output: { ...output, protected_modified: 1 } };
     }
-    return {
-      output: { ...output, ...protectFlags(world) },
-      ...(r.exitCode === 0 ? { state_transition: { set: { test_evidence_current: 1 } } } : {}),
-    };
+    // World feedback only: "tests pass ⇒ evidence current" is the IR's declared effect (D11).
+    return { output: { ...output, ...protectFlags(world) } };
   };
-
-  // Legacy checkpoint natives (deployment-declared). The generic user channel lives in
-  // ./user-channel.ts; these keep existing local.user_* deployments working.
-  const approveStateFromArgs = (args: Record<string, unknown>): Record<string, unknown> => {
-    const plan = String(args.plan ?? args.request ?? "");
-    const paths = extractPlanPaths(plan);
-    const set: Record<string, unknown> = { plan_approved: 1 };
-    if (paths.length) set.allowed_write_paths = paths;
-    return set;
-  };
-
-  const approveInteractive: ToolHandler = async (args) => {
-    let approved = false;
-    if (world.interactive) {
-      const plan = String(args.plan ?? args.request ?? "");
-      const answer = await promptLine(`\n--- plan proposed by the agent ---\n${plan}\n---\nApprove plan? [y/N] `);
-      approved = answer !== null && /^\s*y(es)?\s*$/i.test(answer);
-    }
-    if (approved) {
-      return { output: { approved: 1 }, state_transition: { set: approveStateFromArgs(args) } };
-    }
-    return { output: { approved: 0 } };
-  };
-
-  const approveAuto: ToolHandler = (args) => ({
-    output: { approved: 1 },
-    state_transition: { set: approveStateFromArgs(args) },
-  });
-
-  const correctInteractive: ToolHandler = async (args) => {
-    let set: Record<string, unknown> = {};
-    if (world.interactive) {
-      const request = String(args.request ?? args.reason ?? "");
-      const answer = await promptLine(
-        `\n--- correction requested by the agent ---\n${request}\n---\nuser.correct set JSON (empty to skip): `,
-      );
-      if (answer && answer.trim()) {
-        try {
-          const parsed = JSON.parse(answer) as unknown;
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            set = parsed as Record<string, unknown>;
-          }
-        } catch {
-          set = {};
-        }
-      }
-    }
-    return { output: { ok: 1 }, state_transition: { set } };
-  };
-
-  const correctAuto: ToolHandler = () => ({
-    output: { ok: 1 },
-    state_transition: { set: { open_todos: 0 } },
-  });
 
   return {
     "fs.read": fsRead,
     "fs.list": fsList,
     "fs.write_scoped": fsWrite,
     "shell.run_allowlisted": shell,
-    "user.approve": approveInteractive,
-    "user.correct": correctInteractive,
     "task.complete": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
     "harness.propose_skills_patch": (): ToolResultEnvelope => ({
       output: { ok: 1, proposed: 1 },
@@ -810,26 +717,16 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
       }
       return { output: { ok: 1, disposition: "decline", declined: 1 } };
     },
-    "phase.yield": (): ToolResultEnvelope => ({
-      output: { ok: 1 },
-      state_transition: { set: { phase_yielded: 1, researched: 1 } },
-    }),
-    // Internal keys used by registry for *_auto natives
-    "__local.user_approve_auto": approveAuto,
-    "__local.user_correct_auto": correctAuto,
+    "phase.yield": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
   };
 }
 
-/**
- * Resolve local.* handlers. When native is *_auto, use non-interactive bindings.
- */
+/** Resolve a local.* handler for a harness tool (own keys only). */
 export function pickLocalHandler(
   tools: Record<string, ToolHandler>,
   toolId: string,
-  native: string,
+  _native: string,
 ): ToolHandler | undefined {
-  if (native === "local.user_approve_auto") return tools["__local.user_approve_auto"];
-  if (native === "local.user_correct_auto") return tools["__local.user_correct_auto"];
   return Object.prototype.hasOwnProperty.call(tools, toolId) ? tools[toolId] : undefined;
 }
 
