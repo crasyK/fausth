@@ -120,10 +120,9 @@ describe("case-study-backends SWE helpers", () => {
       assert.ok(existsSync(join(dirname(wt), ".fausth-swe/run-tests.mjs")), "launcher next to the workspace");
       const meta = JSON.parse(readFileSync(join(dirname(wt), ".fausth-swe", `${basename(wt)}.json`), "utf8"));
       assert.equal(meta.instance_id, "pallets__flask-4045");
-      mkdirSync(join(wt, ".fausth"), { recursive: true });
       assert.equal(captureSweWorktreeDiff(wt), "", "fresh seed has an empty diff");
       writeFileSync(join(wt, "src/flask/new_module.py"), "X = 1\n");
-      writeFileSync(join(wt, ".fausth/tests.txt"), "tests/test_basic.py\n");
+      writeFileSync(join(wt, ".fausth-tests.txt"), "tests/test_basic.py\n");
       const diff = captureSweWorktreeDiff(wt);
       assert.match(diff, /new_module\.py/);
       assert.doesNotMatch(diff, /\.fausth/);
@@ -176,11 +175,10 @@ describe("SWE agent test command (deployment cmd=tests)", () => {
           return { code: e.status, out: String(e.stdout) };
         }
       };
-      mkdirSync(join(wt, ".fausth"), { recursive: true });
       const none = run();
       assert.equal(none.code, 2);
       assert.match(none.out, /no test targets/);
-      writeFileSync(join(wt, ".fausth/tests.txt"), "tests/test_blueprints.py::test_add_template_filter\n");
+      writeFileSync(join(wt, ".fausth-tests.txt"), "tests/test_blueprints.py::test_add_template_filter\n");
       const ok = run();
       assert.equal(ok.code, 0, ok.out.slice(-800));
       assert.match(ok.out, /PASSED tests\/test_blueprints\.py::test_add_template_filter/);

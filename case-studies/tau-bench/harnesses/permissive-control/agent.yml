@@ -5,6 +5,8 @@ spec: counterbalance-contract/v0.1
 name: tau-retail-permissive-control
 state:
   clarified: 0
+  researched: 0
+  test_evidence_current: 0
 limits:
   max_steps: 30
   max_tool_calls: 30

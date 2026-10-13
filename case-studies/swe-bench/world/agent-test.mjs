@@ -6,7 +6,7 @@
  *
  * Runs the repo's upstream test command (the same one the grader uses: pytest
  * node ids, Django `tests/runtests.py` dotted labels, SymPy `bin/test` paths,
- * Sphinx tox) on the targets the agent lists in `.fausth/tests.txt`, inside the
+ * Sphinx tox) on the targets the agent lists in `.fausth-tests.txt`, inside the
  * task's prebuilt environment with the agent's current edits applied. The gold
  * test patch is never applied here (no grading information reaches the agent).
  *
@@ -30,9 +30,10 @@ import {
 } from "./env.mjs";
 import { applyPatchSnippet } from "./eval.mjs";
 import { splitPatchFiles } from "./grading.mjs";
-import { diffAgainstBase, FAUSTH_DIR, readSeedMeta } from "./patch.mjs";
+import { diffAgainstBase, readSeedMeta } from "./patch.mjs";
 
-export const TARGETS_FILE = `${FAUSTH_DIR}/tests.txt`;
+/** Agent-written target list (repo root; `.fausth/` is a host-reserved directory). */
+export const TARGETS_FILE = ".fausth-tests.txt";
 
 function q(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;

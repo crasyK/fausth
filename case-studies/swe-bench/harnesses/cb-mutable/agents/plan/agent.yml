@@ -38,6 +38,12 @@ tools:
           type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.list
     read_only: true
     input:
@@ -64,6 +70,12 @@ tools:
             type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: user.approve
     description: |
       Submit your fix plan for approval ONCE. Name the exact source file(s) to edit (not test files). After approved=1, do NOT call user.approve again — call phase.yield to advance. Implementation is gated on editing those source paths before running cmd="test".
@@ -136,3 +148,5 @@ counterbalance:
     - tool: user.approve
       allow_set_keys:
         - plan_approved
+  completion:
+    tool: phase.yield

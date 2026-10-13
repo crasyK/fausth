@@ -36,6 +36,12 @@ tools:
           type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.list
     read_only: true
     input:
@@ -62,6 +68,12 @@ tools:
             type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: phase.yield
     input:
       type: object
@@ -91,3 +103,5 @@ permissions:
 counterbalance:
   orientation:
     emit_each_step: true
+  completion:
+    tool: phase.yield

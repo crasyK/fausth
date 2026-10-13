@@ -35,6 +35,12 @@ tools:
           type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.list
     read_only: true
     input:
@@ -61,6 +67,12 @@ tools:
             type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: user.approve
     input:
       type: object
@@ -120,6 +132,8 @@ counterbalance:
     - tool: user.approve
       allow_set_keys:
         - plan_approved
+  completion:
+    tool: phase.yield
 gates:
   - id: no-irreversible-shell
     when:

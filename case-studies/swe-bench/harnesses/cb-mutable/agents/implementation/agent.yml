@@ -40,6 +40,12 @@ tools:
           type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.list
     description: |
       List directory entries under the worktree. Use to discover package layout (e.g. src/, django/conf/) before reading. Args: {path}.
@@ -68,6 +74,12 @@ tools:
             type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.write_scoped
     description: |
       Write or patch a file in the worktree. SWE-bench requires editing SOURCE files named in your approved plan (e.g. src/flask/blueprints.py, requests/sessions.py). Do NOT write reproduction tests as your only change — apply the fix to the library source first. Writing a test-only file then running cmd=test will fail verify_evidence because the bug is still unfixed. Args: {path, content}.
@@ -102,7 +114,7 @@ tools:
           eq: 0
         otherwise: safe_state
   - id: shell.run_allowlisted
-    description: "Run tests. The ONLY command is cmd=\"tests\": it runs this repository's own test runner (the one the grader uses) inside the task's prepared environment, with your current edits applied, on the targets you list in .fausth/tests.txt (one per line: pytest node ids or test files; Django: dotted labels such as test_utils.tests; SymPy: test file paths). Write that file with fs.write_scoped first. exit_code 0 means the listed tests passed; the output is the test log. No other shell command exists."
+    description: "Run tests. The ONLY command is cmd=\"tests\": it runs this repository's own test runner (the one the grader uses) inside the task's prepared environment, with your current edits applied, on the targets you list in .fausth-tests.txt (one per line: pytest node ids or test files; Django: dotted labels such as test_utils.tests; SymPy: test file paths). Write that file with fs.write_scoped first. exit_code 0 means the listed tests passed; the output is the test log. No other shell command exists."
     input:
       type: object
       required:

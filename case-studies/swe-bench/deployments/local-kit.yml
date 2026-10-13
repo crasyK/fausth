@@ -1,7 +1,7 @@
 # SWE-bench Lite HRI deployment — KIT live (shared by every arm).
 # Tests: the agent's only command is `tests` — the task's own runner in its prepared environment
 # (case-studies/swe-bench/world/agent-test.mjs via a host launcher next to the workspace), on targets
-# the agent lists in .fausth/tests.txt. The grader uses the same environment and runner.
+# the agent lists in .fausth-tests.txt. The grader uses the same environment and runner.
 # Plan approval (CB plan phase) is a user-channel checkpoint answered by a recorded "approve once"
 # script: there is no human reviewer in this study (honest label: approval = plan submitted).
 # The KIT gateway caches kit.glm-5.3-flash responses by request body: identical requests return

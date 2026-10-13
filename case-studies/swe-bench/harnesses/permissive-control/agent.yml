@@ -37,6 +37,12 @@ tools:
           type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.list
     read_only: true
     input:
@@ -63,6 +69,12 @@ tools:
             type: string
         found:
           type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.write_scoped
     input:
       type: object
@@ -122,7 +134,7 @@ tools:
           path: result.exit_code
           eq: 0
         otherwise: deny
-    description: "Run tests. The ONLY command is cmd=\"tests\": it runs this repository's own test runner (the one the grader uses) inside the task's prepared environment, with your current edits applied, on the targets you list in .fausth/tests.txt (one per line: pytest node ids or test files; Django: dotted labels such as test_utils.tests; SymPy: test file paths). Write that file with fs.write_scoped first. exit_code 0 means the listed tests passed; the output is the test log. No other shell command exists."
+    description: "Run tests. The ONLY command is cmd=\"tests\": it runs this repository's own test runner (the one the grader uses) inside the task's prepared environment, with your current edits applied, on the targets you list in .fausth-tests.txt (one per line: pytest node ids or test files; Django: dotted labels such as test_utils.tests; SymPy: test file paths). Write that file with fs.write_scoped first. exit_code 0 means the listed tests passed; the output is the test log. No other shell command exists."
     effects:
       - when:
           all:

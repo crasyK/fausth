@@ -154,7 +154,10 @@ function harness({ name, comment, limits, extraTools = [], mutable, sequences = 
   const ir = {
     spec: "counterbalance-contract/v0.1",
     name,
-    state: { clarified: 0 },
+    // clarified: the only key a rule reads. researched / test_evidence_current: written by the
+    // engine's τ host on every successful tau.invoke (legacy name-based transition); declared only
+    // so the engine does not reject the call (spec-v0.3 §6.3 step 5). No rule reads them.
+    state: { clarified: 0, researched: 0, test_evidence_current: 0 },
     ...(mutable ? { mutable } : {}),
     limits: { ...limits, continue_after_deny: true },
     tools,

@@ -47,7 +47,11 @@ describe("τ harnesses", () => {
 
   it("every state key is used by a real rule; user tools are user-channel; tool catalog is upstream's", () => {
     const cb = h("counterbalanced");
-    assert.deepEqual(Object.keys(cb.state), ["clarified"]);
+    // clarified is the only key any rule reads; the other two exist only because the engine's
+    // τ host still writes them on every successful call (declared so calls are not rejected)
+    assert.deepEqual(Object.keys(cb.state), ["clarified", "researched", "test_evidence_current"]);
+    const rules = JSON.stringify(cb.counterbalance);
+    assert.ok(!rules.includes("researched") && !rules.includes("test_evidence_current"));
     const ask = cb.tools.find((t) => t.id === "user.ask");
     assert.equal(ask.channel, "user");
     const tau = cb.tools.find((t) => t.id === "tau.invoke");

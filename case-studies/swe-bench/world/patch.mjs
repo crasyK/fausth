@@ -12,8 +12,9 @@ import { basename, dirname, join, resolve } from "node:path";
 
 /** Host-side directory next to the agent workspace (never inside it). */
 export const HOST_DIR = ".fausth-swe";
-/** Agent-owned directory inside the workspace (test targets); excluded from diffs. */
+/** Tooling paths inside the workspace that never count as part of the agent's patch. */
 export const FAUSTH_DIR = ".fausth";
+export const TARGETS_FILE_NAME = ".fausth-tests.txt";
 
 /**
  * Host metadata for a seeded workspace lives OUTSIDE the agent's workspace:
@@ -34,6 +35,7 @@ const EXCLUDES = [
   ":(exclude).fausth-worktree.json",
   ":(exclude).fausth-swe-seed.json",
   `:(exclude)${FAUSTH_DIR}`,
+  `:(exclude)${TARGETS_FILE_NAME}`,
   ":(exclude,glob)**/__pycache__/**",
   ":(exclude,glob)**/*.pyc",
   ":(exclude,glob)**/.pytest_cache/**",
