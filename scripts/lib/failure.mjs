@@ -27,11 +27,32 @@ export const INFRA_KINDS = new Set([
   "missing_api_key",
 ]);
 
+/** HTTP status → ModelInfraError kind (engines/ts/src/model/errors.ts taxonomy). */
+function kindForStatus(status) {
+  const s = Number(status);
+  if (s === 401 || s === 402 || s === 403) return "auth";
+  if (s === 404) return "model_unavailable";
+  if (s === 408) return "timeout";
+  if (s === 429) return "rate_limit";
+  if (s >= 500) return "server_error";
+  return "bad_request";
+}
+
 /**
- * Exact known infra signatures produced by the current transport / host.
- * Each regex is anchored at a line start so free text cannot trigger it.
+ * Exact known infra signatures produced by the transport / host. The engine CLI
+ * prints a typed ModelInfraError as its bare message, so these mirror the
+ * messages that type produces. Each regex is anchored at a line start so free
+ * text cannot trigger it.
  */
 const KNOWN_INFRA_CODES = [
+  // ModelInfraError (typed transport errors).
+  { re: /^model request timed out after \d+ms\b/m, kind: "timeout", code: "TIMEOUT" },
+  { re: /^model request failed \(/m, kind: "network", code: "NETWORK" },
+  { re: /^malformed \(non-JSON\) response body from /m, kind: "server_error", code: "MALFORMED_BODY" },
+  { re: /^no usable response from /m, kind: "server_error", code: "NO_USABLE_RESPONSE" },
+  { re: /^[\w.:/@-]+: provider error in 2xx body: /m, kind: "server_error", code: "PROVIDER_ERROR" },
+  { re: /^no models configured$/m, kind: "model_unavailable", code: "NO_MODELS" },
+  { re: /^[\w.:/@-]+ HTTP (\d{3}): /m, kind: (m) => kindForStatus(m[1]), code: "HTTP_$1" },
   { re: /^(?:Error: )?RATE_LIMIT:/m, kind: "rate_limit", code: "RATE_LIMIT" },
   { re: /^(?:Error: )?OpenAI-compatible error (401|403):/m, kind: "auth", code: "HTTP_$1" },
   { re: /^(?:Error: )?OpenAI-compatible error (429):/m, kind: "rate_limit", code: "HTTP_$1" },
@@ -109,10 +130,45 @@ export function classifyFailure(input = {}) {
   for (const { re, kind, code } of KNOWN_INFRA_CODES) {
     const m = re.exec(text);
     if (m) {
-      return { infra: true, kind, code: code.replace("$1", m[1] ?? ""), source: "known_code" };
+      return {
+        infra: true,
+        kind: typeof kind === "function" ? kind(m) : kind,
+        code: code.replace("$1", m[1] ?? ""),
+        source: "known_code",
+      };
     }
   }
   return { infra: false, kind: "error", code: null, source: "unclassified" };
+}
+
+/**
+ * The runtime records host infrastructure failures during a run as events
+ * (`reason: "infra_failure"`, `failure: { kind: "adapter", code }`) and ends the
+ * run. Such an attempt is infrastructure, never a scored model outcome.
+ * @param {string} eventsText
+ * @returns {{ infra: true, kind: string, code: string | null, tool: string | null, message: string } | null}
+ */
+export function findInfraFailureEvent(eventsText) {
+  for (const line of String(eventsText ?? "").split(/\r?\n/)) {
+    if (!line.includes("infra_failure")) continue;
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (e?.reason !== "infra_failure") continue;
+    const f = e.failure && typeof e.failure === "object" ? e.failure : {};
+    const kind = f.kind === "adapter" && f.code ? `adapter:${f.code}` : String(f.kind ?? "infra");
+    return {
+      infra: true,
+      kind,
+      code: f.code == null ? null : String(f.code),
+      tool: e.tool ?? null,
+      message: String(e.error ?? f.message ?? "infra_failure event"),
+    };
+  }
+  return null;
 }
 
 /**
