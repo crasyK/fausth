@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { collapseToUnits, pairedComparison } from "./case-study-score.mjs";
 
 export const ADAPTIVE_CONDITIONS = new Set(["cb-mutable", "cb-optimize"]);
 export const OPTIMIZE_CONDITIONS = new Set(["cb-optimize"]);
@@ -27,17 +28,21 @@ export function usesNeverResetLineage(condition) {
 }
 
 /**
+ * Identity of one analysis unit: (task, condition, deployment, model, rep[, phase/pass]).
+ * Tries of an adaptive arm share it; train passes / eval slots do not.
  * @param {Record<string, unknown>} item
- * @param {number} [tryIndex]
  */
-export function taskChainId(item, tryIndex) {
-  return [
+export function taskChainId(item) {
+  const parts = [
     item.task_id,
     item.condition,
     item.deployment_id,
     String(item.model_id ?? "").replace(/[^a-zA-Z0-9._-]+/g, "-"),
     `rep${item.rep}`,
-  ].join("__");
+  ];
+  if (item.phase === "train") parts.push(`train_pass${item.train_pass ?? 1}`);
+  else if (item.phase === "eval") parts.push("eval");
+  return parts.join("__");
 }
 
 /**
@@ -207,23 +212,38 @@ export function appendLineageHistory(historyPath, event) {
 }
 
 /**
+ * Never-reset / try-chain invariants (SCR-7, SCR-8).
+ *
+ * Only rows that are tries of an adaptive chain (`try_index != null`) are
+ * checked for try sequencing; single-try rows (`try_index: null`) are complete
+ * units on their own. A chain must hold tries 1..n without gaps; tries after a
+ * success must be accounted as `skipped_after_success` (never scored).
  * @param {Array<Record<string, unknown>>} attempts
  */
 export function checkOptInvariants(attempts) {
   /** @type {string[]} */
   const violations = [];
-  /** @type {Map<string, Array<Record<string, unknown>>>} */
+  /** @type {Map<string, Array<Record<string, any>>>} */
   const byChain = new Map();
   for (const a of attempts) {
-    if (!a.task_chain_id) continue;
+    if (a.stock_reload === true) {
+      violations.push(`${a.attempt_id ?? a.task_chain_id ?? "?"}: stock_reload`);
+    }
+    if (a.security_intact === false) {
+      violations.push(`${a.attempt_id ?? a.task_chain_id ?? "?"}: security_surface drifted`);
+    }
+    if (a.try_index == null) continue;
+    if (!a.task_chain_id) {
+      violations.push(`${a.attempt_id ?? "?"}: try ${a.try_index} without task_chain_id`);
+      continue;
+    }
     const k = String(a.task_chain_id);
     if (!byChain.has(k)) byChain.set(k, []);
     byChain.get(k).push(a);
   }
   for (const [chainId, rows] of byChain) {
-    const tries = [...rows].sort(
-      (x, y) => Number(x.try_index ?? 0) - Number(y.try_index ?? 0),
-    );
+    const tries = [...rows].sort((x, y) => Number(x.try_index) - Number(y.try_index));
+    let succeededAt = null;
     for (let i = 0; i < tries.length; i++) {
       const t = tries[i];
       const expected = i + 1;
@@ -233,11 +253,16 @@ export function checkOptInvariants(attempts) {
       if (i > 0 && !t.parent_attempt_id) {
         violations.push(`${chainId}: try ${t.try_index} missing parent_attempt_id`);
       }
-      if (t.stock_reload === true) {
-        violations.push(`${chainId}: stock_reload on try ${t.try_index}`);
+      if (succeededAt != null && t.status !== "skipped_after_success") {
+        violations.push(
+          `${chainId}: try ${t.try_index} ran after success on try ${succeededAt}`,
+        );
       }
-      if (t.security_intact === false) {
-        violations.push(`${chainId}: security_surface drifted on try ${t.try_index}`);
+      if (t.status === "skipped_after_success" && succeededAt == null) {
+        violations.push(`${chainId}: try ${t.try_index} skipped without a prior success`);
+      }
+      if (succeededAt == null && t.status === "scored" && t.score?.task_success === true) {
+        succeededAt = Number(t.try_index);
       }
     }
     const headline = tries.find((t) => t.outcome_role === "headline");
@@ -256,29 +281,33 @@ export function checkOptInvariants(attempts) {
 }
 
 /**
- * Aggregate adaptive-arm metrics for summary.
+ * Per-arm adaptive metrics (SCR-5). Primary: pass@1 = success on try 1 of each
+ * (task, rep) chain — directly comparable with single-try arms. Secondary:
+ * pass@k with k = planned tries (NOT comparable across arms with different k).
  * @param {Array<Record<string, unknown>>} attempts
  * @param {string} condition
  */
 export function adaptiveArmStats(attempts, condition) {
-  const rows = attempts.filter(
-    (a) => a.condition === condition && a.status === "scored",
-  );
-  /** @type {Map<string, Array<Record<string, unknown>>>} */
+  const rows = attempts.filter((a) => a.condition === condition);
+  /** @type {Map<string, Array<Record<string, any>>>} */
   const byChain = new Map();
   for (const a of rows) {
     const k = String(a.task_chain_id ?? a.attempt_id);
     if (!byChain.has(k)) byChain.set(k, []);
     byChain.get(k).push(a);
   }
-  let anyOfSuccess = 0;
+  let n1 = 0;
   let firstTrySuccess = 0;
+  let nk = 0;
+  let anyOfSuccess = 0;
+  /** @type {Set<number>} */
+  const ks = new Set();
   /** @type {number[]} */
   const triesToSuccess = [];
   /** @type {number[]} */
-  const triesAll = [];
+  const triesRun = [];
   /** @type {Record<string, number>} */
-  const triesHistogram = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
+  const triesHistogram = {};
   let patch = 0;
   let decline = 0;
   let selectionOk = 0;
@@ -286,23 +315,37 @@ export function adaptiveArmStats(attempts, condition) {
   let optimizeHelped = 0;
   let securityIntact = 0;
   let securityN = 0;
+  let skipped = 0;
 
   for (const [, chain] of byChain) {
     const ordered = [...chain].sort(
       (a, b) => Number(a.try_index ?? 1) - Number(b.try_index ?? 1),
     );
-    const nTries = ordered.length;
-    triesAll.push(nTries);
-    const successIdx = ordered.findIndex((a) => a.score?.task_success === true);
-    if (successIdx >= 0) {
-      anyOfSuccess += 1;
-      triesToSuccess.push(successIdx + 1);
-      const bucket = String(Math.min(5, successIdx + 1));
-      triesHistogram[bucket] = (triesHistogram[bucket] ?? 0) + 1;
-      if (successIdx === 0) firstTrySuccess += 1;
-      const priorFail = ordered.slice(0, successIdx).some((a) => a.score?.task_success !== true);
-      const hadPatch = ordered.some((a) => a.selection_ok === true);
-      if (priorFail && hadPatch && condition === "cb-optimize") optimizeHelped += 1;
+    const k = Math.max(
+      1,
+      ...ordered.map((a) => Number(a.max_task_tries ?? 1)).filter(Number.isFinite),
+    );
+    ks.add(k);
+    const first = ordered.find((a) => Number(a.try_index ?? 1) === 1);
+    if (first?.status === "scored" && first.score) {
+      n1 += 1;
+      if (first.score.task_success === true) firstTrySuccess += 1;
+    }
+    const scored = ordered.filter((a) => a.status === "scored" && a.score);
+    skipped += ordered.filter((a) => a.status === "skipped_after_success").length;
+    triesRun.push(ordered.filter((a) => a.status !== "skipped_after_success").length);
+    if (scored.length) {
+      nk += 1;
+      const win = scored.find((a) => a.score.task_success === true);
+      if (win) {
+        anyOfSuccess += 1;
+        const t = Number(win.try_index ?? 1);
+        triesToSuccess.push(t);
+        triesHistogram[String(t)] = (triesHistogram[String(t)] ?? 0) + 1;
+        const priorFail = scored.some((a) => Number(a.try_index ?? 1) < t);
+        const hadPatch = ordered.some((a) => a.selection_ok === true);
+        if (priorFail && hadPatch && condition === "cb-optimize") optimizeHelped += 1;
+      }
     }
     for (const a of ordered) {
       if (a.disposition === "patch") patch += 1;
@@ -318,19 +361,28 @@ export function adaptiveArmStats(attempts, condition) {
     }
   }
 
-  const nChains = byChain.size;
   const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  const kList = [...ks].sort((a, b) => a - b);
+  const passAt1 = { p: n1 ? firstTrySuccess / n1 : null, successes: firstTrySuccess, n: n1 };
+  const passAtK = {
+    k: kList.length === 1 ? kList[0] : null,
+    mixed_k: kList.length > 1 ? kList : undefined,
+    p: nk ? anyOfSuccess / nk : null,
+    successes: anyOfSuccess,
+    n: nk,
+    note: "secondary: success on any of k tries; not comparable across arms with different k",
+  };
   return {
-    n_task_chains: nChains,
-    task_success_any_of: nChains
-      ? { p: anyOfSuccess / nChains, successes: anyOfSuccess, n: nChains }
-      : { p: 0, successes: 0, n: 0 },
-    task_success_first_try: nChains
-      ? { p: firstTrySuccess / nChains, successes: firstTrySuccess, n: nChains }
-      : { p: 0, successes: 0, n: 0 },
+    n_task_chains: byChain.size,
+    pass_at_1: passAt1,
+    task_success_first_try: passAt1,
+    pass_at_k: passAtK,
+    /** @deprecated secondary pass@k under its legacy name; never compare with pass@1. */
+    task_success_any_of: passAtK,
     tries_histogram: triesHistogram,
+    tries_skipped_after_success: skipped,
     mean_tries_to_success: mean(triesToSuccess),
-    mean_tries_all: mean(triesAll),
+    mean_tries_run: mean(triesRun),
     patch_rate: patch + decline ? patch / (patch + decline) : null,
     decline_rate: patch + decline ? decline / (patch + decline) : null,
     selection_ok_rate: selectionN ? selectionOk / selectionN : null,
@@ -339,54 +391,104 @@ export function adaptiveArmStats(attempts, condition) {
   };
 }
 
+/** @param {number | null | undefined} p */
+function pct(p) {
+  return p == null ? "—" : `${(p * 100).toFixed(1)}%`;
+}
+
+/** @param {number | null | undefined} d */
+function pp(d) {
+  return d == null ? "—" : `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)}`;
+}
+
 /**
+ * Markdown banner for failed invariants (CASE-16): results must not be read silently.
+ * @param {{ ok: boolean, violations: string[] }} invariants
+ */
+export function invariantsBanner(invariants) {
+  if (!invariants || invariants.ok) return [];
+  return [
+    "> **INVARIANTS FAILED** — this run violates try-chain / never-reset invariants;",
+    `> its numbers are not trustworthy until the ${invariants.violations.length} violation(s) below are explained.`,
+    "",
+  ];
+}
+
+/**
+ * Attribution table (SCR-5): pass@1 for every arm is the primary metric and the
+ * only basis for Δ; pass@k is a labelled secondary column. Δ is refused when
+ * the comparator (baseline) arm is absent.
  * @param {string} outPath
  * @param {{ track: string, attempts: Array<Record<string, unknown>>, baselineCondition?: string, invariants: ReturnType<typeof checkOptInvariants> }} opts
  */
 export function writeAttributionMd(outPath, opts) {
+  writeFileSync(outPath, attributionMarkdown(opts));
+}
+
+/**
+ * @param {{ track: string, attempts: Array<Record<string, unknown>>, baselineCondition?: string, invariants: ReturnType<typeof checkOptInvariants> }} opts
+ */
+export function attributionMarkdown(opts) {
   const { track, attempts, baselineCondition = "counterbalanced", invariants } = opts;
+  const units = collapseToUnits(attempts);
   const conditions = [...new Set(attempts.map((a) => String(a.condition)))].sort();
+  const baselinePresent = units.some(
+    (u) => u.condition === baselineCondition && u.status === "scored",
+  );
   const lines = [
     `# Attribution — Track ${track}`,
     "",
-    `Baseline condition: \`${baselineCondition}\``,
+    ...invariantsBanner(invariants),
+    `Baseline condition: \`${baselineCondition}\`${baselinePresent ? "" : " — **absent from this run (no Δ computed)**"}`,
     "",
-    "| Arm | Any-of success | First-try | Mean tries (success) | Δ vs baseline (pp) |",
-    "|-----|----------------|-----------|----------------------|--------------------|",
+    "Primary metric: **pass@1** (success on the first try of each (task, rep) unit) for every arm.",
+    "Δ is a paired pass@1 difference over matched units. pass@k (any of k tries) is secondary and",
+    "only comparable between arms with the same k.",
+    "",
+    "| Arm | Units | pass@1 | Δ pass@1 vs baseline (pp) | matched n | 95% CI (pp) | McNemar p | pass@k (k) | Mean tries to success |",
+    "|-----|-------|--------|---------------------------|-----------|-------------|-----------|------------|-----------------------|",
   ];
-  const baselineStats = adaptiveArmStats(
-    attempts.filter((a) => a.outcome_role === "headline" || a.try_index == null || a.try_index === 1),
-    baselineCondition,
-  );
-  // For baseline (static), use scored attempts directly
-  const baselineRows = attempts.filter(
-    (a) => a.condition === baselineCondition && a.status === "scored",
-  );
-  const baselineP =
-    baselineRows.length === 0
-      ? 0
-      : baselineRows.filter((a) => a.score?.task_success === true).length / baselineRows.length;
-
+  /** @type {Record<string, ReturnType<typeof adaptiveArmStats>>} */
+  const statsByArm = {};
   for (const cond of conditions) {
-    const stats = isAdaptiveCondition(cond)
-      ? adaptiveArmStats(attempts, cond)
-      : null;
-    let p;
-    let first;
-    let meanTries;
-    if (stats) {
-      p = stats.task_success_any_of.p;
-      first = stats.task_success_first_try.p;
-      meanTries = stats.mean_tries_to_success;
+    statsByArm[cond] = adaptiveArmStats(attempts, cond);
+  }
+  const ks = new Set(
+    Object.values(statsByArm)
+      .map((s) => s.pass_at_k.k)
+      .filter((k) => k != null),
+  );
+  for (const cond of conditions) {
+    const stats = statsByArm[cond];
+    let deltaCell = "—";
+    let nCell = "—";
+    let ciCell = "—";
+    let pCell = "—";
+    if (cond === baselineCondition) {
+      deltaCell = "(baseline)";
+    } else if (!baselinePresent) {
+      deltaCell = "n/a (baseline arm absent)";
     } else {
-      const rows = attempts.filter((a) => a.condition === cond && a.status === "scored");
-      p = rows.length ? rows.filter((a) => a.score?.task_success).length / rows.length : 0;
-      first = p;
-      meanTries = 1;
+      const d = pairedComparison(units, cond, baselineCondition, "task_success");
+      if (d.status === "ok") {
+        deltaCell = pp(d.absolute);
+        nCell = String(d.n_matched);
+        ciCell = d.ci95 ? `[${pp(d.ci95.low)}, ${pp(d.ci95.high)}]` : "—";
+        pCell = d.mcnemar ? d.mcnemar.p_exact.toFixed(3) : "—";
+      } else {
+        deltaCell = `n/a (${d.status})`;
+      }
     }
-    const delta = ((p - baselineP) * 100).toFixed(1);
+    const k = stats.pass_at_k.k;
+    const passK = k == null ? "— (mixed k)" : `${pct(stats.pass_at_k.p)} (k=${k})`;
     lines.push(
-      `| ${cond} | ${(p * 100).toFixed(1)}% | ${(first * 100).toFixed(1)}% | ${meanTries == null ? "—" : meanTries.toFixed(2)} | ${delta} |`,
+      `| ${cond} | ${stats.n_task_chains} | ${pct(stats.pass_at_1.p)} (${stats.pass_at_1.successes}/${stats.pass_at_1.n}) | ${deltaCell} | ${nCell} | ${ciCell} | ${pCell} | ${passK} | ${stats.mean_tries_to_success == null ? "—" : stats.mean_tries_to_success.toFixed(2)} |`,
+    );
+  }
+  if (ks.size > 1) {
+    lines.push("");
+    lines.push(
+      `_pass@k columns use different k across arms (${[...ks].sort().join(", ")}); do not compare them._`,
     );
   }
   lines.push("");
@@ -402,5 +504,5 @@ export function writeAttributionMd(outPath, opts) {
   lines.push("");
   lines.push("See `ledger.json`, `lineage/history.jsonl`, and per-attempt `optimize/` / `phases/` artifacts.");
   lines.push("");
-  writeFileSync(outPath, lines.join("\n"));
+  return lines.join("\n");
 }
