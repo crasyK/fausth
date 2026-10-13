@@ -7,6 +7,7 @@ import pytest
 
 from fausth.adapter_error import AdapterError
 from fausth.user_channel import (
+    check_user_set,
     coerce_human_answer,
     create_user_channel_handler,
     parse_user_channel_binding,
@@ -93,3 +94,23 @@ def test_human_callback_and_coercion(answers_dir):
     schema = {"required": ["approved"], "properties": {"approved": {"type": "integer"}}}
     assert coerce_human_answer("yes", schema) == {"output": {"approved": 1}}
     assert coerce_human_answer("maybe", schema) is None
+
+
+def test_user_set_must_match_ir_state_type():
+    assert check_user_set({"clarified": 1}, ["clarified"], {"clarified": "integer"}) is None
+    assert "integer" in check_user_set({"clarified": "wants_replacement"}, ["clarified"], {"clarified": "integer"})
+    assert "non-integral" in check_user_set({"clarified": 0.5}, ["clarified"], {"clarified": "integer"})
+    assert "may only contain" in check_user_set({"other": 1}, ["clarified"], {})
+
+
+def test_human_set_is_validated(answers_dir):
+    h = create_user_channel_handler(
+        ASK,
+        parse_user_channel_binding("user.ask", {"source": "human"}),
+        base_dir=answers_dir,
+        allow_set_keys=["clarified"],
+        state_types={"clarified": "integer"},
+        human_answer=lambda req: {"output": {"answer": "x"}, "set": {"clarified": "yes"}},
+    )
+    with pytest.raises(AdapterError):
+        h({"question": "q?"}, {})

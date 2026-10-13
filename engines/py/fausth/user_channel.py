@@ -104,6 +104,56 @@ def _load_answers(base_dir: str | Path, rel: str) -> list[dict[str, Any]]:
     return out
 
 
+def state_value_type(v: Any) -> str:
+    """JSON type of an IR state value (integers distinguished; D3) — mirrors TS stateValueType."""
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "boolean"
+    if isinstance(v, int):
+        return "integer"
+    if isinstance(v, float):
+        return "integer" if v.is_integer() else "number"
+    if isinstance(v, str):
+        return "string"
+    if isinstance(v, list):
+        return "array"
+    return "object"
+
+
+def _non_canonical(v: Any) -> bool:
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, float):
+        return not v.is_integer() or abs(v) > 9007199254740991
+    if isinstance(v, int):
+        return abs(v) > 9007199254740991
+    if isinstance(v, list):
+        return any(_non_canonical(x) for x in v)
+    if isinstance(v, dict):
+        return any(_non_canonical(x) for x in v.values())
+    return False
+
+
+def check_user_set(
+    set_: dict[str, Any],
+    allow_set_keys: list[str],
+    state_types: dict[str, str] | None = None,
+) -> str | None:
+    """Same rules as TS checkUserSet: allowed keys, declared IR type, canonical numbers (D3)."""
+    bad = [k for k in set_ if k not in allow_set_keys]
+    if bad:
+        return f"set may only contain [{', '.join(allow_set_keys)}]"
+    for k, v in set_.items():
+        if _non_canonical(v):
+            return f"set.{k} must not contain non-integral numbers"
+        want = (state_types or {}).get(k)
+        got = state_value_type(v)
+        if want and got != want and not (want == "number" and got == "integer"):
+            return f"set.{k} must be {'an integer' if want == 'integer' else 'a ' + want}"
+    return None
+
+
 def _persist(entry: dict[str, Any], sink: list[dict[str, Any]] | None) -> None:
     if sink is not None:
         sink.append(entry)
@@ -171,6 +221,7 @@ def create_user_channel_handler(
     *,
     base_dir: str | Path,
     allow_set_keys: list[str] | None = None,
+    state_types: dict[str, str] | None = None,
     transcript: list[dict[str, Any]] | None = None,
     human_answer: HumanAnswer | None = None,
 ) -> ToolHandler:
@@ -221,6 +272,10 @@ def create_user_channel_handler(
             answer = ask(req)
             if not isinstance(answer, dict) or not isinstance(answer.get("output"), dict):
                 _fail(f"user channel '{tool_id}': human answer must provide an output object")
+            if isinstance(answer.get("set"), dict):
+                why = check_user_set(answer["set"], list(allow_set_keys or []), state_types)
+                if why:
+                    _fail(f"user channel '{tool_id}': {why}")
             result: dict[str, Any] = {"output": answer["output"]}
             if isinstance(answer.get("set"), dict) and answer["set"]:
                 result["state_transition"] = {"set": answer["set"]}
