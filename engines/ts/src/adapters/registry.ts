@@ -122,6 +122,18 @@ export type ResolveToolsOptions = {
   harnessDir?: string;
   /** Resolved IR for mcp_tool name maps (optional). */
   resolved?: ResolvedHarnessIR;
+  /**
+   * Path of the deployment file the bindings came from. Used for provenance checks
+   * (a deployment shipped inside a bundle may not spawn host commands on its own).
+   * When omitted, `harnessDir` provenance is used (fail closed for bundle dirs).
+   */
+  deploymentPath?: string;
+};
+
+/** Bound handlers plus a cleanup that terminates any host sessions (stdio children). */
+export type BoundTools = {
+  tools: Record<string, ToolHandler>;
+  cleanup: () => void;
 };
 
 function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Record<string, ToolHandler> {
@@ -154,11 +166,48 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
 
 /**
  * For each agent tool, require a deployment binding whose native resolves to that tool.
+ * Prefer {@link bindToolsFromDeployment}, which also returns the session cleanup.
  */
 export function resolveToolsFromDeployment(
   agent: AgentIR,
   deployment: Deployment,
   opts: ResolveToolsOptions = {},
+): Record<string, ToolHandler> {
+  return bindToolsFromDeployment(agent, deployment, opts).tools;
+}
+
+/**
+ * Bind deployment natives to handlers and return a cleanup that closes any host
+ * sessions (MCP/module stdio children). Callers must invoke cleanup when the run ends.
+ */
+export function bindToolsFromDeployment(
+  agent: AgentIR,
+  deployment: Deployment,
+  opts: ResolveToolsOptions = {},
+): BoundTools {
+  const cleanups: Array<() => void> = [];
+  const cleanup = () => {
+    for (const c of cleanups.splice(0)) {
+      try {
+        c();
+      } catch {
+        /* best-effort */
+      }
+    }
+  };
+  try {
+    return { tools: bindToolsInner(agent, deployment, opts, cleanups), cleanup };
+  } catch (e) {
+    cleanup();
+    throw e;
+  }
+}
+
+function bindToolsInner(
+  agent: AgentIR,
+  deployment: Deployment,
+  opts: ResolveToolsOptions,
+  cleanups: Array<() => void>,
 ): Record<string, ToolHandler> {
   assertBindingFamilyConsistency(deployment);
   if (deploymentUsesLocal(deployment) && deploymentUsesMcp(deployment)) {
@@ -211,6 +260,7 @@ export function resolveToolsFromDeployment(
         harnessDir: opts.harnessDir,
         mcpToolMap: mcpToolMapFromResolved(opts.resolved),
       });
+      cleanups.push(mcp.cleanup);
       pool = { ...pool, ...mcp.handlers };
       mcpNativeToTool = mcp.nativeToTool;
     }
@@ -222,6 +272,7 @@ export function resolveToolsFromDeployment(
         );
       }
       const mod = createModuleHandlers(deployment, { harnessDir: opts.harnessDir });
+      cleanups.push(mod.cleanup);
       pool = { ...pool, ...mod.handlers };
       moduleNativeToTool = mod.nativeToTool;
     }
