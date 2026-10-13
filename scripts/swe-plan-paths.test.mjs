@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import {
   extractApprovedPathsFromEvents,
   extractPlanPaths,
+  isTestPath,
 } from "./swe-plan-paths.mjs";
 
 describe("swe-plan-paths", () => {
@@ -30,5 +31,20 @@ describe("swe-plan-paths", () => {
       }),
     ].join("\n");
     assert.deepEqual(extractApprovedPathsFromEvents(events), ["src/flask/blueprints.py"]);
+  });
+
+  it("skips nested test files (SCR-20)", () => {
+    const paths = extractPlanPaths(
+      "Fix astropy/modeling/separable.py; see astropy/modeling/tests/test_separable.py, " +
+        "pkg/test_util.py, lib/foo_test.py, src/conftest.py and web/app.spec.ts.",
+    );
+    assert.deepEqual(paths, ["astropy/modeling/separable.py"]);
+  });
+
+  it("keeps library code under a nested singular test/ package", () => {
+    assert.equal(isTestPath("django/test/utils.py"), false);
+    assert.equal(isTestPath("django/test/testcases.py"), false);
+    assert.equal(isTestPath("test/unit.py"), true);
+    assert.equal(isTestPath("a/b/tests/helpers.py"), true);
   });
 });
