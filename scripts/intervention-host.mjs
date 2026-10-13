@@ -5,8 +5,9 @@
  * Triggers and budgets are declared on the harness; this host interprets them.
  * Cross-run counters for window:host_day would persist beside this script.
  *
- * Usage:
- *   node --import tsx scripts/intervention-host.mjs [--activations N]
+ * Usage (tsx lives in engines/ts):
+ *   pnpm demo:intervention-host
+ *   pnpm -C engines/ts exec node --import tsx ../../scripts/intervention-host.mjs [--activations N]
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";

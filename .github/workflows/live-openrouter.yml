@@ -41,6 +41,7 @@ jobs:
           exit $code
       - name: Live coding-counterbalance (OpenRouter)
         id: live_cb_or
+        if: ${{ !cancelled() }}
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
@@ -64,6 +65,7 @@ jobs:
           exit $code
       - name: Live coding-counterbalance (KIT)
         id: live_cb_kit
+        if: ${{ !cancelled() }}
         env:
           KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
         run: |
@@ -87,6 +89,7 @@ jobs:
           exit $code
       - name: Live coding-counterbalance (OpenAI)
         id: live_cb_openai
+        if: ${{ !cancelled() }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -110,6 +113,7 @@ jobs:
           exit $code
       - name: Live support-bot (OpenRouter)
         id: live_support_or
+        if: ${{ !cancelled() }}
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
@@ -133,6 +137,7 @@ jobs:
           exit $code
       - name: Live support-bot (KIT)
         id: live_support_kit
+        if: ${{ !cancelled() }}
         env:
           KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
         run: |
@@ -154,8 +159,9 @@ jobs:
             exit 0
           fi
           exit $code
-      - name: Live local coding e2e (OpenRouter disposable worktree)
+      - name: Live local coding e2e (OpenRouter isolated workspace)
         id: live_local_e2e_or
+        if: ${{ !cancelled() }}
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
@@ -168,13 +174,13 @@ jobs:
           code=$?
           set -e
           if [ $code -eq 2 ]; then
-            echo "Rate limited — skipping fail"
+            echo "::warning::live local e2e (OpenRouter): infrastructure failure (rate limit / auth / gateway) — reported, not a pass"
             exit 0
           fi
-          # Non-blocking soft fail for model flakiness: upload report regardless
-          exit 0
-      - name: Live local coding e2e (KIT disposable worktree)
+          exit $code
+      - name: Live local coding e2e (KIT isolated workspace)
         id: live_local_e2e_kit
+        if: ${{ !cancelled() }}
         env:
           KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
         run: |
@@ -187,10 +193,29 @@ jobs:
           code=$?
           set -e
           if [ $code -eq 2 ]; then
-            echo "Rate limited — skipping fail"
+            echo "::warning::live local e2e (KIT): infrastructure failure (rate limit / auth / gateway) — reported, not a pass"
             exit 0
           fi
-          exit 0
+          exit $code
+      - name: Live model + MCP stdio (KIT)
+        id: live_mcp_model_kit
+        if: ${{ !cancelled() }}
+        env:
+          KIT_AI_API_KEY: ${{ secrets.KIT_AI_API_KEY }}
+        run: |
+          if [ -z "$KIT_AI_API_KEY" ]; then
+            echo "No KIT_AI_API_KEY — skipping live MCP model smoke"
+            exit 0
+          fi
+          set +e
+          node scripts/live-mcp-model.mjs kit
+          code=$?
+          set -e
+          if [ $code -eq 2 ]; then
+            echo "::warning::live MCP model (KIT): infrastructure failure — reported, not a pass"
+            exit 0
+          fi
+          exit $code
       - uses: actions/upload-artifact@v7
         if: always()
         with:
