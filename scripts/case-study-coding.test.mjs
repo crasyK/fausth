@@ -22,7 +22,7 @@ const runner = join(root, "scripts/case-study-coding.mjs");
 const CB_TRACE = join(root, "case-studies/coding-counterbalance/recorded/01-fix-add/counterbalanced.model.jsonl");
 
 /** Write a temporary study (manifest + recorded traces) outside the repository. */
-function makeStudy(dir, { harnesses, conditions, traces, matrix = {}, tasks = ["01-fix-add"] }) {
+function makeStudy(dir, { harnesses, conditions, traces, matrix = {}, tasks = ["01-fix-add"], recordedDeployment }) {
   const lines = [
     "study_id: runner-integration-test",
     "harnesses:",
@@ -30,7 +30,7 @@ function makeStudy(dir, { harnesses, conditions, traces, matrix = {}, tasks = ["
     "deployments:",
     "  recorded:",
     "    id: recorded",
-    "    path: case-studies/coding-counterbalance/deployments/local-recorded.yml",
+    `    path: ${recordedDeployment ?? "case-studies/coding-counterbalance/deployments/local-recorded.yml"}`,
     "    model_id: recorded-fixture",
     "    api_key_env: null",
     "  kit:",
@@ -142,6 +142,42 @@ describe("case-study runner (recorded)", { timeout: 600_000 }, () => {
       "--resume",
     ]);
     assert.equal(again.status, 0, again.stderr.slice(-2000));
+  });
+
+  it("never reuses a run dir silently, nor stale artifacts of a crashed attempt", () => {
+    const dir = join(tmp, "stale");
+    mkdirSync(dir, { recursive: true });
+    const dep = join(dir, "deployment.yml");
+    copyFileSync(join(root, "case-studies/coding-counterbalance/deployments/local-recorded.yml"), dep);
+    const manifest = makeStudy(dir, {
+      harnesses: { counterbalanced: "examples/coding-counterbalance" },
+      conditions: ["counterbalanced"],
+      traces: ["counterbalanced"],
+      recordedDeployment: dep,
+    });
+    const base = ["--manifest", manifest, "--mode", "recorded", "--skip-conformance", "--run-id", "s1"];
+    assert.equal(runRunner(base).status, 0);
+    const again = runRunner(base);
+    assert.notEqual(again.status, 0);
+    assert.match(again.stderr, /already exists/);
+    assert.equal(runRunner([...base, "--overwrite"]).status, 0);
+
+    // Simulate a crash after the attempt wrote its artifacts but before the ledger
+    // recorded it, then break the deployment: the resumed attempt must fail, not be
+    // scored from the stale report/events.
+    const ledgerPath = join(dir, "raw", "s1", "ledger.json");
+    const ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
+    writeFileSync(ledgerPath, JSON.stringify({ ...ledger, attempts: [] }));
+    writeFileSync(
+      dep,
+      readFileSync(dep, "utf8").replace("native: local.task_complete", "native: local.no_such_native"),
+    );
+    const resumed = runRunner([...base, "--resume", "--allow-resume-drift"]);
+    assert.notEqual(resumed.status, 0);
+    const rows = JSON.parse(readFileSync(ledgerPath, "utf8")).attempts;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "error", JSON.stringify(rows[0]).slice(0, 400));
+    assert.match(rows[0].error, /adapter_unresolved|no_such_native/);
   });
 
   it("freezes one harness per (model, rep) lineage under --train-freeze-eval (SCR-10)", () => {

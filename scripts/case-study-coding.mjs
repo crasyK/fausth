@@ -27,7 +27,10 @@
  *   --train-freeze-eval, --train-passes N, --shuffle-curriculum,
  *   --curriculum-shuffle-seed N, --max-task-tries N, --optimize-on-fail,
  *   --no-optimize-on-fail, --soft-retry-plan, --skip-conformance,
- *   --allow-dirty, --smoke, --allow-resume-drift
+ *   --allow-dirty, --smoke, --allow-resume-drift, --overwrite
+ *
+ * A run directory that already holds a ledger is never silently reused: pass
+ * --resume to continue it or --overwrite to discard it (throwaway CI run ids).
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -82,11 +85,12 @@ import {
 } from "./lib/case-study-plan.mjs";
 import {
   declaredUserChannelTools,
+  harnessTools,
   materializeAttemptDeployment,
   materializeKitDeployment,
 } from "./lib/case-study-deployments.mjs";
 import { loadDotEnv } from "./lib/env.mjs";
-import { classifyFailure, missingApiKeyFailure } from "./lib/failure.mjs";
+import { classifyFailure, findInfraFailureEvent, missingApiKeyFailure } from "./lib/failure.mjs";
 import {
   extractCompletionIds,
   independenceReport,
@@ -164,6 +168,7 @@ export function parseArgs(argv) {
     allowDirty: false,
     allowResumeDrift: false,
     smoke: false,
+    overwrite: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -194,6 +199,8 @@ export function parseArgs(argv) {
       out.allowResumeDrift = true;
     } else if (a === "--smoke") {
       out.smoke = true;
+    } else if (a === "--overwrite") {
+      out.overwrite = true;
     } else if (a === "--conditions") {
       out.conditions = (argv[++i] ?? "")
         .split(",")
@@ -241,6 +248,7 @@ export function parseArgs(argv) {
     out.curriculum = true;
     out.shuffleCurriculum = true;
   }
+  if (out.overwrite && out.resume) throw new Error("--overwrite and --resume are mutually exclusive");
   return out;
 }
 
@@ -811,7 +819,6 @@ function runOptimizerPass(opts) {
       reportPath,
       modelPath: null,
       applyOverlays: false,
-      userAskAnswer: null,
     });
 
     const reflection = recordPhaseReflection({
@@ -856,8 +863,11 @@ function runAgentPhase(opts) {
     dumpPath,
     reportPath,
     modelPath,
-    userAskAnswer,
   } = opts;
+  // Never read artifacts of an earlier run that reused this attempt dir: a failing
+  // engine must not look like a scored attempt.
+  rmSync(dumpPath, { force: true });
+  rmSync(reportPath, { force: true });
   const cliArgs = [
     "--import",
     "tsx",
@@ -881,8 +891,10 @@ function runAgentPhase(opts) {
   if (opts.applyOverlays) cliArgs.push("--apply-overlays");
   /** @type {NodeJS.ProcessEnv} */
   const env = { ...process.env };
-  if (userAskAnswer) env.FAUSTH_USER_ASK_ANSWER = String(userAskAnswer);
-  else delete env.FAUSTH_USER_ASK_ANSWER;
+  delete env.FAUSTH_USER_ASK_ANSWER;
+  // User-channel transcript (D14): what the user cell answered, kept with the attempt.
+  if (opts.userTranscript) env.FAUSTH_USER_TRANSCRIPT = opts.userTranscript;
+  else delete env.FAUSTH_USER_TRANSCRIPT;
   try {
     run(process.execPath, cliArgs, {
       cwd: join(root, "engines/ts"),
@@ -901,10 +913,16 @@ function runAgentPhase(opts) {
       throw err;
     }
   }
-  return {
-    report: JSON.parse(readFileSync(reportPath, "utf8")),
-    eventsText: readFileSync(dumpPath, "utf8"),
-  };
+  const eventsText = readFileSync(dumpPath, "utf8");
+  const infraEvent = findInfraFailureEvent(eventsText);
+  if (infraEvent) {
+    // The runtime ended the run on a host infrastructure failure (adapter, user
+    // channel, host session): an infra row, never a scored model outcome.
+    const err = new Error(`${infraEvent.kind}: ${infraEvent.message}`);
+    Object.assign(err, { fausthError: infraEvent });
+    throw err;
+  }
+  return { report: JSON.parse(readFileSync(reportPath, "utf8")), eventsText };
 }
 
 /**
@@ -1123,6 +1141,16 @@ async function main() {
   if (!gate.ok) {
     const shown = codeState.dirty_paths.slice(0, 10).join(", ");
     throw new Error(`${gate.reason}${shown ? ` — changed: ${shown}` : ""}`);
+  }
+  if (!args.resume && existsSync(join(rawRoot, "ledger.json"))) {
+    if (!args.overwrite) {
+      throw new Error(
+        `run ${runId} already exists (${relative(root, rawRoot)}); pass --resume to continue it, ` +
+          "--overwrite to discard it, or choose a new --run-id",
+      );
+    }
+    rmSync(rawRoot, { recursive: true, force: true });
+    console.error(`[case-study] --overwrite: discarded previous ${relative(root, rawRoot)}`);
   }
   mkdirSync(rawRoot, { recursive: true });
 
@@ -1408,14 +1436,15 @@ async function main() {
         throw new Error(`missing recorded model trace: ${recordedModel}`);
       }
 
-      // Per-attempt deployment: user channel bound per D14 when the manifest declares it.
-      const declaredUserTools = [
-        ...new Set(
-          (spec.kind === "pipeline" ? spec.phases.map((p) => p.path) : [spec.path]).flatMap((p) =>
-            declaredUserChannelTools(join(root, p)),
-          ),
-        ),
-      ];
+      // Per-attempt deployment: user-channel tools bound per D14 (recorded / simulator /
+      // human); answers and simulator files sit next to it, outside the workspace.
+      const specDirs = (spec.kind === "pipeline" ? spec.phases.map((p) => p.path) : [spec.path]).map(
+        (p) => join(root, p),
+      );
+      const declaredUserTools = [...new Set(specDirs.flatMap((d) => declaredUserChannelTools(d)))];
+      /** @type {Record<string, Record<string, any>>} */
+      const toolDefs = {};
+      for (const d of specDirs) for (const t of harnessTools(d)) if (t?.id && !toolDefs[t.id]) toolDefs[t.id] = t;
       const attemptDep = materializeAttemptDeployment({
         basePath: item.deployment_path,
         attemptDir,
@@ -1425,14 +1454,10 @@ async function main() {
         taskAbsDir: taskAbs,
         taskId: item.task_id,
         declaredUserTools,
+        toolDefs,
+        maxCalls: Math.max(100, Number(manifest.matrix.max_steps ?? 0) * 3),
       });
       const dep = attemptDep.path;
-      // Legacy auto-answer only when no D14 user channel is configured.
-      const userAskAnswer = attemptDep.user_channel
-        ? null
-        : Array.isArray(taskYml.user_sim?.answers)
-          ? String(taskYml.user_sim.answers[0] ?? "yes")
-          : "yes";
       const applyOverlays = process.env.FAUSTH_APPLY_OVERLAYS === "1";
 
       /** @type {string[]} */
@@ -1548,7 +1573,9 @@ async function main() {
               reportPath: phaseReport,
               modelPath: null,
               applyOverlays,
-              userAskAnswer,
+              userTranscript: attemptDep.user_channel
+                ? join(attemptDir, `user-transcript.${phase.id}.jsonl`)
+                : null,
             });
           let result = phaseRun(phaseTaskPrompt);
           noteCompletions(result);
@@ -1779,7 +1806,7 @@ async function main() {
           reportPath,
           modelPath: recordedModel,
           applyOverlays,
-          userAskAnswer,
+          userTranscript: attemptDep.user_channel ? join(attemptDir, "user-transcript.single.jsonl") : null,
         });
         noteCompletions(result);
         eventChunks.push(result.eventsText.trimEnd());
@@ -2237,6 +2264,14 @@ async function main() {
   );
 
   const hardErrors = attempts.some((a) => a.status === "error");
+  // An arm that was planned but produced no scored unit measured nothing.
+  const unmeasured = [...new Set(plan.map((p) => String(p.condition)))].filter(
+    (c) => !(args.trainFreezeEval && !evalAttempts.some((a) => a.condition === c)) &&
+      !aggregates.by_condition[c]?.present,
+  );
+  if (unmeasured.length) {
+    console.error(`[FAIL] no scored units for arm(s): ${unmeasured.join(", ")} (see exclusions_by_arm)`);
+  }
   if (!invariants.ok) {
     console.error(
       `\n[FAIL] INVARIANTS FAILED (${invariants.violations.length}) — see ${relative(root, join(rawRoot, "ATTRIBUTION.md"))}:`,
@@ -2250,7 +2285,7 @@ async function main() {
     console.error(`[FAIL] ${accounting.missing.length} planned attempt(s) unaccounted`);
   }
   if (hardErrors) console.error("[FAIL] attempts with hard errors (status=error) — see ledger");
-  process.exit(!accounting.complete || hardErrors || !invariants.ok ? 1 : 0);
+  process.exit(!accounting.complete || hardErrors || !invariants.ok || unmeasured.length ? 1 : 0);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
