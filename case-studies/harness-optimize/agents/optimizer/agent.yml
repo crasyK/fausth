@@ -3,9 +3,10 @@ name: harness-optimizer
 
 # Post-fail optimizer: read digest + current skills, propose or decline a skills-only patch.
 
-state:
-  open_todos: 0
-  digest_read: 0
+# CASE-8: the old completion gate required open_todos=0 — its initial value, so it never gated
+# anything; `digest_read` was never set. Both removed. The evidence-before-reflect sequence is
+# structural because the optimizer can read only its evidence (digest + target harness).
+state: {}
 
 mutable: [skills]
 
@@ -51,15 +52,12 @@ tools:
         found: { type: integer }
   - id: harness.reflect_skills
     description: >
-      After reading optimize/digest.md: you MUST propose exactly one set_tool_description
-      op when the digest shows ANY of these failure signatures:
-      (1) verify_evidence_failed with fs.write_scoped but no non-test source path written;
-      (2) shell.run_allowlisted called with a cmd other than "test"/"typecheck" (not-allowlisted error);
-      (3) stdout containing "Error: unknown tool" (Track T: patch fs.write_scoped with the real tau catalog);
-      (4) user.ask loops whose answers are scripted "yes" (Track T: patch user.ask description).
-      Map signature -> target tool: (1),(2) -> fs.write_scoped or shell.run_allowlisted;
-      (3) -> fs.write_scoped; (4) -> user.ask.
-      Decline ONLY if the digest shows a passing cmd="test" (exit_code=0) or an unrelated infra error.
+      After reading optimize/digest.md: propose exactly one set_tool_description op when the
+      digest shows a recurring, tool-usage failure signature that a clearer description of an
+      existing tool would prevent (e.g. calls of a tool or command that does not exist, arguments
+      that repeatedly fail schema validation, a required step the agent keeps skipping);
+      otherwise decline with a reason. Never encode task-specific answers (ids, values, file
+      names from one task) — the optimizer runs on the dev split only and must generalise.
       Never touch permissions/sequences/schemas — descriptions only.
       After reflect_skills, call task.complete.
     input:
@@ -114,11 +112,11 @@ permissions:
     - task.complete
   filesystem:
     write_scopes: []
-    read_scopes: ["."]
+    read_scopes: ["optimize/", "target-agent.yml", "target-agent.json"]
 
 counterbalance:
   sequences:
-    - id: digest-before-reflect
+    - id: read-evidence-before-reflect
       action: harness.reflect_skills
       require_prior_tools: [fs.read]
     - id: reflect-before-complete
@@ -126,8 +124,5 @@ counterbalance:
       require_prior_tools: [harness.reflect_skills]
   completion:
     tool: task.complete
-    require:
-      all:
-        - { path: state.open_todos, eq: 0 }
   orientation:
     emit_each_step: true

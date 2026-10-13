@@ -1,0 +1,3 @@
+{"tool":"user.ask","call_seq":1,"result":{"output":{"answer":"Hi, I want to exchange two items from my order #W2378156. I am Yusuf Rossi, zip 19122."}}}
+{"tool":"user.ask","call_seq":2,"result":{"output":{"answer":"Yes, please exchange both items as you described."},"state_transition":{"set":{"clarified":1}}}}
+{"tool":"user.ask","call_seq":3,"result":{"output":{"answer":"###STOP###"}}}

@@ -1,95 +1,119 @@
+# SWE-bench Lite: explore whole repo (scopes "."), run targeted tests via shell cmd="tests" (repo runner in the task env).
+# Plan subagent — read, approve a plan, yield. No writes.
 spec: counterbalance-contract/v0.1
 name: swe-plan
-
-# SWE-bench Lite: explore whole repo (scopes "."), run tests via shell cmd=test (pytest).
-
-# Plan subagent — read, approve a plan, yield. No writes.
-
 state:
   researched: 1
   plan_approved: 0
   test_evidence_current: 0
-  open_todos: 1
   out_of_scope_writes: 0
   phase_yielded: 0
-
 limits:
   max_steps: 12
   max_tool_calls: 10
   continue_after_deny: true
-
 tools:
   - id: fs.read
     read_only: true
     input:
       type: object
-      required: [path]
+      required:
+        - path
       additionalProperties: false
       properties:
-        path: { type: string }
+        path:
+          type: string
     output:
       type: object
-      required: [path, found]
+      required:
+        - path
+        - found
       additionalProperties: true
       properties:
-        path: { type: string }
-        content: { type: string }
-        found: { type: integer }
+        path:
+          type: string
+        content:
+          type: string
+        found:
+          type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: fs.list
     read_only: true
     input:
       type: object
-      required: [path]
+      required:
+        - path
       additionalProperties: false
       properties:
-        path: { type: string }
+        path:
+          type: string
     output:
       type: object
-      required: [path, entries, found]
+      required:
+        - path
+        - entries
+        - found
       additionalProperties: true
       properties:
-        path: { type: string }
-        entries: { type: array, items: { type: string } }
-        found: { type: integer }
+        path:
+          type: string
+        entries:
+          type: array
+          items:
+            type: string
+        found:
+          type: integer
+    effects:
+      - when:
+          path: result.found
+          eq: 1
+        set:
+          researched: 1
   - id: user.approve
-    description: >
-      Submit your fix plan for approval ONCE. Name the exact source file(s) to edit
-      (not test files). After approved=1, do NOT call user.approve again — call
-      phase.yield to advance. Implementation is gated on editing those source paths
-      before running cmd="test".
+    description: |
+      Submit your fix plan for approval ONCE. Name the exact source file(s) to edit (not test files). After approved=1, do NOT call user.approve again — call phase.yield to advance. Implementation is gated on editing those source paths before running cmd="test".
     input:
       type: object
       additionalProperties: true
       properties:
-        plan: { type: string }
+        plan:
+          type: string
     output:
       type: object
-      required: [approved]
+      required:
+        - approved
       additionalProperties: false
       properties:
-        approved: { type: integer }
-  - id: user.correct
-    input:
-      type: object
-      additionalProperties: true
-      properties:
-        request: { type: string }
-        reason: { type: string }
-    output:
-      type: object
-      required: [ok]
-      additionalProperties: false
-      properties:
-        ok: { type: integer }
+        approved:
+          type: integer
+    channel: user
+    effects:
+      - when:
+          path: result.approved
+          eq: 1
+        set:
+          plan_approved: 1
   - id: phase.yield
-    input: { type: object, additionalProperties: false, properties: {} }
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
     output:
       type: object
-      required: [ok]
+      required:
+        - ok
       additionalProperties: false
       properties:
-        ok: { type: integer }
-
+        ok:
+          type: integer
+    effects:
+      - set:
+          phase_yielded: 1
 gates:
   - id: approve-once
     when:
@@ -99,25 +123,28 @@ gates:
       path: state.plan_approved
       eq: 0
     otherwise: deny
-
 permissions:
   tools:
     - fs.read
     - fs.list
     - user.approve
-    - user.correct
     - phase.yield
   filesystem:
-    write_scopes: ["."]
-    read_scopes: ["."]
-
+    write_scopes:
+      - .
+    read_scopes:
+      - .
 counterbalance:
   sequences:
     - id: approve-before-yield
       action: phase.yield
-      require_prior_tools: [user.approve]
-  checkpoints:
-    - tool: user.correct
-      allow_set_keys: [open_todos]
+      require_prior_tools:
+        - user.approve
   orientation:
     emit_each_step: true
+  checkpoints:
+    - tool: user.approve
+      allow_set_keys:
+        - plan_approved
+  completion:
+    tool: phase.yield

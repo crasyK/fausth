@@ -1,5 +1,15 @@
 # HRI Track S — status & diagnosis report
 
+> **RETRACTED (2026-10-13) — invalid measurement, not a negative result.** Every task_success /
+> ground_truth_pass number in this document was produced by a grader that never applied the gold
+> `test_patch`, ran FAIL_TO_PASS ids through Fausth's own `.venv` pytest without the repository
+> installed (`ModuleNotFoundError: django`), used Django/SymPy ids that are not pytest node ids, and
+> hardcoded `test_tampering=false` (audit SCR-1/CASE-1). A 0% was structurally guaranteed. The
+> numbers below are kept only as **invalid, superseded** history. Current grader + self-test:
+> [`../GRADER-VALIDATION.md`](../GRADER-VALIDATION.md); status of every claim:
+> [`../../CLAIMS-STATUS.md`](../../CLAIMS-STATUS.md).
+
+
 > **Update (2026-08-03):** In-implementation pipeline + levers 1–2 shipped and measured in opt-arms v3. See **[`HRI-S-IN-IMPL-REPORT.md`](HRI-S-IN-IMPL-REPORT.md)** for full results (utility still 0%; grading/observability fixed).
 
 Audience: researchers / engineers reading Fausth case-study results.  

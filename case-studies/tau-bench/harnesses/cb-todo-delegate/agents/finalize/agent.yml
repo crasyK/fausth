@@ -1,3 +1,7 @@
+# RETIRED (2026-10-13 audit, see ../README.md): this pipeline depended on todo slots the
+# runner derived from the GOLD actions (leakage), on τ-specific engine natives, and on a
+# scripted user that always answered "yes". Its results are invalid. The file is kept only
+# as a loadable fixture for engine tests; it is not listed in any manifest. Do not run it.
 spec: counterbalance-contract/v0.1
 name: tau-finalize
 
@@ -77,8 +81,8 @@ permissions:
     - fs.write_scoped
     - task.complete
   filesystem:
-    write_scopes: ["tau/", "data/"]
-    read_scopes: ["."]
+    write_scopes: ["tau/final.txt"]
+    read_scopes: ["tau/todos.json"]
 
 counterbalance:
   completion:

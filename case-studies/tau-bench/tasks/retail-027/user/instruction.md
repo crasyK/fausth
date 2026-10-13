@@ -1,0 +1,1 @@
+Instruction: You are Isabella Johansson, and you live in 32286. You want to return the hose, backpack, and exchange the hiking boots to the exact same item except that it is waterproof. Make sure you mention the two requests at the same time, and if the agent can only do one, you prefer the exchange. You are a bit anxious and want to get things done quickly.

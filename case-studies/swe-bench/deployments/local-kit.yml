@@ -1,7 +1,11 @@
-# SWE-bench Lite HRI deployment — KIT live.
-# Whole-repo scopes; pytest via allowlisted shell cmd=test.
-# Requires --workspace and KIT_AI_API_KEY.
-
+# SWE-bench Lite HRI deployment — KIT live (shared by every arm).
+# Tests: the agent's only command is `tests` — the task's own runner in its prepared environment
+# (case-studies/swe-bench/world/agent-test.mjs via a host launcher next to the workspace), on targets
+# the agent lists in .fausth-tests.txt. The grader uses the same environment and runner.
+# Plan approval (CB plan phase) is a user-channel checkpoint answered by a recorded "approve once"
+# script: there is no human reviewer in this study (honest label: approval = plan submitted).
+# The KIT gateway caches kit.glm-5.3-flash responses by request body: identical requests return
+# identical completions, so repetitions are not independent samples.
 platform: case-study-swe-kit
 model:
   transport: openai-compatible
@@ -9,7 +13,8 @@ model:
   base_url: https://ki-toolbox.scc.kit.edu/api/v1
   api_key_env: KIT_AI_API_KEY
   models:
-    - kit.gemma4-31b-it
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   temperature: 0.7
   max_tokens: 4096
   compatibility:
@@ -18,17 +23,11 @@ model:
     gateway_system_prompt: prohibited
 
 world:
-  shell_timeout_ms: 180000
+  shell_timeout_ms: 900000
   max_read_bytes: 512000
   max_output_bytes: 128000
   commands:
-    # Resolved to absolute path at kit deployment materialization (see case-study-coding.mjs).
-    test: ["pytest", "-q"]
-    typecheck: ["pytest", "-q", "--collect-only"]
-    pytest: ["pytest", "-q"]
-  scopes:
-    read: ["."]
-    write: ["."]
+    tests: ["node", "../.fausth-swe/run-tests.mjs"]
 
 bindings:
   fs.read:
@@ -40,9 +39,9 @@ bindings:
   shell.run_allowlisted:
     native: local.shell
   user.approve:
-    native: local.user_approve_auto
-  user.correct:
-    native: local.user_correct_auto
+    user:
+      source: recorded
+      answers: user/approve-once.jsonl
   task.complete:
     native: local.task_complete
   phase.yield:

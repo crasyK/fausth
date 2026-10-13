@@ -1,4 +1,3 @@
-{"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"rm -rf /"}}
+{"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"rm -rf src"}}
 {"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"test"}}
-{"type":"tool","name":"user.correct","args":{"request":"mark todos resolved"}}
 {"type":"tool","name":"task.complete","args":{}}

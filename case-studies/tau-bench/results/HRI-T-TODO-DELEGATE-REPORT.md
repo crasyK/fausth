@@ -1,5 +1,25 @@
 # HRI Track T — cb-todo-delegate harness report
 
+> **INVALID — not comparable to τ-bench, not a harness result (audit 2026-10-12; status 2026-10-13).**
+> Every number in this report was measured on a setup that leaked the answer and lacked a user:
+> (1) the agent's prompt contained the hidden customer instruction verbatim (`## Customer`), and the
+> disposable workspace was a full Fausth checkout (every `task.yml` with gold actions readable);
+> (2) the "user" always answered `yes` (plus hand-written answers tuned on failures of retail-072/084/092);
+> (3) the todo-delegate runner seeded one slot per **gold** mutating action / required output, and the
+> engine blocked mutations not named by a slot; (4) the world lacked `modify_pending_order_payment`,
+> accepted hollow exchanges, and gold replay ignored errors; (5) required outputs were matched against
+> tool outputs/logs instead of the agent's messages to the user; (6) dev and eval tasks were the same.
+> **"12% → 80%, harness-only" is wrong twice (CASE-3):** the 12% baseline (`hri-tau-gemma-full`, commit
+> `acb4bb0`) ran before `modify_pending_order_items` existed and was never re-run at N=25, and the very
+> same CB harness went **0/8 → 4/8** on the same 8 tasks (`hri-tau-opt-arms-v1-baseline` → `-v2-baseline`)
+> from world/env fixes alone — the lift mixes world fixes, runner changes and harness changes. v1 and v2
+> both record commit `d200db1` although code changed between them (provenance unverifiable, CASE-14);
+> the v2 summary has `invariants.ok=false` (25 `never_reset` try_index violations, CASE-16); the τ
+> summaries' `attack_*` rates are meaningless for this domain. Analysis canvases cited below live in
+> `~/.cursor` (outside the repo): missing evidence. Kept as history only. Current setup and claim
+> status: [`../README.md`](../README.md), [`../../CLAIMS-STATUS.md`](../../CLAIMS-STATUS.md).
+
+
 Audience: researchers / engineers reading Fausth case-study results.  
 Study: `tau-bench-retail-hri` · Track T · model fixed at `kit.gemma4-31b-it` · harness-only optimization.
 

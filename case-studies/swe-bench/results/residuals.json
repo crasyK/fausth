@@ -1,4 +1,7 @@
 {
+  "validity": "invalid_measurement",
+  "retracted": "2026-10-13",
+  "note": "Failure taxonomy of runs graded by the defective pre-2026-10-13 grader (no test_patch, wrong runner, repo not installed). Kept for history only; the ground_truth_pass_false mode is an artefact of that grader.",
   "study_id": "swe-bench-lite-hri-track-s",
   "frozen_at": "2026-08-04",
   "task_success_rate": 0,

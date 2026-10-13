@@ -1,0 +1,1 @@
+Instruction: You are daiki_johnson_9523 living in Denver, USA, 80273. You want to return an air purifier that you received since it doesn't work well.  You want the refund on your original method of payment. Be polite and thank the agent for the help. Also, check at the end whether you are able to return the vacuum cleaner, but you are not sure yet so don't process anything.
