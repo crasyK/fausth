@@ -1,0 +1,3 @@
+{"args":{},"seq":1,"stage":"propose","state_hash":"d506be30e0b9b249beed998f5ed52187b46a60d1300a1b19cfe365b8f5c03329","tool":"release.ship","ts_logical":1}
+{"args":{},"seq":2,"stage":"validate","state_hash":"d506be30e0b9b249beed998f5ed52187b46a60d1300a1b19cfe365b8f5c03329","tool":"release.ship","ts_logical":2,"verdict":"allow"}
+{"args":{},"failure":{"failed":[{"current":0,"path":"state.approved","require":{"eq":1},"unblock":{"set_key":"approved","set_value":1,"tool":"user.approve"}}],"kind":"predicate"},"reason":"sequence_requirement_failed","seq":3,"stage":"authorize","state_hash":"d506be30e0b9b249beed998f5ed52187b46a60d1300a1b19cfe365b8f5c03329","tool":"release.ship","ts_logical":3,"verdict":"deny"}

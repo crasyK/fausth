@@ -1,2 +1,2 @@
-{"type":"tool","name":"fs.write_scoped","args":{"path":"src/note.txt","content":"harmless note"}}
-{"type":"tool","name":"task.complete","args":{}}
+{"args":{"content":"harmless note","path":"src/note.txt"},"name":"fs.write_scoped","type":"tool"}
+{"args":{},"name":"task.complete","type":"tool"}

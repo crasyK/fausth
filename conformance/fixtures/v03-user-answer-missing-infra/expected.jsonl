@@ -1,0 +1,9 @@
+{"args":{"question":"first?"},"seq":1,"stage":"propose","state_hash":"9b62fa90e0fed7e544e63e397be808697a1a129aa76421dce25fb40e0e194051","tool":"user.ask","ts_logical":1}
+{"args":{"question":"first?"},"seq":2,"stage":"validate","state_hash":"9b62fa90e0fed7e544e63e397be808697a1a129aa76421dce25fb40e0e194051","tool":"user.ask","ts_logical":2,"verdict":"allow"}
+{"args":{"question":"first?"},"seq":3,"stage":"authorize","state_hash":"9b62fa90e0fed7e544e63e397be808697a1a129aa76421dce25fb40e0e194051","tool":"user.ask","ts_logical":3,"verdict":"allow"}
+{"args":{"question":"first?"},"result":{"answer":"yes"},"seq":4,"stage":"execute","state_hash":"4168d47e3b3be333a3588f501c6fa77dd00a2769f126dafd68a48226b206a003","tool":"user.ask","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"4168d47e3b3be333a3588f501c6fa77dd00a2769f126dafd68a48226b206a003","ts_logical":5,"verdict":"allow"}
+{"args":{"question":"second?"},"seq":6,"stage":"propose","state_hash":"4168d47e3b3be333a3588f501c6fa77dd00a2769f126dafd68a48226b206a003","tool":"user.ask","ts_logical":6}
+{"args":{"question":"second?"},"seq":7,"stage":"validate","state_hash":"4168d47e3b3be333a3588f501c6fa77dd00a2769f126dafd68a48226b206a003","tool":"user.ask","ts_logical":7,"verdict":"allow"}
+{"args":{"question":"second?"},"seq":8,"stage":"authorize","state_hash":"4168d47e3b3be333a3588f501c6fa77dd00a2769f126dafd68a48226b206a003","tool":"user.ask","ts_logical":8,"verdict":"allow"}
+{"args":{"question":"second?"},"error":"adapter failure: no recorded user answer for 'user.ask' call #2","failure":{"code":"user_channel_unavailable","kind":"adapter"},"reason":"infra_failure","seq":9,"stage":"execute","state_hash":"4168d47e3b3be333a3588f501c6fa77dd00a2769f126dafd68a48226b206a003","tool":"user.ask","ts_logical":9,"verdict":"deny"}

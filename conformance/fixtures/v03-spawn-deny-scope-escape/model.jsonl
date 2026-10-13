@@ -1,0 +1,1 @@
+{"args":{"filesystem":{"write_scopes":["src/../../etc"]},"tools":["fs.read"]},"name":"agent.spawn","type":"tool"}
