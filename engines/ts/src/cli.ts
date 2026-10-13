@@ -53,8 +53,14 @@ import {
   permittedToolDefs,
   runCompleted,
   systemPromptFor,
+  transportErrorReport,
 } from "./cli-support.js";
-import { boundProviderText, isModelInfraError } from "./model/errors.js";
+import {
+  boundProviderText,
+  isModelInfraError,
+  isModelRequestError,
+  type ModelTransportErrorJson,
+} from "./model/errors.js";
 import { redactSecrets } from "./integrations/github/submission-check.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
 import {
@@ -113,11 +119,7 @@ function bindHostTools(
   return { tools: bound.tools as Record<string, ToolHandler>, cleanup: bound.cleanup };
 }
 
-/** Infra failure of the model transport, reported apart from model behaviour. */
-function infraErrorReport(e: unknown): { kind: string; message: string } | null {
-  if (!isModelInfraError(e)) return null;
-  return { kind: e.kind, message: boundProviderText(e.message) };
-}
+
 
 /** Live judge from the deployment (judge_model or models). Returns the raw judgment. */
 function makeJudge(deployment: Deployment, onScore?: (passed: boolean) => void): JudgeFn {
@@ -262,6 +264,7 @@ async function cmdLive(args: {
     let unsafeCaught = 0;
     let unsafeDetectedPostExec = 0;
     let infraFailures = 0;
+    let requestRejections = 0;
     let e2eAttempted = 0;
     let e2ePassed = 0;
     let verifyTriggers = 0;
@@ -328,16 +331,25 @@ async function cmdLive(args: {
       try {
         await runtime.runLoop(Number(scen.max_steps ?? 6));
       } catch (e) {
-        const infra = infraErrorReport(e);
-        if (infra?.kind === "rate_limit") {
+        const transport = transportErrorReport(e);
+        if (transport?.error.kind === "rate_limit") {
           writeReport(args.report, { rate_limited: true, results });
           return 2;
         }
-        // Infrastructure failures are not model outcomes: excluded from every rate below.
+        // Infrastructure failures and rejected requests are not model outcomes: excluded from
+        // every rate below and counted separately.
         if (expectCatch) unsafeAttempted--;
         if (expectComplete) e2eAttempted--;
-        infraFailures++;
-        results.push({ scenario: f, infra_error: infra ?? { kind: "host", message: boundProviderText(String(e)) } });
+        if (transport?.class === "request") {
+          requestRejections++;
+          results.push({ scenario: f, request_error: transport.error });
+        } else {
+          infraFailures++;
+          results.push({
+            scenario: f,
+            infra_error: transport?.error ?? { name: "HostError", infra: true, kind: "host", message: boundProviderText(String(e)) },
+          });
+        }
         continue;
       } finally {
         cleanup();
@@ -394,15 +406,17 @@ async function cmdLive(args: {
         unsafe_caught: unsafeCaught,
         unsafe_detected_post_execution: unsafeDetectedPostExec,
         infra_failures: infraFailures,
+        request_rejections: requestRejections,
       },
     };
     writeReport(args.report, report);
     console.log(JSON.stringify(report.totals, null, 2));
     return catch_rate < args.catchRateMin ? 1 : 0;
   } catch (e) {
-    if (infraErrorReport(e)) {
-      console.error(`infra: ${infraErrorReport(e)!.kind}: ${infraErrorReport(e)!.message}`);
-      return 2;
+    const transport = transportErrorReport(e);
+    if (transport) {
+      console.error(`${transport.class}: ${transport.error.kind}: ${transport.error.message}`);
+      return transport.class === "infra" ? 2 : 3;
     }
     console.error(e);
     return 1;
@@ -585,13 +599,16 @@ async function runWithTools(
     tools,
     ...(judge ? { judge, allowJudge: true } : {}),
   });
-  let infraError: { kind: string; message: string } | null = null;
+  let infraError: ModelTransportErrorJson | null = null;
+  let requestError: ModelTransportErrorJson | null = null;
   try {
     // A host step budget narrows max_steps (visible as limit_exceeded); recorded runs need none.
     await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? undefined : 16));
   } catch (e) {
-    infraError = infraErrorReport(e);
-    if (!infraError) throw e;
+    const t = transportErrorReport(e);
+    if (!t) throw e;
+    if (t.class === "infra") infraError = t.error;
+    else requestError = t.error;
   }
   const jsonl = eventsToJsonl(runtime.events);
   if (opts.dump) {
@@ -627,8 +644,10 @@ async function runWithTools(
         bytes: Buffer.byteLength(e.args!.content as string, "utf8"),
       })),
     event_count: runtime.events.length,
-    // Infrastructure failures (model transport or host adapters) are not model outcomes.
+    // Infrastructure failures (model transport or host adapters) and rejected requests are not
+    // model outcomes; each is reported in its own field.
     infra_error: infraError,
+    request_error: requestError,
     infra_failure: runtime.infraFailed,
   };
 
@@ -641,6 +660,10 @@ async function runWithTools(
   if (infraError) {
     console.error(`infra: ${infraError.kind}: ${infraError.message}`);
     return 2;
+  }
+  if (requestError) {
+    console.error(`request rejected (${requestError.status ?? "?"}): ${requestError.message}`);
+    return 3;
   }
   if (runtime.infraFailed) {
     console.error("infra: a host adapter failed (see the infra_failure event)");
@@ -787,7 +810,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     await runtime.runLoop(12);
   } catch (e) {
-    if (isModelInfraError(e)) {
+    if (isModelInfraError(e) || isModelRequestError(e)) {
       const report: ReviewReport = {
         mode: "advisory",
         conclusion: "neutral",
@@ -801,7 +824,10 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
           deterministic: packet,
           ai_findings: [],
           model: adapter.lastModelUsed,
-        }) + "\n_Model infrastructure failure — neutral, not pass._\n",
+        }) +
+          (isModelRequestError(e)
+            ? "\n_Model request rejected by the endpoint — neutral, not pass._\n"
+            : "\n_Model infrastructure failure — neutral, not pass._\n"),
       };
       if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
       if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);

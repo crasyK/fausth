@@ -81,6 +81,14 @@ export type JudgeFn = (
  * channel, host sessions) are reported as `infra_failure`, never as model or tool behaviour
  * (spec-v0.3 §6.3). Recognised structurally so the engine does not depend on adapter classes.
  */
+/** AdapterError.detail as canonical, sanitizable data (null when absent or non-canonical). */
+function adapterErrorDetail(e: unknown): Record<string, unknown> | null {
+  const d = (e as { detail?: unknown }).detail;
+  if (!isPlainObject(d)) return null;
+  const c = toCanonical(d);
+  return c.ok ? (c.value as Record<string, unknown>) : null;
+}
+
 function adapterErrorCode(e: unknown): AdapterErrorCode | null {
   if (!(e instanceof Error) || e.name !== "AdapterError") return null;
   const code = (e as Error & { code?: unknown }).code;
@@ -415,7 +423,19 @@ export class FaustRuntime {
       const msg = e instanceof Error ? e.message : String(e);
       const error = msg ? { error: this.sanitizeString(msg) } : {};
       const code = adapterErrorCode(e);
-      if (code) return { ok: false, infra: true, failure: { kind: "adapter", code }, ...error };
+      if (code) {
+        const detail = adapterErrorDetail(e);
+        return {
+          ok: false,
+          infra: true,
+          failure: {
+            kind: "adapter",
+            code,
+            ...(detail ? { detail: this.sanitize(detail) as Record<string, unknown> } : {}),
+          },
+          ...error,
+        };
+      }
       return { ok: false, infra: false, failure: { kind: "host_error" }, ...error };
     }
   }
