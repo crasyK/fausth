@@ -15,6 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { successfulCalls } from "./case-study-pipeline.mjs";
 import { loadDotEnv } from "./lib/env.mjs";
 import { classifyFailure } from "./lib/failure.mjs";
 import { DEFAULT_KIT_MODEL } from "./lib/kit-models.mjs";
@@ -108,19 +109,19 @@ try {
   process.exit(1);
 }
 
-const events = readFileSync(dump, "utf8")
+const eventsText = readFileSync(dump, "utf8");
+const events = eventsText
   .split(/\r?\n/)
   .filter(Boolean)
   .map((l) => JSON.parse(l));
 
-const execute = events.find(
-  (e) =>
-    e.tool === "get_forecast" &&
-    e.stage === "execute" &&
-    e.verdict === "allow" &&
-    e.result &&
-    typeof e.result.summary === "string" &&
-    typeof e.result.temp_c === "number",
+// D8: the MCP call counts only when it was executed AND verified.
+const execute = successfulCalls(eventsText).find(
+  (c) =>
+    c.tool === "get_forecast" &&
+    c.result &&
+    typeof c.result.summary === "string" &&
+    typeof c.result.temp_c === "number",
 );
 
 if (!execute) {

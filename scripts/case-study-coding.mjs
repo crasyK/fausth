@@ -48,8 +48,9 @@ import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateAttempts, parseEventsJsonl, scoreAttempt } from "./case-study-score.mjs";
 import {
-  phaseYielded,
+  phaseCompleted,
   shouldStartImplementation,
+  successfulCalls,
 } from "./case-study-pipeline.mjs";
 import {
   extractApprovedPathsFromEvents,
@@ -424,14 +425,13 @@ function recordPhaseReflection(opts) {
         e.reason === "harness_patch_declined" &&
         (e.tool === "harness.decline_skills_patch" || e.tool === "harness.reflect_skills"),
     );
-  const patchEv = [...events]
+  // D8: only an executed AND verified (committed) propose call carries a patch.
+  const patchEv = [...successfulCalls(eventsText)]
     .reverse()
     .find(
-      (e) =>
-        e.stage === "execute" &&
-        e.verdict === "allow" &&
-        (e.tool === "harness.propose_skills_patch" ||
-          (e.tool === "harness.reflect_skills" && e.args?.disposition === "propose")),
+      (c) =>
+        c.tool === "harness.propose_skills_patch" ||
+        (c.tool === "harness.reflect_skills" && c.args?.disposition === "propose"),
     );
 
   if (patchEv?.args?.ops) {
@@ -1735,8 +1735,8 @@ async function main() {
           }
           mergedReport.soft_retry_used = softRetryUsed;
 
-          if (phase.id === "research" && !phaseYielded(result.eventsText)) {
-            console.error(`[warn] ${id}: research did not phase.yield`);
+          if (phase.id === "research" && !phaseCompleted(result.eventsText)) {
+            console.error(`[warn] ${id}: research ended without run_complete`);
           }
           if (phase.id === "plan") {
             if (!shouldStartImplementation(result.eventsText)) {
@@ -1752,8 +1752,8 @@ async function main() {
                 `[info] ${id}: approved write paths (${approvedPaths.length}): ${approvedPaths.join(", ")}`,
               );
             }
-            if (!phaseYielded(result.eventsText)) {
-              console.error(`[warn] ${id}: plan did not phase.yield`);
+            if (!phaseCompleted(result.eventsText)) {
+              console.error(`[warn] ${id}: plan ended without run_complete`);
             }
           }
           if (phase.id === "implementation") {
