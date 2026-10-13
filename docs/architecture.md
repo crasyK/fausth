@@ -17,7 +17,7 @@ Fausth is a **portable runtime and standard for agent harnesses**: one reaction 
 
 Glossary: [`glossary.md`](glossary.md).  
 Counterbalance thesis: [`counterbalance-architecture.md`](counterbalance-architecture.md).  
-Normative v0.1: [`spec-v0.1.md`](spec-v0.1.md).  
+Normative executable contract: [`spec-v0.3.md`](spec-v0.3.md) (overrides [`spec-v0.1.md`](spec-v0.1.md) / [`spec-v0.2.md`](spec-v0.2.md) on conflict).  
 v0.1 baseline freeze: [`BASELINE-v0.1.md`](BASELINE-v0.1.md).
 
 ## Artifacts
@@ -44,14 +44,13 @@ harness + deployment
 
 Multi-host smoke (same coding-counterbalance harness on TS + Python + GHA): [`harness-packaging-roadmap.md`](harness-packaging-roadmap.md) §M5 · `pnpm ci:multi-host`.
 
-## Lifecycle (v0.1 shipped)
+## Lifecycle (spec-v0.3 §5–§6)
 
-`propose → validate → authorize → execute → verify`
-
-Named stubs: `observe`, `record`, `rebalance`.  
-Verdicts: `allow` | `deny` | `safe_state`.
-
-v0.2 extends this kernel with explicit observe/orient/complete and memory invalidation — see the Counterbalance draft. New semantics land only behind Track A fixtures.
+`orient → propose → validate → authorize → execute → verify` (+ `observe` for effect verifies,
+`record` for memory/budget/completion/recovery facts, `rebalance` for harness patches).
+Verdicts: `allow` | `deny` | `safe_state`; a call is a success only if it executed and every
+verify passed (its transition is committed then, never before). Host infrastructure failures are
+`infra_failure`, never model behaviour. New semantics land only behind Track A fixtures.
 
 ## Two tracks
 
