@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T18:38:31.880Z",
+  "generated_at": "2026-10-13T18:38:47.573Z",
   "host_note": "Results are for environments built on this host (no Docker, no root, conda-forge via micromamba). Re-run selftest.mjs on any other host before trusting grades there.",
   "criteria": {
     "gold": "gold patch ⇒ RESOLVED_FULL (all FAIL_TO_PASS and PASS_TO_PASS pass)",

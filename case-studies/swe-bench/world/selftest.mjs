@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildEnv, envDirFor, loadEnvRecord, loadSweTask, REPO_ROOT, SWE_WORLD_DIR } from "./env.mjs";
+import { buildEnv, envDirFor, envFingerprint, loadEnvRecord, loadSweTask, REPO_ROOT, specFor, SWE_WORLD_DIR } from "./env.mjs";
 import { evaluatePatch } from "./eval.mjs";
 
 export const TASKS_DIR = join(REPO_ROOT, "case-studies", "swe-bench", "tasks");
@@ -110,7 +110,18 @@ export function ensureValidated(task, opts = {}) {
   if (task.integrity_errors?.length) {
     return { ok: false, reason: `oracle integrity: ${task.integrity_errors.join("; ")}` };
   }
+  let current;
+  try {
+    current = envFingerprint(task, specFor(task));
+  } catch (e) {
+    return { ok: false, reason: `no environment recipe for this task: ${e?.message ?? e}` };
+  }
   let record = loadEnvRecord(task.id);
+  if (record && record.fingerprint !== current) {
+    // built with an outdated recipe: never grade with it
+    record = autobuild ? buildEnv(task, { log: opts.log }) : null;
+    if (!record) return { ok: false, reason: "environment built with an outdated recipe (rebuild with selftest.mjs)" };
+  }
   if (!record && autobuild) record = buildEnv(task, { log: opts.log });
   if (!record) return { ok: false, reason: "environment not built (run selftest.mjs or set FAUSTH_SWE_ENV_AUTOBUILD=1)" };
   if (!record.ok) return { ok: false, record, reason: `environment build failed at ${record.failed_step}` };
@@ -172,6 +183,10 @@ function collectRowsFromEnvs(ids) {
     const record = loadEnvRecord(id);
     if (!record) {
       rows.push({ instance_id: id, repo: task.repo, version: task.version, verdict: "not_run", reason: "environment not built on this host" });
+      continue;
+    }
+    if (record.fingerprint !== envFingerprint(task, specFor(task))) {
+      rows.push({ instance_id: id, repo: task.repo, version: task.version, verdict: "not_run", reason: "environment built with an outdated recipe" });
       continue;
     }
     if (!record.ok) {
