@@ -102,3 +102,64 @@ def test_repo_root_does_not_depend_on_package_depth(tmp_path):
         assert cli_mod.repo_root() == tmp_path.resolve()
     finally:
         del os.environ["FAUSTH_REPO_ROOT"]
+
+
+# --- verify: trust flags and exit codes (edge TS verifyBundleFile contract) ----------
+
+
+def _signed_and_unsigned(tmp_path):
+    from fausth.bundle_signature import generate_ed25519_seed_hex
+
+    key = generate_ed25519_seed_hex()
+    seed = tmp_path / "seed.hex"
+    seed.write_text(key["seed_hex"], encoding="utf-8")
+    harness = ROOT / "examples" / "greenhouse"
+    unsigned = tmp_path / "u.fausth.json"
+    signed = tmp_path / "s.fausth.json"
+    assert cli("pack", str(harness), "--out", str(unsigned)).returncode == 0
+    assert cli("pack", str(harness), "--out", str(signed), "--sign-key", str(seed)).returncode == 0
+    trusted = tmp_path / "trusted.keys"
+    trusted.write_text(f"# fausth trusted keys\n{key['public_key']}  release\n", encoding="utf-8")
+    other = tmp_path / "other.keys"
+    other.write_text(f"{generate_ed25519_seed_hex()['public_key']}\n", encoding="utf-8")
+    return unsigned, signed, trusted, other
+
+
+def test_verify_exit_codes_and_flags(tmp_path):
+    env = {"FAUSTH_TRUSTED_KEYS": "", "FAUSTH_REQUIRE_TRUSTED_BUNDLES": ""}
+    unsigned, signed, trusted, other = _signed_and_unsigned(tmp_path)
+    r = cli("verify", str(unsigned), env_extra=env)
+    assert r.returncode == 0 and r.stdout.startswith("OK unsigned")
+    r = cli("verify", str(signed), "--trusted-keys", str(trusted), env_extra=env)
+    assert r.returncode == 0 and r.stdout.startswith("OK signed-trusted") and "key_label=release" in r.stdout
+    r = cli("verify", str(signed), "--trusted-keys", str(other), env_extra=env)
+    assert r.returncode == 0 and r.stdout.startswith("OK signed-untrusted")
+    r = cli("verify", str(signed), "--trusted-keys", str(other), "--require-trusted", env_extra=env)
+    assert r.returncode == 3 and r.stderr.startswith("REJECTED signed-untrusted")
+    r = cli("verify", str(unsigned), "--trusted-keys", str(trusted), "--require-trusted", env_extra=env)
+    assert r.returncode == 3 and r.stderr.startswith("REJECTED unsigned")
+    r = cli("verify", str(signed), "--trusted-keys", str(tmp_path / "missing.keys"), env_extra=env)
+    assert r.returncode == 2 and r.stderr.startswith("INVALID bundle_trust_store_invalid")
+    data = json.loads(signed.read_text(encoding="utf-8"))
+    data["name"] = "tampered"
+    tampered = tmp_path / "t.fausth.json"
+    tampered.write_text(json.dumps(data), encoding="utf-8")
+    r = cli("verify", str(tampered), "--trusted-keys", str(trusted), env_extra=env)
+    assert r.returncode == 1 and r.stderr.startswith("INVALID")
+
+
+def test_allow_command_flag_maps_to_env():
+    import argparse
+
+    from fausth import cli as cli_mod
+
+    saved = os.environ.pop("FAUSTH_ALLOW_COMMANDS", None)
+    try:
+        cli_mod._apply_trust_flags(argparse.Namespace(trusted_keys=None, require_trusted=False, allow_commands=["python3", "node"]))
+        assert os.environ["FAUSTH_ALLOW_COMMANDS"] == "python3,node"
+        cli_mod._apply_trust_flags(argparse.Namespace(trusted_keys=None, require_trusted=False, allow_commands=["*"]))
+        assert os.environ["FAUSTH_ALLOW_COMMANDS"] == "*"
+    finally:
+        os.environ.pop("FAUSTH_ALLOW_COMMANDS", None)
+        if saved is not None:
+            os.environ["FAUSTH_ALLOW_COMMANDS"] = saved

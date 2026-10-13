@@ -16,7 +16,13 @@ from .canonical import canonical_json, js_trim, json_loads, read_jsonl, read_tex
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
 from .runtime import FaustRuntime, events_to_jsonl, parse_recorded_model_line, replay_fixture
 from .packaging import inspect_harness, pack_harness, test_harness, select_harness
-from .bundle import BundleError, load_bundle_file, resolve_harness_ref, unpack_bundle
+from .bundle import (
+    BundleError,
+    format_bundle_verify_report,
+    resolve_harness_ref,
+    unpack_bundle,
+    verify_bundle_file,
+)
 from .bundle_signature import BundleSignatureError
 from .connectors import (
     ConnectorError,
@@ -148,6 +154,7 @@ def cmd_run(
             deployment,
             harness_dir=str(agent_path),
             resolved={**resolved_harness, "agent": agent},
+            deployment_path=str(dep_file.resolve()),
         )
     except AdapterError as e:
         print(str(e), file=sys.stderr)
@@ -322,6 +329,36 @@ def cmd_audit(file: str, as_json: bool) -> int:
 # --------------------------------------------------------------------------
 
 
+def _add_trust_flags(p: argparse.ArgumentParser) -> None:
+    """Bundle trust / spawn policy flags (map to the env settings both engines read)."""
+    p.add_argument("--trusted-keys", default=None, dest="trusted_keys", help="trusted-keys file (FAUSTH_TRUSTED_KEYS)")
+    p.add_argument(
+        "--require-trusted",
+        action="store_true",
+        dest="require_trusted",
+        help="accept only signed-trusted bundles (FAUSTH_REQUIRE_TRUSTED_BUNDLES=1)",
+    )
+    p.add_argument(
+        "--allow-command",
+        action="append",
+        default=None,
+        dest="allow_commands",
+        help="operator-allowed command for bundle-declared stdio servers; repeatable, '*' = any (FAUSTH_ALLOW_COMMANDS)",
+    )
+
+
+def _apply_trust_flags(args: argparse.Namespace) -> None:
+    if getattr(args, "trusted_keys", None):
+        os.environ["FAUSTH_TRUSTED_KEYS"] = str(Path(args.trusted_keys).resolve())
+    if getattr(args, "require_trusted", False):
+        os.environ["FAUSTH_REQUIRE_TRUSTED_BUNDLES"] = "1"
+    allow = getattr(args, "allow_commands", None)
+    if allow:
+        existing = [s.strip() for s in os.environ.get("FAUSTH_ALLOW_COMMANDS", "").split(",") if s.strip()]
+        merged = "*" if "*" in allow or "*" in existing else ",".join(dict.fromkeys([*existing, *allow]))
+        os.environ["FAUSTH_ALLOW_COMMANDS"] = merged
+
+
 def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
@@ -374,7 +411,10 @@ def main(argv: list[str] | None = None) -> None:
     p_select.add_argument("--candidate-patch", required=True, dest="candidate_patch")
     p_select.add_argument("--skip-fixtures", action="store_true")
     p_select.add_argument("--out-agent", default=None, dest="out_agent")
+    for p in (p_validate, p_run, p_inspect, p_resolve, p_test, p_unpack, p_verify):
+        _add_trust_flags(p)
     args = parser.parse_args(argv)
+    _apply_trust_flags(args)
     default_agent = str(repo_root() / "examples" / "coding-counterbalance")
     if args.cmd == "audit":
         raise SystemExit(cmd_audit(args.events, args.as_json))
@@ -482,17 +522,10 @@ def main(argv: list[str] | None = None) -> None:
             print(str(e), file=sys.stderr)
             raise SystemExit(1)
     if args.cmd == "verify":
-        try:
-            bundle = load_bundle_file(args.bundle)
-            sig = bundle.get("signature")
-            if sig:
-                print(f"OK signature ed25519 public_key={sig['public_key']} ({bundle['format']})")
-            else:
-                print(f"OK unsigned bundle ({bundle['format']})")
-            raise SystemExit(0)
-        except BundleError as e:
-            print(str(e), file=sys.stderr)
-            raise SystemExit(1)
+        report = verify_bundle_file(args.bundle)
+        line = format_bundle_verify_report(report)
+        print(line, file=sys.stdout if report["exit_code"] == 0 else sys.stderr)
+        raise SystemExit(report["exit_code"])
     if args.cmd == "select":
         target = args.agent or default_agent
         patch = json_loads(read_text_utf8(Path(args.candidate_patch)))

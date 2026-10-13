@@ -1321,8 +1321,9 @@ class FaustRuntime:
                 invalid_reason = proposal.get("reason", UNDEFINED)
                 invalid_message = proposal.get("message", UNDEFINED)
             elif not (is_canonical(jget(proposal, "args")) or jget(proposal, "args") is UNDEFINED):
-                # D3: non-canonical numbers are rejected where they enter — here, the proposal.
-                invalid_reason = "non_canonical_args"
+                # D3: non-canonical numbers are rejected where they enter — here, the proposal
+                # (same closed reason as the TS model transport, model/errors.ts).
+                invalid_reason = "tool_arguments_non_canonical"
             if invalid_reason is not UNDEFINED or ptype == "invalid":
                 consecutive_empty += 1
                 self.emit(

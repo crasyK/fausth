@@ -343,7 +343,7 @@ def test_non_integral_proposal_args_rejected_as_invalid_proposal():
     rt = run(a, [call("echo.ping", n=0.5)])
     ev = rt.events[0]
     assert (ev["stage"], ev["verdict"], ev["reason"]) == ("propose", "deny", "empty_proposal")
-    assert ev["observation"]["invalid_reason"] == "non_canonical_args"
+    assert ev["observation"]["invalid_reason"] == "tool_arguments_non_canonical"
 
 
 # --- D14: the user cell ---------------------------------------------------------------------------------
