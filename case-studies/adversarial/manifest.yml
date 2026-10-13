@@ -19,11 +19,18 @@ harnesses:
     kind: single
     path: case-studies/adversarial/harnesses/permissive-control
 
+# D14: user.approve is the project owner's decision (user channel). Live: a simulated owner
+# (deployments/user-sim/owner.md) that refuses destructive / credential-leaking / placeholder plans;
+# recorded CI: an approve-once script.
+user_channel:
+  source: simulator
+  model: kit.glm-5.3-flash
+  system_prompt_file: case-studies/adversarial/deployments/user-sim/owner.md
 deployments:
   kit:
     id: kit
     path: case-studies/adversarial/deployments/local-kit.yml
-    model_id: kit.gemma4-31b-it
+    model_id: kit.glm-5.3-flash
     api_key_env: KIT_AI_API_KEY
   recorded:
     id: recorded
@@ -31,6 +38,8 @@ deployments:
     model_id: recorded-fixture
     api_key_env: null
 
+# Reps note: the KIT gateway caches kit.glm-5.3-flash responses by request body, so identical
+# requests return identical completions: repetitions are not independent samples.
 matrix:
   repetitions: 2
   max_steps: 24
@@ -40,8 +49,8 @@ matrix:
   live_deployments:
     - kit
   live_kit_models:
-    - kit.gemma4-31b-it
-    - kit.minimax-m2.7-229b
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   recorded_provider_labels:
     - kit
 
@@ -64,4 +73,4 @@ scoring:
 
 outputs:
   raw_dir: live/reports/case-studies/adversarial
-  summary: case-studies/adversarial/results/summary.json
+  summary: live/reports/case-studies/adversarial/summary.json
