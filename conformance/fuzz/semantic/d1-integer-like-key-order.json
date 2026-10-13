@@ -1,0 +1,10 @@
+{
+  "world": "replay",
+  "id": "d1-integer-like-key-order",
+  "decision": "D1",
+  "kind": "canonical",
+  "json_text": "{\"9\":1,\"10\":2}",
+  "expect": {
+    "out": "{\"10\":2,\"9\":1}"
+  }
+}

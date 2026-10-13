@@ -2,7 +2,15 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Deployment } from "../types.js";
 import type { ProviderCapabilities } from "./capabilities.js";
-import { boundProviderText, isModelInfraError, type ModelInfraErrorKind } from "./errors.js";
+import {
+  boundProviderText,
+  isModelInfraError,
+  isModelRequestError,
+  modelTransportErrorJson,
+  type ModelInfraErrorKind,
+  type ModelRequestErrorKind,
+  type ModelTransportErrorJson,
+} from "./errors.js";
 import { createAdapterFromDeployment } from "./resolve.js";
 import { resolveProfile } from "./profiles/index.js";
 
@@ -12,10 +20,16 @@ export type ProbeReport = ProviderCapabilities & {
   auth: boolean;
   models_requested: string[];
   error?: string;
-  /** Infra kind (timeout, rate_limit, auth, …) or "config" — distinguishes outages from auth. */
-  error_kind?: ModelInfraErrorKind | "config";
-  /** Infra failure during the tool-calling probe (native_tools then stays "unknown"). */
-  tool_probe_error?: ModelInfraErrorKind;
+  /**
+   * Infra kind (timeout, rate_limit, auth, …), "request_rejected" (the endpoint refused the
+   * probe request) or "config" — distinguishes outages from auth and from rejected requests.
+   */
+  error_kind?: ModelInfraErrorKind | ModelRequestErrorKind | "config";
+  /** Structured transport error (kind/status/model/attempts/total_attempts/message). */
+  error_detail?: ModelTransportErrorJson;
+  /** Transport failure during the tool-calling probe. */
+  tool_probe_error?: ModelInfraErrorKind | ModelRequestErrorKind;
+  tool_probe_error_detail?: ModelTransportErrorJson;
   redacted: true;
 };
 
@@ -98,22 +112,32 @@ export async function probeProvider(deployment: Deployment): Promise<ProbeReport
         base.native_tools = false;
       }
     } catch (e) {
-      if (!isModelInfraError(e)) throw e;
-      // An outage says nothing about tool support.
-      base.native_tools = "unknown";
-      base.tool_probe_error = e.kind;
+      if (isModelInfraError(e)) {
+        // An outage says nothing about tool support.
+        base.native_tools = "unknown";
+        base.tool_probe_error = e.kind;
+        base.tool_probe_error_detail = e.toJSON();
+      } else if (isModelRequestError(e)) {
+        // The endpoint refused a request that only adds a tool definition.
+        base.native_tools = false;
+        base.tool_probe_error = e.kind;
+        base.tool_probe_error_detail = e.toJSON();
+      } else {
+        throw e;
+      }
     }
 
     return base;
   } catch (e) {
-    const infra = isModelInfraError(e);
+    const detail = modelTransportErrorJson(e);
     return {
       ...base,
       // Unverified on any failure; error_kind tells an auth rejection from an outage.
       auth: false,
       chat_completions: false,
       error: boundProviderText(e instanceof Error ? e.message : String(e)),
-      error_kind: infra ? e.kind : "config",
+      error_kind: detail ? detail.kind : "config",
+      ...(detail ? { error_detail: detail } : {}),
     };
   }
 }

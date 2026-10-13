@@ -1,0 +1,11 @@
+{
+  "world": "replay",
+  "id": "py1-yaml-on-key",
+  "finding": "PY-1",
+  "decision": "D4",
+  "kind": "yaml",
+  "text": "recovery:\n  on: verify_effect_failed\n",
+  "expect": {
+    "out": "{\"recovery\":{\"on\":\"verify_effect_failed\"}}"
+  }
+}

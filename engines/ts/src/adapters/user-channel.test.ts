@@ -248,3 +248,29 @@ describe("user channel state typing", () => {
     assert.equal(bad.ok, false);
   });
 });
+
+describe("user simulator transport failures", () => {
+  it("carry the structured model error (kind/status/attempts) on the adapter error", async () => {
+    const { ModelInfraError } = await import("../model/errors.js");
+    const port = {
+      lastModelUsed: "",
+      async propose(): Promise<never> {
+        throw new ModelInfraError("server_error", "HTTP 503: busy", { status: 503, model: "kit.glm-5.3-flash", attempts: 4 });
+      },
+    };
+    const h = createUserChannelHandler(
+      askTool,
+      parseUserChannelBinding("user.ask", { source: "simulator", model: "kit.glm-5.3-flash" }),
+      { baseDir: process.cwd(), deployment, simulatorPort: () => port },
+    );
+    await assert.rejects(
+      async () => h({ question: "q?" }, { state: {} }),
+      (e: unknown) => {
+        if (!(e instanceof AdapterError) || e.code !== "user_channel_unavailable") return false;
+        const me = (e.detail as { model_error?: Record<string, unknown> } | undefined)?.model_error;
+        const json = JSON.parse(JSON.stringify(e)) as { detail?: { model_error?: Record<string, unknown> } };
+        return me?.kind === "server_error" && me.status === 503 && me.attempts === 4 && json.detail?.model_error?.kind === "server_error";
+      },
+    );
+  });
+});

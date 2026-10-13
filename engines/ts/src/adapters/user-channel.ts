@@ -26,6 +26,7 @@ import type { ToolHandler } from "../runtime.js";
 import type { Deployment, DeploymentUserBinding, ToolDef, ToolResultEnvelope } from "../types.js";
 import type { ModelPort } from "../model/port.js";
 import { createAdapterFromDeployment } from "../model/resolve.js";
+import { modelTransportErrorJson } from "../model/errors.js";
 import { validateAgainstSchema } from "../schema-validate.js";
 import { AdapterError } from "./error.js";
 import { resolveHarnessFile } from "./stdio-session.js";
@@ -449,7 +450,12 @@ export function createUserChannelHandler(
       } catch (e) {
         // Transport / gateway failure of the simulator is infrastructure, not agent behavior.
         messages.pop();
-        return fail(`user simulator for '${tool.id}' failed: ${e instanceof Error ? e.message : String(e)}`);
+        const modelError = modelTransportErrorJson(e);
+        throw new AdapterError(
+          "user_channel_unavailable",
+          `adapter failure: user simulator for '${tool.id}' failed: ${e instanceof Error ? e.message : String(e)}`,
+          modelError ? { detail: { model_error: modelError } } : {},
+        );
       }
       const text = proposal.type === "stop" ? (proposal.message ?? "") : "";
       responses.push(text);
