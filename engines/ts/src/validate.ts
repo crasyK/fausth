@@ -45,6 +45,7 @@ const ROOTS = {
   output: ["action", "state", "result", "message"],
   judge: ["action", "state", "result", "judgment"],
   agent_output: ["state", "message"],
+  state_effect: ["action", "state", "result"],
 } as const;
 
 function checkRoots(
@@ -121,6 +122,22 @@ function structuralChecks(agent: AgentIR): { errors: string[]; warnings: string[
       if (v.kind === "effect") checkObserver(v.observe, `Tool ${t.id}`);
       checkRoots(v.require, verifyRoots(v), `Tool ${t.id} verify ${v.kind}`, errors);
     }
+    // Rule 16: declared effects write declared keys within the tool's authority
+    (t.effects ?? []).forEach((eff, i) => {
+      const where = `Tool ${t.id} effects[${i}]`;
+      checkRoots(eff.when, ROOTS.state_effect, `${where}.when`, errors);
+      const own = (agent.counterbalance?.checkpoints ?? []).find((c) => c.tool === t.id);
+      for (const key of Object.keys(eff.set ?? {})) {
+        if (!stateKeys.has(key)) {
+          errors.push(`${where}.set: '${key}' is not a declared state key`);
+          continue;
+        }
+        const owned = (agent.counterbalance?.checkpoints ?? []).some((c) => c.allow_set_keys.includes(key));
+        if (own ? !own.allow_set_keys.includes(key) : owned) {
+          errors.push(`${where}.set: '${key}' is a checkpoint key this tool does not own`);
+        }
+      }
+    });
     // Rule 15: schemas compile
     for (const which of ["input", "output"] as const) {
       const err = schemaCompiles(t[which]);

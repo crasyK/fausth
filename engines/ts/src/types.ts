@@ -317,6 +317,17 @@ export type ToolDef = {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   verify?: Verify[];
+  /**
+   * Declared state effects (spec-v0.3 §6.3): on this tool's result, each effect whose `when`
+   * holds adds its `set` to the call's transition. Harness memory semantics live here, not in
+   * host adapters or the engine (D11).
+   */
+  effects?: ToolEffect[];
+};
+
+export type ToolEffect = {
+  when?: Predicate;
+  set: Record<string, unknown>;
 };
 
 export type StateTransition = {

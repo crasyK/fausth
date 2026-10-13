@@ -143,7 +143,16 @@ tools:
     input:  { ...JSON Schema }  # optional
     output: { ...JSON Schema }  # optional
     verify: [ ... ]             # optional (§7)
+    effects:                    # optional declared state effects (§6.3 step 4)
+      - when: { path: result.approved, eq: 1 }   # optional predicate on {action, state, result}
+        set: { plan_approved: 1 }
 ```
+
+**Declared effects** carry harness memory semantics in the IR: which result means "tests
+pass", which answer means "plan approved", what yielding a phase records. Hosts and engines
+never write a state key because of its name (D11); a host adapter reports what happened in the
+world (its `output`, and only world-derived transitions such as counters), and the harness maps
+results to memory through `effects`.
 
 JSON Schema dialect: 2020-12. When a schema is present the engine applies it with two defaults:
 a missing top-level `type` means `object`; a missing top-level `additionalProperties` means
@@ -157,7 +166,7 @@ permissions, bindings).
 
 ### 2.5 State
 
-`state` declares the harness memory. **Only declared keys are writable** (§6.3.4). Values are
+`state` declares the harness memory. **Only declared keys are writable** (§6.3 step 5). Values are
 canonical.
 
 ### 2.6 Validation (normative)
@@ -184,6 +193,9 @@ report every violation they find.
 13. Overlay tools ⊆ the base permitted set; overlay limits are integers ≥ 0 (`timeout_ms` ≥ 1).
 14. Predicate path roots are allowed for their context (§3.2).
 15. Every tool `input` / `output` schema compiles.
+16. Every `effects[*].set` key is a declared state key; a tool that is not a checkpoint tool may
+    not set a checkpoint key, and a checkpoint tool may set only its `allow_set_keys`;
+    `effects[*].when` uses only the roots `action`, `state`, `result`.
 
 Validators SHOULD warn (not fail) when `safe_state` is used, or when `agent.spawn` is declared
 but `spawn.allow` is not `true` (every spawn would be denied).
@@ -222,7 +234,7 @@ there is no implicit `.length` and no array indexing; inherited/prototype member
 | verify `judge` | `action`, `state`, `result`, `judgment` | after execute |
 | `output_verifies` (agent, stop) | `state`, `message` | §8.6 |
 
-During verification `state` is the provisional post-transition state (§6.3.5).
+During verification `state` is the provisional post-transition state (§6.3 step 6).
 
 ---
 
@@ -394,15 +406,18 @@ Stages run in this order. A deny at any stage ends the processing (*denied*), un
    Then, in order: a non-canonical output or transition value ⇒ `output_schema_invalid` +
    `non_canonical`; the output (world feedback) is sanitized (§14); output schema failure ⇒
    `output_schema_invalid`.
-4. **Transition authority (D9, post-execution, pre-commit).** For each key written (`set` keys
+4. **Declared effects.** For each `effects` entry in declaration order whose `when` holds (or has
+   no `when`) on `{action, state, result: <sanitized output>}`, its `set` entries are merged
+   into the transition's `set`, overriding host-returned values for the same keys.
+5. **Transition authority (D9, post-execution, pre-commit).** For each key written (`set` keys
    in code point order, then `remove` entries in order): an undeclared key ⇒
    `execute`/`deny`/`state_write_denied`, `failure: {kind: "state_key", state_key}`; a
    checkpoint key written by a tool that does not own it, or a key outside the executing
    checkpoint tool's `allow_set_keys` ⇒ `execute`/`deny`/`checkpoint_authority_failed`,
    `failure: {kind: "checkpoint_key", checkpoint_key}`.
-5. **Provisional transition.** `state' = (state ∪ set) − remove` becomes the current state.
-6. Emit `execute`/`allow` with `result` = output (`state_hash` of `state'`).
-7. `agent.spawn` with a child proposal list: run the child (§10).
+6. **Provisional transition.** `state' = (state ∪ set) − remove` becomes the current state.
+7. Emit `execute`/`allow` with `result` = output (`state_hash` of `state'`).
+8. `agent.spawn` with a child proposal list: run the child (§10).
 
 Every deny in this stage means: the call was attempted/executed, the result is rejected, nothing
 is committed, the call is not successful. Side effects are not undone.
@@ -512,7 +527,7 @@ decision, e.g. an approval or a clarification); its owners are the checkpoint to
 - **On the request (authorize):** a checkpoint tool's `args.set`, when it is an object, names
   the state changes the agent asks the user for; every key MUST be in that tool's
   `allow_set_keys`.
-- **On the transition (pre-commit, §6.3.4):** a checkpoint tool may write only its
+- **On the transition (pre-commit, §6.3 step 5):** a checkpoint tool may write only its
   `allow_set_keys`; a checkpoint key may be written only by one of its owners; any tool may write
   only declared state keys.
 

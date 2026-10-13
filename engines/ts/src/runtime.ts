@@ -644,6 +644,7 @@ export class FaustRuntime {
       deny("execute", "output_schema_invalid");
       return "denied";
     }
+    transition = this.withDeclaredEffects(tool, act, output, transition);
     const authority = this.checkTransitionAuthority(act.name, transition);
     if (authority) {
       deny("execute", authority.reason, authority.failure);
@@ -855,6 +856,25 @@ export class FaustRuntime {
       }
     }
     return null;
+  }
+
+  /** §6.3: declared effects whose `when` holds join the transition (they win over the host). */
+  private withDeclaredEffects(
+    tool: ToolDef,
+    act: Action,
+    result: Record<string, unknown>,
+    transition: StateTransition | undefined,
+  ): StateTransition | undefined {
+    const effects = tool.effects ?? [];
+    if (effects.length === 0) return transition;
+    const snap: Snapshot = { action: act, state: this.agent.state, result };
+    let set: Record<string, unknown> | undefined = transition?.set ? { ...transition.set } : undefined;
+    for (const eff of effects) {
+      if (eff.when && !evalPredicate(eff.when, snap)) continue;
+      set = { ...(set ?? {}), ...structuredClone(eff.set) };
+    }
+    if (!set) return transition;
+    return { ...(transition ?? {}), set };
   }
 
   // ---------------------------------------------------------------- state & provenance (§8.4)

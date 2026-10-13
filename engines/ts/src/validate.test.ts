@@ -150,6 +150,23 @@ describe("validator (spec-v0.3 §2.6)", () => {
     expectError({ ...base(), permissions: { filesystem: { read_scopes: ["/abs"] } } }, /absolute/);
   });
 
+  it("declared effects write declared keys within the tool's checkpoint authority", () => {
+    const a = base();
+    a.tools[1]!.effects = [{ set: { nope: 1 } }];
+    expectError(a, /effects\[0\].set: 'nope' is not a declared state key/);
+    const b = base();
+    b.counterbalance = { checkpoints: [{ tool: "ask", allow_set_keys: ["approved"] }] };
+    b.tools[1]!.effects = [{ set: { approved: 1 } }];
+    expectError(b, /'approved' is a checkpoint key this tool does not own/);
+    const c = base();
+    c.tools[1]!.effects = [{ when: { path: "observation.x", eq: 1 }, set: { evidence: 1 } }];
+    expectError(c, /effects\[0\].when: path 'observation.x'/);
+    const ok = base();
+    ok.counterbalance = { checkpoints: [{ tool: "ask", allow_set_keys: ["approved"] }] };
+    ok.tools[2]!.effects = [{ when: { path: "result.ok", eq: 1 }, set: { approved: 1 } }];
+    assert.deepEqual(errorsOf(ok), []);
+  });
+
   it("overlays may only narrow the permitted set", () => {
     expectError(
       { ...base(), permissions: { tools: ["read"] }, overlays: [{ when_model: "m", tools: ["write"] }] },

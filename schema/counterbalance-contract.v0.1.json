@@ -525,6 +525,12 @@
           "items": {
             "$ref": "#/$defs/verify"
           }
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
         }
       }
     },
@@ -909,6 +915,26 @@
         },
         "prompt_hint": {
           "type": "string"
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": [
+        "set"
+      ],
+      "additionalProperties": false,
+      "description": "Declared state effect: when `when` holds on {action, state, result}, `set` joins the call's transition (spec-v0.3 §6.3).",
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/predicate"
+        },
+        "set": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          }
         }
       }
     }

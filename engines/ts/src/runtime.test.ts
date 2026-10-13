@@ -469,6 +469,41 @@ describe("integrator wiring: unbound handlers and host infrastructure", () => {
   });
 });
 
+describe("D11: declared state effects replace adapter/engine state-key magic", () => {
+  const a = () =>
+    agent({
+      state: { evidence: 0, approved: 0, yielded: 0 },
+      tools: [
+        tool("test", {
+          effects: [{ when: { path: "result.exit_code", eq: 0 }, set: { evidence: 1 } }],
+        }),
+        tool("approve", { channel: "user", effects: [{ when: { path: "result.ok", eq: 1 }, set: { approved: 1 } }] }),
+        tool("yield", { effects: [{ set: { yielded: 1 } }] }),
+      ],
+      limits: { continue_after_deny: true },
+      counterbalance: { checkpoints: [{ tool: "approve", allow_set_keys: ["approved"] }] },
+    });
+
+  it("an effect applies only when its condition holds on the result", async () => {
+    const fail = await run(a(), [call("test")], { test: () => ({ exit_code: 1 }) });
+    assert.equal(fail.rt.agent.state.evidence, 0);
+    const pass = await run(a(), [call("test")], { test: () => ({ exit_code: 0 }) });
+    assert.equal(pass.rt.agent.state.evidence, 1);
+  });
+
+  it("the user's answer is mapped to the decision key by the harness, not by the host", async () => {
+    const { rt } = await run(a(), [call("approve", { plan: "p" })], { approve: () => ({ ok: 1 }) });
+    assert.equal(rt.agent.state.approved, 1);
+  });
+
+  it("declared effects override a host-returned value for the same key and obey authority", async () => {
+    const { rt } = await run(a(), [call("yield")], {
+      yield: () => ({ output: { ok: 1 }, state_transition: { set: { yielded: 0 } } }),
+    });
+    assert.equal(rt.agent.state.yielded, 1);
+  });
+});
+
 describe("CORE-9 / SPEC-14: TTL", () => {
   const a = (ttl: number, provenance = false) =>
     agent({
