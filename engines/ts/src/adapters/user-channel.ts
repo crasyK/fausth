@@ -48,6 +48,8 @@ export type UserChannelBinding = {
   max_tokens?: number;
 };
 
+export type StateValueType = "integer" | "number" | "string" | "boolean" | "object" | "array" | "null";
+
 export type UserChannelRequest = {
   tool: string;
   call_seq: number;
@@ -55,7 +57,48 @@ export type UserChannelRequest = {
   description?: string;
   output_schema?: Record<string, unknown>;
   allow_set_keys: string[];
+  /** Declared JSON type per settable key (absent = any canonical JSON value). */
+  state_types?: Record<string, StateValueType>;
 };
+
+/** JSON type of an IR state value (integers distinguished; D3). */
+export function stateValueType(v: unknown): StateValueType {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "array";
+  if (typeof v === "number") return Number.isInteger(v) ? "integer" : "number";
+  if (typeof v === "boolean") return "boolean";
+  if (typeof v === "string") return "string";
+  return "object";
+}
+
+/**
+ * Validate a user-proposed state set: only allowed keys, values of the declared IR type,
+ * and no non-integral numbers anywhere (D3). Returns a reason when invalid.
+ */
+export function checkUserSet(
+  set: Record<string, unknown>,
+  allowSetKeys: readonly string[],
+  stateTypes: Record<string, StateValueType> = {},
+): string | null {
+  const bad = Object.keys(set).filter((k) => !allowSetKeys.includes(k));
+  if (bad.length) return `set may only contain [${allowSetKeys.join(", ")}]`;
+  const nonCanonical = (v: unknown): boolean =>
+    typeof v === "number"
+      ? !Number.isInteger(v) || !Number.isSafeInteger(v)
+      : Array.isArray(v)
+        ? v.some(nonCanonical)
+        : v !== null && typeof v === "object"
+          ? Object.values(v as Record<string, unknown>).some(nonCanonical)
+          : false;
+  for (const [k, v] of Object.entries(set)) {
+    if (nonCanonical(v)) return `set.${k} must not contain non-integral numbers`;
+    const want = Object.prototype.hasOwnProperty.call(stateTypes, k) ? stateTypes[k] : undefined;
+    if (want && stateValueType(v) !== want && !(want === "number" && stateValueType(v) === "integer")) {
+      return `set.${k} must be ${want === "integer" ? "an integer" : `a ${want}`}`;
+    }
+  }
+  return null;
+}
 
 export type UserChannelAnswer = {
   output: Record<string, unknown>;
@@ -77,6 +120,8 @@ export type UserChannelOptions = {
   deployment: Deployment;
   /** Keys the IR lets this tool set (counterbalance.checkpoints[].allow_set_keys). */
   allowSetKeys?: string[];
+  /** JSON type of each settable key, from the IR's initial state (e.g. clarified: 0 → integer). */
+  stateTypes?: Record<string, StateValueType>;
   /** In-memory transcript sink (callers persist it with the run). */
   transcript?: UserTranscriptEntry[];
   /** Human source hook (e.g. a UI); default: interactive TTY prompt. */
@@ -182,7 +227,7 @@ function envelopeFromAnswer(answer: UserChannelAnswer): ToolResultEnvelope {
 /** Parse the simulator's reply: a single JSON object {"output": {...}, "set"?: {...}}. */
 export function parseSimulatorReply(
   text: string,
-  req: Pick<UserChannelRequest, "output_schema" | "allow_set_keys">,
+  req: Pick<UserChannelRequest, "output_schema" | "allow_set_keys" | "state_types">,
 ): { ok: true; answer: UserChannelAnswer } | { ok: false; reason: string } {
   const stripped = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
   const start = stripped.indexOf("{");
@@ -204,8 +249,8 @@ export function parseSimulatorReply(
   if (obj.set !== undefined && obj.set !== null) {
     if (typeof obj.set !== "object" || Array.isArray(obj.set)) return { ok: false, reason: "set must be an object" };
     set = obj.set as Record<string, unknown>;
-    const bad = Object.keys(set).filter((k) => !req.allow_set_keys.includes(k));
-    if (bad.length) return { ok: false, reason: `set may only contain [${req.allow_set_keys.join(", ")}]` };
+    const why = checkUserSet(set, req.allow_set_keys, req.state_types);
+    if (why) return { ok: false, reason: why };
   }
   return { ok: true, answer: { output: output as Record<string, unknown>, ...(set ? { set } : {}) } };
 }
@@ -219,6 +264,7 @@ function simulatorSystemPrompt(
   hidden: string | undefined,
   tool: ToolDef,
   allowSetKeys: string[],
+  stateTypes: Record<string, StateValueType>,
 ): string {
   const parts = [persona.trim()];
   if (hidden && hidden.trim()) {
@@ -233,7 +279,9 @@ function simulatorSystemPrompt(
     'Reply with ONLY one JSON object: {"output": <object>' + (allowSetKeys.length ? ', "set": <object>' : "") + "}.",
     `"output" must satisfy this JSON Schema: ${canonicalJson(tool.output ?? { type: "object" })}`,
     allowSetKeys.length
-      ? `"set" is optional and may only contain these keys: ${allowSetKeys.join(", ")}.`
+      ? `"set" is optional and may only contain these keys: ${allowSetKeys
+          .map((k) => (stateTypes[k] ? `${k} (${stateTypes[k]})` : k))
+          .join(", ")}.`
       : 'Do not include "set".',
   );
   return parts.join("\n\n");
@@ -314,6 +362,7 @@ export function createUserChannelHandler(
   opts: UserChannelOptions,
 ): ToolHandler {
   const allowSetKeys = [...(opts.allowSetKeys ?? [])];
+  const stateTypes = { ...(opts.stateTypes ?? {}) };
   let callSeq = 0;
 
   if (binding.source === "recorded") {
@@ -348,10 +397,17 @@ export function createUserChannelHandler(
         description: tool.description,
         output_schema: tool.output,
         allow_set_keys: allowSetKeys,
+        state_types: stateTypes,
       };
       const answer = await ask(req);
       if (!answer || !answer.output || typeof answer.output !== "object") {
         fail(`user channel '${tool.id}': human answer must provide an output object`);
+      }
+      const outCheck = validateAgainstSchema(tool.output, answer.output);
+      if (!outCheck.ok) fail(`user channel '${tool.id}': human answer does not match the output schema`);
+      if (answer.set) {
+        const why = checkUserSet(answer.set, allowSetKeys, stateTypes);
+        if (why) fail(`user channel '${tool.id}': ${why}`);
       }
       const result = envelopeFromAnswer(answer);
       persistTranscript({ tool: tool.id, call_seq: callSeq, source: "human", args, result }, opts.transcript);
@@ -390,11 +446,11 @@ export function createUserChannelHandler(
     fail(`user simulator for '${tool.id}' unavailable: ${e instanceof Error ? e.message : String(e)}`);
   }
   const messages: { role: string; content: string }[] = [
-    { role: "system", content: simulatorSystemPrompt(persona, hidden, tool, allowSetKeys) },
+    { role: "system", content: simulatorSystemPrompt(persona, hidden, tool, allowSetKeys, stateTypes) },
   ];
   return async (args) => {
     callSeq += 1;
-    const req = { output_schema: tool.output, allow_set_keys: allowSetKeys };
+    const req = { output_schema: tool.output, allow_set_keys: allowSetKeys, state_types: stateTypes };
     messages.push({ role: "user", content: `${tool.id} call #${callSeq}\narguments: ${canonicalJson(args ?? {})}` });
     const responses: string[] = [];
     for (let attempt = 0; attempt < 2; attempt++) {

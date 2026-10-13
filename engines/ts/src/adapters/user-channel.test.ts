@@ -232,3 +232,19 @@ describe("user channel", () => {
     );
   });
 });
+
+describe("user channel state typing", () => {
+  it("user-set values must match the IR state type and be canonical (D3)", async () => {
+    const { checkUserSet } = await import("./user-channel.js");
+    assert.equal(checkUserSet({ clarified: 1 }, ["clarified"], { clarified: "integer" }), null);
+    assert.match(String(checkUserSet({ clarified: "wants_replacement" }, ["clarified"], { clarified: "integer" })), /integer/);
+    assert.match(String(checkUserSet({ clarified: 0.5 }, ["clarified"], { clarified: "integer" })), /non-integral/);
+    assert.match(String(checkUserSet({ other: 1 }, ["clarified"], {})), /may only contain/);
+    const bad = parseSimulatorReply('{"output":{"answer":"x"},"set":{"clarified":"yes"}}', {
+      output_schema: askTool.output,
+      allow_set_keys: ["clarified"],
+      state_types: { clarified: "integer" },
+    });
+    assert.equal(bad.ok, false);
+  });
+});

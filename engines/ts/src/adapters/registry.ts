@@ -47,6 +47,8 @@ import {
   createUserChannelHandler,
   isUserChannelBinding,
   parseUserChannelBinding,
+  stateValueType,
+  type StateValueType,
   type UserChannelOptions,
 } from "./user-channel.js";
 import type { ResolvedHarnessIR } from "../types.js";
@@ -186,6 +188,14 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
 function toolChannel(tool: ToolDef): string | undefined {
   const ch = (tool as ToolDef & { channel?: unknown }).channel;
   return typeof ch === "string" ? ch : undefined;
+}
+
+function stateTypesFor(agent: AgentIR, keys: readonly string[]): Record<string, StateValueType> {
+  const out: Record<string, StateValueType> = {};
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(agent.state ?? {}, k)) out[k] = stateValueType(agent.state[k]);
+  }
+  return out;
 }
 
 function allowSetKeysFor(agent: AgentIR, toolId: string): string[] {
@@ -350,10 +360,12 @@ function bindToolsInner(
           `adapter failure: user channel for '${id}' needs a deployment path or harness directory`,
         );
       }
+      const allowSetKeys = allowSetKeysFor(agent, id);
       out[id] = createUserChannelHandler(tool, parsed, {
         baseDir: userBaseDir ?? process.cwd(),
         deployment,
-        allowSetKeys: allowSetKeysFor(agent, id),
+        allowSetKeys,
+        stateTypes: stateTypesFor(agent, allowSetKeys),
         ...(opts.userChannel ?? {}),
       });
       continue;
