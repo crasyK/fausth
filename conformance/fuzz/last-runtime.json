@@ -1,8 +1,8 @@
 {
   "seed": 20261012,
-  "n": 300,
-  "same": 176,
-  "differ": 124,
+  "n": 400,
+  "same": 255,
+  "differ": 145,
   "pass": false,
   "first": [
     {
@@ -48,16 +48,16 @@
       "py": "{\"observation\":{\"freshness\":{\"kb_cited\":250},\"permitted_tools\":[\"sensor.fan.read_percent\",\"task.complete\",\"user.correct\"],\"sequence_blockers\":[{\"action\":\"sensor.fan.read_percent\",\"missing_prior_any_of\":[\"sensor.fan.read_percent\",\"user.correct\"]}],\"tools\":[\"sensor.fan.read_percent\",\"task.complete\",\"u"
     },
     {
-      "id": "rt-0014",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{\"clarified\":250,\"out_of_scope_writes\":0},\"permitted_tools\":[\"fs.list\",\"refund.request\",\"user.ask\"],\"plan\":{\"approved\":1,\"next_tool\":\"phase.yield\",\"note\":\"Plan already approved — call phase.yield next. Do ",
-      "py": "{\"observation\":{\"freshness\":{\"clarified\":250,\"out_of_scope_writes\":0},\"permitted_tools\":[\"fs.list\",\"refund.request\",\"user.ask\"],\"sequence_blockers\":[],\"tools\":[\"fs.list\",\"refund.request\",\"user.ask\"]},\"seq\":1,\"stage\":\"orient\",\"state_hash\":\"0ac3c3801e650d00104f050b4c4803d92d22b8fee1c118c230d078411d2f9"
-    },
-    {
       "id": "rt-0018",
       "byte": 17,
       "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{},\"permitted_tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct\"],\"sequence_blockers\":[],\"tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct",
       "py": "{\"observation\":{\"freshness\":{},\"permitted_tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct\"],\"sequence_blockers\":[],\"tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct\"]},\"seq\":1,\"stage\":\"orient\",\"state_hash\":\"68918ac850ff2f82aa6071ac"
+    },
+    {
+      "id": "rt-0021",
+      "byte": 1247,
+      "ts": "{\"args\":{\"content\":\"sk-fixture-secret-0001\",\"path\":\"src/app.ts\"},\"observation\":{\"content\":\"\",\"found\":0,\"path\":\"undefined\"},\"reason\":\"verify_effect_failed\",\"seq\":6,\"stage\":\"verify\",\"state_hash\":\"201c7cfd1b9b031b7dfcf3738aebb7cfcf8504b4c01cd6452c9a002b9ee3d307\",\"tool\":\"fs.write_scoped\",\"ts_logical\":6,",
+      "py": "{\"args\":{\"content\":\"sk-fixture-secret-0001\",\"path\":\"src/app.ts\"},\"failure\":{\"keys\":[\"out_of_scope_writes\"],\"kind\":\"transition_discarded\"},\"observation\":{\"content\":\"\",\"found\":0,\"path\":\"undefined\"},\"reason\":\"verify_effect_failed\",\"seq\":6,\"stage\":\"verify\",\"state_hash\":\"3829d342fefb130f9c4fbe9bda4d20dd6"
     },
     {
       "id": "rt-0022",
