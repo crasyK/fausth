@@ -57,6 +57,11 @@ Checks (minimal wall):
 5. Recorded fixtures not counted as live observations in claim text
 6. Mutation claims declare holdout splits (if `mutable` mentioned in claimed)
 
+`fausth select` passing on recorded transcripts is evidence of **non-regression** (no lost deny,
+safe_state or completion; no security-cell change) — not of improvement. A claim that a mutation
+*helped* must come from live runs on held-out tasks; a select result with
+`fitness_evaluated: false` (skipped or no replayable fixtures) is no selection evidence at all.
+
 ## Examples
 
 - Track S freeze: [`case-studies/swe-bench/results/`](../case-studies/swe-bench/results/)

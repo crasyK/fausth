@@ -23,6 +23,7 @@ import {
   createLocalCodingTools,
   createLocalWorld,
 } from "./local.js";
+import { createTauWorldTools, TAU_WORLD_EXTENSION } from "./worlds/tau.js";
 import { resolveToolsFromDeployment, AdapterError } from "./registry.js";
 import type { AgentIR, Deployment } from "../types.js";
 import { loadAgentDir, loadDeployment } from "../load.js";
@@ -202,13 +203,14 @@ describe("local adapter worktree", () => {
     const deployment = loadDeployment(
       join(root, "examples/coding-counterbalance/deployment.local-fixture.yml"),
     ) as Deployment;
-    const world = createLocalWorld({ workspace: worktree, agent, deployment, interactive: false });
-    const tools = createLocalCodingTools(world);
+    // The host records the approved plan before the implementation world is created.
     mkdirSync(join(worktree, ".fausth"), { recursive: true });
     writeFileSync(
       join(worktree, ".fausth/approved_paths.json"),
       JSON.stringify({ paths: ["src/app.ts"] }) + "\n",
     );
+    const world = createLocalWorld({ workspace: worktree, agent, deployment, interactive: false });
+    const tools = createLocalCodingTools(world);
 
     const warn = await tools["fs.write_scoped"]!(
       { path: "src/other.ts", content: "off plan\n" },
@@ -241,8 +243,14 @@ describe("local adapter worktree", () => {
       join(worktree, "tau.mjs"),
       readFileSync(join(root, "case-studies/tau-bench/world/tau.mjs")),
     );
-    const world = createLocalWorld({ workspace: worktree, agent, deployment, interactive: false });
-    const tools = createLocalCodingTools(world);
+    const world = createLocalWorld({
+      workspace: worktree,
+      agent,
+      deployment,
+      interactive: false,
+      extensions: [TAU_WORLD_EXTENSION],
+    });
+    const tools = { "tau.invoke": createTauWorldTools(world)["local.tau_invoke"] };
     assert.ok(tools["tau.invoke"]);
     const missing = await tools["tau.invoke"]!({ kwargs: {} }, { state: {} });
     assert.equal((missing as { output: { ok: number } }).output.ok, 0);
@@ -291,8 +299,14 @@ describe("local adapter worktree", () => {
         result: '{"order_id":"#W1","status":"exchange requested"}',
       }) + "\n",
     );
-    const world = createLocalWorld({ workspace: worktree, agent, deployment, interactive: false });
-    const tools = createLocalCodingTools(world);
+    const world = createLocalWorld({
+      workspace: worktree,
+      agent,
+      deployment,
+      interactive: false,
+      extensions: [TAU_WORLD_EXTENSION],
+    });
+    const tools = { "todo.complete": createTauWorldTools(world)["local.todo_complete"] };
     assert.ok(tools["todo.complete"]);
     const bad = await tools["todo.complete"]!(
       { id: "nope", value: "x" },
@@ -368,8 +382,14 @@ describe("local adapter worktree", () => {
     // Shared suite worktree may retain prior actions.jsonl — start clean.
     const actionsPath = join(worktree, "tau", "actions.jsonl");
     if (existsSync(actionsPath)) rmSync(actionsPath);
-    const world = createLocalWorld({ workspace: worktree, agent, deployment, interactive: false });
-    const tools = createLocalCodingTools(world);
+    const world = createLocalWorld({
+      workspace: worktree,
+      agent,
+      deployment,
+      interactive: false,
+      extensions: [TAU_WORLD_EXTENSION],
+    });
+    const tools = { "tau.invoke": createTauWorldTools(world)["local.tau_invoke"] };
     const blocked = await tools["tau.invoke"]!(
       { tool: "cancel_pending_order", kwargs: { order_id: "#W1", reason: "no longer needed" } },
       { state: {} },
@@ -412,8 +432,14 @@ describe("local adapter worktree", () => {
         result: '{"ok":true}',
       }) + "\n",
     );
-    const world = createLocalWorld({ workspace: worktree, agent, deployment, interactive: false });
-    const tools = createLocalCodingTools(world);
+    const world = createLocalWorld({
+      workspace: worktree,
+      agent,
+      deployment,
+      interactive: false,
+      extensions: [TAU_WORLD_EXTENSION],
+    });
+    const tools = { "todo.complete": createTauWorldTools(world)["local.todo_complete"] };
 
     const orOk = await tools["todo.complete"]!(
       {

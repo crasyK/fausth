@@ -27,12 +27,13 @@ function loadDotEnv() {
   }
 }
 
-const MODELS = [
-  "kit.minimax-m2.7-229b",
-  "kit.mistral-small-4-119b-a8b",
-  "kit.qwen3.5-397b-A17b",
-  "kit.gemma4-31b-it",
-];
+/**
+ * Current KIT-hosted local models (D15, 2026-10-13). Older ids (kit.minimax-m2.7-229b,
+ * kit.mistral-small-4-119b-a8b, kit.qwen3.5-397b-A17b, kit.gemma4-31b-it) are retired.
+ * kit.glm-5.3-flash is the default; the gateway caches its responses by request body.
+ * kit.deepseek-v4-flash is not response-cached and not fully deterministic at temperature 0.
+ */
+const MODELS = ["kit.glm-5.3-flash", "kit.deepseek-v4-flash"];
 
 async function main() {
   loadDotEnv();

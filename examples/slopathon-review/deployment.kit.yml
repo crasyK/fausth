@@ -5,14 +5,15 @@ model:
   base_url: https://ki-toolbox.scc.kit.edu/api/v1
   api_key_env: KIT_AI_API_KEY
   models:
-    - kit.mistral-small-4-119b-a8b
-    - kit.gemma4-31b-it
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   temperature: 0
   max_tokens: 1024
+# KIT-hosted local models (D15, 2026-10-13); the older kit.* ids are retired.
 model_catalog:
-  - id: kit.mistral-small-4-119b-a8b
+  - id: kit.glm-5.3-flash
     policy: { residency: kit-local, personal_data: allowed }
-  - id: kit.gemma4-31b-it
+  - id: kit.deepseek-v4-flash
     policy: { residency: kit-local, personal_data: allowed }
 data_policy:
   classification: personal

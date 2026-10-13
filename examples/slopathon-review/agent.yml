@@ -57,8 +57,9 @@ tools:
             - contradiction
             - human_review
         severity:
+          # Advisory layer: blocking is reserved for the deterministic checker (Layer 1).
           type: string
-          enum: [info, warning, blocking]
+          enum: [info, warning]
         path: { type: string }
         line_start: { type: integer, minimum: 1 }
         evidence: { type: string, minLength: 1 }
