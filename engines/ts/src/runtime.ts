@@ -406,7 +406,8 @@ export class FaustRuntime {
     }
     const handler = this.tools[name];
     if (typeof handler !== "function") {
-      return { ok: false, infra: false, failure: { kind: "channel_unbound", channel: "world" } };
+      // Unreachable for validated calls (§6.1 step 4 checks binding first); stay in the table.
+      return { ok: false, infra: false, failure: { kind: "host_error" } };
     }
     try {
       return { ok: true, raw: await handler(args, { state: structuredClone(this.agent.state) }) };
