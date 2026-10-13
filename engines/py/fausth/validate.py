@@ -15,6 +15,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .canonical import UNDEFINED, canonical_json, jget, js_string, js_truthy, json_loads, nn, read_text_utf8
+from .runtime import SandboxPathError, normalize_scope
 from .schema_validate import FORMAT_CHECKER
 
 CONTRACT_SCHEMA = "counterbalance-contract.v0.1.json"
@@ -66,7 +67,14 @@ def _tool_ids(agent: dict[str, Any]) -> list[Any]:
     return [jget(t, "id") for t in tools] if isinstance(tools, list) else []
 
 
-def structural_checks(agent: dict[str, Any]) -> tuple[list[str], list[str]]:
+def structural_checks(
+    agent: dict[str, Any], *, provided_tools: frozenset[str] | set[str] = frozenset()
+) -> tuple[list[str], list[str]]:
+    """TS ``structuralChecks`` plus the SPEC-16 / D7 rules.
+
+    ``provided_tools`` are tool ids a connector manifest provides at resolution
+    time; they count as declared for the permissions allowlist check.
+    """
     errors: list[str] = []
     warnings: list[str] = []
     if js_truthy(agent.get("safe_state")) and not js_truthy(agent.get("fallback_state")):
@@ -111,6 +119,24 @@ def structural_checks(agent: dict[str, Any]) -> tuple[list[str], list[str]]:
         for cell in mutable:
             if cell not in ("skills", "memory", "instincts"):
                 errors.append(f"mutable cell '{js_string(cell)}' is not allowed (skills|memory|instincts only)")
+    perms = agent.get("permissions", UNDEFINED)
+    # SPEC-16: the capability allowlist may only name declared tools.
+    perm_tools = jget(perms, "tools")
+    if isinstance(perm_tools, list):
+        for tid in perm_tools:
+            if tid not in ids and tid not in provided_tools:
+                errors.append(f"permissions.tools '{js_string(tid)}' not declared in tools")
+    # D7: scopes must normalize to a relative path inside the workspace (root only as '.').
+    fs = jget(perms, "filesystem")
+    for key in ("write_scopes", "read_scopes"):
+        scopes = jget(fs, key)
+        if not isinstance(scopes, list):
+            continue
+        for sc in scopes:
+            try:
+                normalize_scope(sc)
+            except SandboxPathError as e:
+                errors.append(f"permissions.filesystem.{key} '{js_string(sc)}' {e.code}: {e}")
     return errors, warnings
 
 
@@ -119,7 +145,9 @@ def _error_path(e: Any) -> str:
     return "".join(f"/{p}" for p in parts)
 
 
-def validate_agent(agent: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
+def validate_agent(
+    agent: dict[str, Any], *, provided_tools: frozenset[str] | set[str] = frozenset()
+) -> tuple[bool, list[str], list[str]]:
     """Returns (ok, errors, warnings) — TS ``validateAgent``."""
     warnings: list[str] = []
     validator = _contract_validator(str(schema_path()))
@@ -129,11 +157,16 @@ def validate_agent(agent: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
         canonical_json(agent.get("state", UNDEFINED))
     except ValueError as e:
         return False, [str(e)], warnings
+    try:
+        # D3: every value in the IR must be canonical (it can reach the event log).
+        canonical_json(agent)
+    except ValueError as e:
+        return False, [f"non-canonical IR: {e}"], warnings
     schema_errors = [
         f"{_error_path(e)} {e.message}"
         for e in sorted(validator.iter_errors(agent), key=lambda e: [str(p) for p in e.path])
     ]
-    struct_errors, struct_warnings = structural_checks(agent)
+    struct_errors, struct_warnings = structural_checks(agent, provided_tools=provided_tools)
     warnings.extend(struct_warnings)
     errors = schema_errors + struct_errors
     return (len(errors) == 0), errors, warnings
@@ -155,13 +188,25 @@ def load_agent_for_validation(path: str | Path) -> dict[str, Any]:
     raise FileNotFoundError(f"Cannot find agent at {path}")
 
 
+def connector_provided_tools(harness_dir: str | Path) -> set[str]:
+    """Tool ids that the harness's connectors manifest adds at resolution time."""
+    d = Path(harness_dir)
+    if not any((d / n).is_file() for n in ("connectors.yml", "connectors.yaml", "connectors.json")):
+        return set()
+    from .connectors import resolve_harness
+
+    resolved = resolve_harness(d)
+    return {t["id"] for t in resolved["agent"].get("tools") or [] if isinstance(t, dict) and isinstance(t.get("id"), str)}
+
+
 def validate_agent_path(path: str | Path) -> tuple[bool, dict[str, Any] | None, list[str], list[str]]:
     """Returns (ok, agent, errors, warnings)."""
     try:
         agent = load_agent_for_validation(path)
     except FileNotFoundError as e:
         return False, None, [str(e)], []
-    ok, errors, warnings = validate_agent(agent)
+    provided = connector_provided_tools(path) if Path(path).is_dir() else set()
+    ok, errors, warnings = validate_agent(agent, provided_tools=provided)
     return ok, (agent if ok else None), errors, warnings
 
 

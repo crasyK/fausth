@@ -45,3 +45,27 @@ def test_validate_works_from_a_non_repo_install(tmp_path):
 def test_validate_agent_rejects_bad_ir():
     ok, errors, _ = validate_agent({"spec": "counterbalance-contract/v0.1", "name": "", "state": {}, "tools": []})
     assert not ok and errors
+
+
+# --- validator rules: SPEC-16, D7, D3 ---------------------------------------------
+
+BASE = {"spec": "counterbalance-contract/v0.1", "name": "x", "state": {}, "tools": [{"id": "fs.read"}]}
+
+
+def test_undeclared_permission_tool_is_rejected():
+    ok, errors, _ = validate_agent({**BASE, "permissions": {"tools": ["fs.read", "shell.unrestricted"]}})
+    assert not ok and any("shell.unrestricted" in e for e in errors)
+    assert validate_agent({**BASE, "permissions": {"tools": []}})[0]
+
+
+def test_invalid_filesystem_scopes_rejected():
+    for bad in ("/", "../x", "src/..", "/etc", ".git"):
+        ok, errors, _ = validate_agent({**BASE, "permissions": {"filesystem": {"write_scopes": [bad]}}})
+        assert not ok, bad
+    for good in (".", "src", "src/", "./src//lib", "*"):
+        assert validate_agent({**BASE, "permissions": {"filesystem": {"read_scopes": [good]}}})[0], good
+
+
+def test_non_canonical_ir_rejected():
+    ok, errors, _ = validate_agent({**BASE, "gates": [{"require": {"path": "state.x", "eq": 1.5}}]})
+    assert not ok and errors[0].startswith("non-canonical IR")
