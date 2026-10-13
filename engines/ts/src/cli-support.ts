@@ -2,6 +2,7 @@
  * Host-side CLI helpers (kept out of cli.ts, which runs main() on import, so they are testable).
  */
 import type { AgentIR, Event } from "./types.js";
+import { modelTransportErrorJson, type ModelTransportErrorJson } from "./model/errors.js";
 
 /** System context built only from harness-declared text (spec-v0.3 §15.3). */
 export function systemPromptFor(agent: AgentIR, overlayHint?: string): string {
@@ -118,3 +119,17 @@ export function flagOn(flags: Record<string, string>, name: string): boolean {
   return flags[name] === "true" || flags[name] === "1";
 }
 
+
+/**
+ * A thrown model-transport error, classified (spec-v0.3 §15.3): `infra` (timeout, rate limit,
+ * 5xx, network, auth, model unavailable) or `request` (`request_rejected`: HTTP 400/413/422 —
+ * the endpoint refused the request the host built; neither infrastructure nor model behaviour).
+ * Both are reported apart from model outcomes.
+ */
+export function transportErrorReport(
+  e: unknown,
+): { class: "infra" | "request"; error: ModelTransportErrorJson } | null {
+  const json = modelTransportErrorJson(e);
+  if (!json) return null;
+  return { class: json.infra ? "infra" : "request", error: json };
+}

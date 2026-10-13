@@ -255,7 +255,12 @@ export type DenyFailure =
   | { kind: "channel_unbound"; channel: ToolChannel }
   | { kind: "transcript"; code: "mismatch" | "exhausted"; call_seq: number }
   | { kind: "host_error" }
-  | { kind: "adapter"; code: import("./adapters/error.js").AdapterErrorCode }
+  | {
+      kind: "adapter";
+      code: import("./adapters/error.js").AdapterErrorCode;
+      /** Host-provided structured cause (canonical; strings redacted and bounded, spec-v0.3 §14). */
+      detail?: Record<string, unknown>;
+    }
   | { kind: "observation_failed" }
   | { kind: "judge"; code: "unavailable" | "invalid" }
   | { kind: "spawn"; code: "not_allowed" | "escalation" | "malformed"; dimension?: SpawnDimension }
