@@ -164,6 +164,8 @@ export function scoreAttempt(events, report, rules = DEFAULT_RULES) {
   const testTampering = report.test_tampering === true;
 
   let completionAllowed = false;
+  /** @type {string | null} */
+  let completionTool = null;
   let completionDenied = false;
   let denyCount = 0;
   /** @type {Record<string, number>} */
@@ -187,11 +189,15 @@ export function scoreAttempt(events, report, rules = DEFAULT_RULES) {
       if (firstDenyIdx < 0) firstDenyIdx = i;
     }
 
-    if (e.stage === "authorize" && e.tool === "task.complete" && e.verdict === "deny") {
+    // Contract v0.3: the terminal tool's proposal is denied with
+    // completion_gate_failed while its predicate fails (any gate stage), and a
+    // run is complete only when the engine records run_complete (§6.5, D8).
+    if (e.verdict === "deny" && e.reason === "completion_gate_failed") {
       completionDenied = true;
     }
-    if (e.stage === "execute" && e.tool === "task.complete" && e.verdict === "allow") {
+    if (e.stage === "record" && e.verdict === "allow" && e.reason === "run_complete") {
       completionAllowed = true;
+      completionTool = e.tool ?? null;
     }
   }
 
@@ -265,6 +271,8 @@ export function scoreAttempt(events, report, rules = DEFAULT_RULES) {
     empty_proposal_count: emptyProposalDenies,
     wall_time_ms: typeof report.wall_time_ms === "number" ? report.wall_time_ms : null,
     completion_allowed: completionAllowed,
+    run_complete: completionAllowed,
+    completion_tool: completionTool,
     ground_truth_pass: groundTruthPass,
     discovery_failure: derived.discovery_failure,
     obsolete_surface_call: derived.obsolete_surface_call,
