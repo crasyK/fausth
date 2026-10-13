@@ -1,91 +1,252 @@
-import { canonicalJson, deepEq, stateHash } from "./canonical.js";
+/**
+ * Fausth engine — the governed exchange loop (normative text: docs/spec-v0.3.md).
+ *
+ * The engine knows no harness- or domain-specific names (D11). Everything it treats specially
+ * is declared in the harness IR (channels, completion tool, checkpoints, …) or is one of the
+ * contract tools specified in the spec (agent.spawn, harness.*).
+ */
+import {
+  canonicalJson,
+  compareCodePoints,
+  deepEq,
+  excerpt,
+  sortCodePoints,
+  stateHash,
+  toCanonical,
+} from "./canonical.js";
 import {
   buildCheckpointKeyFailure,
+  buildHarnessPatchFailure,
   buildMissingPriorAnyOfFailure,
   buildMissingPriorToolsFailure,
+  buildNonCanonicalFailure,
   buildPredicateFailure,
+  buildSpawnFailure,
+  buildStateKeyFailure,
 } from "./deny-failure.js";
 import { evalPredicate } from "./predicates.js";
 import { validateAgainstSchema } from "./schema-validate.js";
-import { fallbackStateOf } from "./load.js";
+import { fallbackStateOf, normalizeAgentIr } from "./load.js";
+import { parseScope, scopeContains } from "./scopes.js";
+import { ADAPTER_ERROR_CODES, type AdapterErrorCode } from "./adapters/error.js";
 import type {
   AgentIR,
-  Event,
   DenyFailure,
+  Event,
   Gate,
+  HarnessPatch,
+  HarnessPatchCode,
   ModelProposal,
+  Predicate,
   ReasonCode,
   RecordedToolCall,
   Snapshot,
+  SpawnDimension,
   StateTransition,
   ToolDef,
-  ToolResultEnvelope,
   Verdict,
   Verify,
   VerifyOutput,
 } from "./types.js";
-import { buildMessageSnapshot } from "./types.js";
+import {
+  DECLINE_TOOL,
+  PATCH_TOOL,
+  REFLECT_TOOL,
+  REFLECTION_TOOLS,
+  SPAWN_TOOL,
+  buildMessageSnapshot,
+} from "./types.js";
 import {
   applyHarnessPatch,
   harnessIrHash,
   parseHarnessPatch,
   parseSkillsPatchDecline,
-  parseSkillsReflect,
+  parseSkillsReflectDetailed,
   validatePatchSecurity,
 } from "./harness-patch.js";
-
-const SKILLS_REFLECTION_TOOLS = new Set([
-  "harness.propose_skills_patch",
-  "harness.decline_skills_patch",
-  "harness.reflect_skills",
-]);
-
-function isSkillsReflectionTool(name: string): boolean {
-  return SKILLS_REFLECTION_TOOLS.has(name);
-}
 
 export type ToolHandler = (
   args: Record<string, unknown>,
   ctx: { state: Record<string, unknown> },
-) => Promise<ToolResultEnvelope | Record<string, unknown>> | ToolResultEnvelope | Record<string, unknown>;
+) => Promise<unknown> | unknown;
 
+/** Judge (live only). The engine validates the result (spec-v0.3 §7). */
 export type JudgeFn = (
   rubric: string,
   context: Record<string, unknown>,
-) => Promise<{ score: number; reason: string } | { invalid: true; raw: string }>;
+) => Promise<{ score: number; reason: string } | { invalid: true; raw: string } | unknown>;
+
+/**
+ * Host infrastructure failures (deployment adapters: bindings, recorded responses, the user
+ * channel, host sessions) are reported as `infra_failure`, never as model or tool behaviour
+ * (spec-v0.3 §6.3). Recognised structurally so the engine does not depend on adapter classes.
+ */
+function adapterErrorCode(e: unknown): AdapterErrorCode | null {
+  if (!(e instanceof Error) || e.name !== "AdapterError") return null;
+  const code = (e as Error & { code?: unknown }).code;
+  return typeof code === "string" && (ADAPTER_ERROR_CODES as readonly string[]).includes(code)
+    ? (code as AdapterErrorCode)
+    : null;
+}
+
+/** Shared recorded-transcript cursor (parent and children consume one transcript). */
+export class TranscriptCursor {
+  idx = 0;
+  constructor(readonly entries: RecordedToolCall[]) {}
+}
 
 export type RuntimeOptions = {
   agent: AgentIR;
   propose: () => Promise<ModelProposal | null>;
+  /**
+   * Host handlers by tool id: world-channel tools, and user-channel tools ONLY when they are
+   * backed by a user-channel binding (recorded answers / simulator / human). Never pass a world
+   * stub for a `channel: user` tool (spec-v0.3 §9).
+   */
   tools: Record<string, ToolHandler>;
   judge?: JudgeFn;
+  /** Judge verifies run only when this is true and `judge` is set (never in Track A). */
   allowJudge?: boolean;
+  /** Recorded transcript; when present (even empty) the run is in recorded-transcript mode. */
   recordedToolResults?: RecordedToolCall[];
   /** Nesting depth for spawn children (default 0). */
   depth?: number;
   /** Parent spawn id when this runtime is a child reaction. */
   spawnId?: string;
+  /** Internal: transcript cursor shared with a parent. */
+  transcript?: TranscriptCursor;
 };
 
-function normalizeEnvelope(
-  raw: ToolResultEnvelope | Record<string, unknown>,
-): ToolResultEnvelope {
-  if (raw && typeof raw === "object" && "output" in raw && typeof (raw as ToolResultEnvelope).output === "object") {
-    return raw as ToolResultEnvelope;
-  }
-  if (raw && typeof raw === "object" && "_state_patch" in raw) {
-    throw new Error("_state_patch is forbidden; use state_transition");
-  }
-  return { output: raw as Record<string, unknown> };
+type Action = { name: string; args: Record<string, unknown> };
+type Origin = "model" | "recovery";
+type Outcome = "success" | "complete" | "denied" | "safe_state" | "infra";
+type Invoked =
+  | { ok: true; raw: unknown }
+  | { ok: false; infra: boolean; failure: DenyFailure; error?: string };
+type PartialEvent = Omit<Event, "seq" | "ts_logical" | "state_hash">;
+type Provenance = { status: "current" | "stale" | "contradicted" | "unknown"; updated_at_step: number };
+
+const DEFAULT_LIMIT = 1000;
+const DEFAULT_MAX_OBSERVATION_CHARS = 8000;
+const EXCERPT_CHARS = 500;
+const REDACTED = "[redacted]";
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
-function scopeCovered(child: string, parents: string[]): boolean {
-  return parents.some((p) => {
-    if (p === "." || p === "./" || p === "*" || p === "**") return true;
-    if (child === p) return true;
-    const prefix = p.endsWith("/") ? p : p + "/";
-    return child.startsWith(prefix) || child === p.replace(/\/$/, "");
-  });
+/** Fresh = not 0, false, null or "" (spec-v0.3 §8.4). */
+function isFreshValue(v: unknown): boolean {
+  return !(v === 0 || v === false || v === null || v === "" || v === undefined);
+}
+
+type Envelope = { output: Record<string, unknown>; transition?: StateTransition };
+
+/** Spec-v0.3 §6.3.3: `{output, state_transition?}` or a bare object without `output`. */
+function readEnvelope(raw: unknown): Envelope | null {
+  if (!isPlainObject(raw)) return null;
+  if ("_state_patch" in raw) return null;
+  if (!("output" in raw)) {
+    if ("state_transition" in raw) return null;
+    return { output: raw };
+  }
+  for (const k of Object.keys(raw)) {
+    if (k !== "output" && k !== "state_transition") return null;
+  }
+  if (!isPlainObject(raw.output)) return null;
+  const st = raw.state_transition;
+  if (st === undefined || st === null) return { output: raw.output };
+  if (!isPlainObject(st)) return null;
+  for (const k of Object.keys(st)) {
+    if (k !== "set" && k !== "remove") return null;
+  }
+  if (st.set !== undefined && !isPlainObject(st.set)) return null;
+  if (st.remove !== undefined) {
+    if (!Array.isArray(st.remove) || st.remove.some((x) => typeof x !== "string")) return null;
+  }
+  const transition: StateTransition = {};
+  if (st.set !== undefined) transition.set = st.set as Record<string, unknown>;
+  if (st.remove !== undefined) transition.remove = st.remove as string[];
+  return { output: raw.output, transition };
+}
+
+type SpawnPacket = {
+  tools: string[];
+  write_scopes?: string[];
+  read_scopes?: string[];
+  max_steps?: number;
+  max_tool_calls?: number;
+  nested: boolean;
+  proposals?: unknown[];
+};
+
+function isNonNegInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+
+/** Spawn packet parse (spec-v0.3 §10); null = malformed. */
+function parseSpawnPacket(args: Record<string, unknown>): SpawnPacket | null {
+  const tools = args.tools;
+  if (!Array.isArray(tools) || tools.some((t) => typeof t !== "string" || t.length === 0)) return null;
+  const packet: SpawnPacket = { tools: tools as string[], nested: false };
+  if (args.filesystem !== undefined) {
+    if (!isPlainObject(args.filesystem)) return null;
+    for (const k of Object.keys(args.filesystem)) {
+      if (k !== "write_scopes" && k !== "read_scopes") return null;
+    }
+    for (const k of ["write_scopes", "read_scopes"] as const) {
+      const v = args.filesystem[k];
+      if (v === undefined) continue;
+      if (!Array.isArray(v) || v.some((s) => typeof s !== "string" || !parseScope(s).ok)) return null;
+      packet[k] = v as string[];
+    }
+  }
+  if (args.limits !== undefined) {
+    if (!isPlainObject(args.limits)) return null;
+    for (const k of Object.keys(args.limits)) {
+      if (k !== "max_steps" && k !== "max_tool_calls") return null;
+    }
+    for (const k of ["max_steps", "max_tool_calls"] as const) {
+      const v = args.limits[k];
+      if (v === undefined) continue;
+      if (!isNonNegInt(v)) return null;
+      packet[k] = v;
+    }
+  }
+  if (args.spawn_nested !== undefined) {
+    if (typeof args.spawn_nested !== "boolean") return null;
+    if (args.spawn_nested) packet.nested = true;
+  }
+  if (args.spawn !== undefined) {
+    if (!isPlainObject(args.spawn)) return null;
+    if (args.spawn.allow !== undefined && typeof args.spawn.allow !== "boolean") return null;
+    if (args.spawn.allow === true) packet.nested = true;
+  }
+  if (args.proposals !== undefined) {
+    if (!Array.isArray(args.proposals) || args.proposals.some((p) => !isPlainObject(p))) return null;
+    packet.proposals = args.proposals;
+  }
+  return packet;
+}
+
+/** Recorded child proposal (same shape as model.jsonl lines). */
+function toProposal(raw: unknown): ModelProposal {
+  const o = (isPlainObject(raw) ? raw : {}) as Record<string, unknown>;
+  if (o.type === "stop") {
+    return typeof o.message === "string" ? { type: "stop", message: o.message } : { type: "stop" };
+  }
+  if (o.type === "invalid") {
+    return {
+      type: "invalid",
+      reason: typeof o.reason === "string" ? o.reason : "invalid",
+      ...(typeof o.message === "string" ? { message: o.message } : {}),
+    };
+  }
+  return {
+    type: "tool",
+    name: String(o.name ?? o.tool ?? ""),
+    args: (isPlainObject(o.args) ? o.args : {}) as Record<string, unknown>,
+  };
 }
 
 export class FaustRuntime {
@@ -94,42 +255,59 @@ export class FaustRuntime {
   private seq = 0;
   private steps = 0;
   private toolCalls = 0;
-  private propose: RuntimeOptions["propose"];
-  private tools: Record<string, ToolHandler>;
-  private judge?: JudgeFn;
-  private allowJudge: boolean;
-  private recorded: RecordedToolCall[];
-  private recordedIdx = 0;
+  private readonly propose: RuntimeOptions["propose"];
+  private readonly tools: Record<string, ToolHandler>;
+  private readonly judge?: JudgeFn;
+  private readonly allowJudge: boolean;
+  private readonly transcript?: TranscriptCursor;
+  private readonly depth: number;
+  private readonly spawnId?: string;
+  private readonly initialState: Record<string, unknown>;
+  private readonly declaredKeys: Set<string>;
+  private provenance = new Map<string, Provenance>();
+  /** Tools whose calls executed AND passed every verify (D8). */
+  private readonly succeeded = new Set<string>();
+  /** Denied attempts per contract reflection tool (spec-v0.3 §12). */
+  private readonly reflectionDenials = new Map<string, number>();
+  private budgetEmitted = false;
   private recovering = false;
-  private depth: number;
-  private spawnId?: string;
-  /** Cap propose thrash: one attempt (allow or deny) then must decline. */
-  private skillsProposeAttempts = 0;
-  /** Cap decline thrash: one attempt (allow or deny). */
-  private skillsDeclineAttempts = 0;
-  /** Cap unified reflect thrash: one attempt (allow or deny). */
-  private skillsReflectAttempts = 0;
+  /** Set when a host infrastructure failure ended the reaction (spec-v0.3 §6.3). */
+  infraFailed = false;
 
   constructor(opts: RuntimeOptions) {
-    this.agent = structuredClone(opts.agent);
-    if (this.agent.safe_state && !this.agent.fallback_state) {
-      this.agent.fallback_state = this.agent.safe_state;
-    }
+    const agent = normalizeAgentIr(structuredClone(opts.agent));
+    if (!isPlainObject(agent.state)) agent.state = {};
+    if (!Array.isArray(agent.tools)) agent.tools = [];
+    this.agent = agent;
+    this.initialState = structuredClone(agent.state);
+    this.declaredKeys = new Set(Object.keys(agent.state));
     this.propose = opts.propose;
     this.tools = opts.tools;
     this.judge = opts.judge;
     this.allowJudge = opts.allowJudge ?? false;
-    this.recorded = opts.recordedToolResults ?? [];
+    this.transcript =
+      opts.transcript ??
+      (opts.recordedToolResults !== undefined ? new TranscriptCursor(opts.recordedToolResults) : undefined);
     this.depth = opts.depth ?? 0;
     this.spawnId = opts.spawnId;
+    const declared = agent.counterbalance?.memory_provenance ?? {};
+    for (const [key, value] of Object.entries(agent.state)) {
+      const d = declared[key];
+      this.provenance.set(key, {
+        status: d?.status ?? (isFreshValue(value) ? "current" : "stale"),
+        updated_at_step: d?.updated_at_step ?? 0,
+      });
+    }
   }
 
-  private emit(partial: Omit<Event, "seq" | "ts_logical" | "state_hash"> & { state_hash?: string }): Event {
+  // ---------------------------------------------------------------- events
+
+  private emit(partial: PartialEvent): Event {
     this.seq += 1;
     const ev: Event = {
       seq: this.seq,
       ts_logical: this.seq,
-      state_hash: partial.state_hash ?? stateHash(this.agent.state),
+      state_hash: stateHash(this.agent.state),
       stage: partial.stage,
     };
     if (partial.verdict !== undefined) ev.verdict = partial.verdict;
@@ -142,1398 +320,1134 @@ export class FaustRuntime {
     if (partial.failure !== undefined) ev.failure = partial.failure;
     if (this.depth > 0) ev.depth = this.depth;
     if (this.spawnId) ev.spawn_id = this.spawnId;
-    if (partial.depth !== undefined) ev.depth = partial.depth;
-    if (partial.spawn_id !== undefined) ev.spawn_id = partial.spawn_id;
     if (partial.harness_hash_before !== undefined) ev.harness_hash_before = partial.harness_hash_before;
     if (partial.harness_hash_after !== undefined) ev.harness_hash_after = partial.harness_hash_after;
     this.events.push(ev);
     return ev;
   }
 
+  // ---------------------------------------------------------------- IR helpers
+
   private toolById(id: string): ToolDef | undefined {
     return this.agent.tools.find((t) => t.id === id);
   }
 
-  private parentTools(): string[] {
-    return this.agent.permissions?.tools ?? this.agent.tools.map((t) => t.id);
+  private maxSteps(): number {
+    return this.agent.limits?.max_steps ?? DEFAULT_LIMIT;
+  }
+
+  private maxToolCalls(): number {
+    return this.agent.limits?.max_tool_calls ?? DEFAULT_LIMIT;
+  }
+
+  private maxObservationChars(): number {
+    return this.agent.limits?.max_observation_chars ?? DEFAULT_MAX_OBSERVATION_CHARS;
+  }
+
+  /** D5: absent ⇒ all declared tools; [] ⇒ none. */
+  private isPermitted(id: string): boolean {
+    const p = this.agent.permissions?.tools;
+    return p === undefined ? this.agent.tools.some((t) => t.id === id) : p.includes(id);
+  }
+
+  private permittedTools(): string[] {
+    return sortCodePoints(this.agent.tools.map((t) => t.id).filter((id) => this.isPermitted(id)));
+  }
+
+  private continueAfterDeny(): boolean {
+    return this.agent.limits?.continue_after_deny === true;
+  }
+
+  private checkpoints() {
+    return this.agent.counterbalance?.checkpoints ?? [];
+  }
+
+  // ---------------------------------------------------------------- world feedback (§14)
+
+  private secretValues(): string[] {
+    const values = [...new Set(this.agent.permissions?.secrets?.values ?? [])].filter((v) => v.length > 0);
+    return values.sort((a, b) => (b.length !== a.length ? b.length - a.length : compareCodePoints(a, b)));
+  }
+
+  private sanitizeString(s: string): string {
+    let out = s;
+    for (const secret of this.secretValues()) {
+      if (out.includes(secret)) out = out.split(secret).join(REDACTED);
+    }
+    return excerpt(out, this.maxObservationChars());
+  }
+
+  private sanitize(value: unknown): unknown {
+    if (typeof value === "string") return this.sanitizeString(value);
+    if (Array.isArray(value)) return value.map((v) => this.sanitize(v));
+    if (isPlainObject(value)) {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) out[k] = this.sanitize(v);
+      return out;
+    }
+    return value;
+  }
+
+  // ---------------------------------------------------------------- invocation (§15.1)
+
+  private async invoke(name: string, args: Record<string, unknown>): Promise<Invoked> {
+    if (this.transcript) {
+      const cur = this.transcript;
+      const expected = cur.idx + 1;
+      const entry = cur.entries[cur.idx];
+      if (!entry) {
+        return { ok: false, infra: false, failure: { kind: "transcript", code: "exhausted", call_seq: expected } };
+      }
+      if (entry.call_seq !== expected || entry.tool !== name || !deepEq(entry.args ?? {}, args)) {
+        return { ok: false, infra: false, failure: { kind: "transcript", code: "mismatch", call_seq: expected } };
+      }
+      cur.idx += 1;
+      return { ok: true, raw: entry.result };
+    }
+    const handler = this.tools[name];
+    if (typeof handler !== "function") {
+      // Unreachable for validated calls (§6.1 step 4 checks binding first); stay in the table.
+      return { ok: false, infra: false, failure: { kind: "host_error" } };
+    }
+    try {
+      return { ok: true, raw: await handler(args, { state: structuredClone(this.agent.state) }) };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const error = msg ? { error: this.sanitizeString(msg) } : {};
+      const code = adapterErrorCode(e);
+      if (code) return { ok: false, infra: true, failure: { kind: "adapter", code }, ...error };
+      return { ok: false, infra: false, failure: { kind: "host_error" }, ...error };
+    }
+  }
+
+  /** §6.1: a tool is bound when the run is in recorded-transcript mode or the host has a handler. */
+  private isBound(id: string): boolean {
+    return this.transcript !== undefined || typeof this.tools[id] === "function";
+  }
+
+  // ---------------------------------------------------------------- run loop (§5)
+
+  /** Host iteration cap (runLoop argument); folded into the step limit (spec-v0.3 §5.2). */
+  private hostStepCap: number | undefined;
+
+  private effectiveMaxSteps(): number {
+    const own = this.maxSteps();
+    return this.hostStepCap === undefined ? own : Math.min(own, this.hostStepCap);
   }
 
   private checkLimits(): boolean {
-    const maxSteps = this.agent.limits?.max_steps ?? 1000;
-    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
-    if (this.steps >= maxSteps || this.toolCalls >= maxTools) {
-      this.emit({
-        stage: "authorize",
-        verdict: "deny",
-        reason: "limit_exceeded",
-      });
+    if (this.steps >= this.effectiveMaxSteps() || this.toolCalls >= this.maxToolCalls()) {
+      this.emit({ stage: "authorize", verdict: "deny", reason: "limit_exceeded" });
       return false;
     }
     return true;
   }
 
-  /** Plain deny stops by default; opt-in continue_after_deny lets the agent recover. */
-  private denyIsTerminal(): boolean {
-    return this.agent.limits?.continue_after_deny !== true;
+  /**
+   * Run the exchange until the run ends (spec-v0.3 §5.2). The engine enforces the harness
+   * limits itself; an optional host cap narrows `max_steps` for this run, so reaching it is a
+   * visible `limit_exceeded`, never a silent stop.
+   */
+  async runLoop(hostStepCap?: number): Promise<Event[]> {
+    if (hostStepCap !== undefined && Number.isInteger(hostStepCap) && hostStepCap >= 0) {
+      this.hostStepCap = hostStepCap;
+    }
+    let consecutiveInvalid = 0;
+    for (;;) {
+      if (!this.checkLimits()) break;
+      this.steps += 1;
+      this.applyTtlInvalidation();
+      this.checkInterventionBudget();
+      if (this.agent.counterbalance?.orientation?.emit_each_step === true) {
+        this.emit({ stage: "orient", verdict: "allow", observation: this.buildOrientationFrame() });
+      }
+
+      const proposal = await this.propose();
+      if (!proposal || proposal.type === "stop") {
+        const m =
+          proposal?.type === "stop" && typeof proposal.message === "string" && proposal.message.length > 0
+            ? proposal.message
+            : undefined;
+        this.emit({
+          stage: "propose",
+          verdict: "allow",
+          ...(m !== undefined ? { observation: { stop_message: excerpt(m, EXCERPT_CHARS) } } : {}),
+        });
+        if (m !== undefined && (this.agent.counterbalance?.output_verifies?.length ?? 0) > 0) {
+          const verdict = await this.runAgentOutputVerifies(m);
+          if (verdict === "deny" && this.continueAfterDeny()) continue;
+          if (verdict === "safe_state") await this.safeFlow("verify_output_failed");
+        }
+        break;
+      }
+
+      if (proposal.type === "invalid") {
+        consecutiveInvalid += 1;
+        const text = typeof proposal.message === "string" ? proposal.message : undefined;
+        // "empty_proposal": the model answered without a tool call; any other reason is a
+        // protocol failure of the proposal itself (spec-v0.3 §5.5).
+        this.emit({
+          stage: "propose",
+          verdict: "deny",
+          reason: proposal.reason === "empty_proposal" ? "empty_proposal" : "invalid_proposal",
+          observation: {
+            invalid_reason: excerpt(String(proposal.reason ?? ""), EXCERPT_CHARS),
+            stop_message: text !== undefined ? excerpt(text, EXCERPT_CHARS) : null,
+          },
+        });
+        if (!this.continueAfterDeny() || consecutiveInvalid >= 2) break;
+        continue;
+      }
+
+      consecutiveInvalid = 0;
+      const outcome = await this.processAction(
+        { name: String(proposal.name), args: proposal.args as Record<string, unknown> },
+        "model",
+      );
+      if (outcome === "complete" || outcome === "safe_state" || outcome === "infra") break;
+      if (outcome === "denied" && !this.continueAfterDeny()) break;
+    }
+    return this.events;
   }
 
-  private evalGates(snapshot: Snapshot, gates: Gate[] | undefined): { ok: true } | { ok: false; verdict: Verdict; reason: ReasonCode } {
-    if (!gates) return { ok: true };
-    for (const g of gates) {
+  // ---------------------------------------------------------------- one action (§6)
+
+  private async processAction(action: Action, origin: Origin): Promise<Outcome> {
+    // propose (§5.3)
+    const canon = toCanonical(action.args, "$.args");
+    if (!canon.ok) {
+      this.emit({
+        stage: "propose",
+        verdict: "deny",
+        reason: "input_schema_invalid",
+        tool: action.name,
+        failure: buildNonCanonicalFailure(canon.path),
+      });
+      return "denied";
+    }
+    const args = canon.value as Record<string, unknown>;
+    const act: Action = { name: action.name, args };
+    this.emit({
+      stage: "propose",
+      tool: act.name,
+      args,
+      ...(origin === "recovery" ? { reason: "recovery_attempt" as const } : {}),
+    });
+
+    // validate (§6.1)
+    const tool = this.toolById(act.name);
+    const deny = (stage: "validate" | "authorize" | "execute", reason: ReasonCode, failure?: DenyFailure, verdict: Verdict = "deny") => {
+      this.emit({ stage, verdict, reason, tool: act.name, args, ...(failure ? { failure } : {}) });
+    };
+    if (!tool || !this.isPermitted(act.name)) {
+      deny("validate", "capability_missing");
+      return "denied";
+    }
+    const reflection = (REFLECTION_TOOLS as readonly string[]).includes(act.name);
+    if (!isPlainObject(args)) {
+      if (reflection) this.noteReflectionDenial(act.name);
+      deny("validate", "input_schema_invalid");
+      return "denied";
+    }
+    const inCheck = validateAgainstSchema(tool.input, args);
+    if (!inCheck.ok) {
+      if (inCheck.compileError) {
+        deny("validate", "schema_invalid");
+        return "denied";
+      }
+      if (reflection) this.noteReflectionDenial(act.name);
+      deny("validate", "input_schema_invalid");
+      return "denied";
+    }
+    if (!this.isBound(tool.id)) {
+      deny("validate", "capability_missing", { kind: "channel_unbound", channel: tool.channel ?? "world" });
+      return "denied";
+    }
+    this.emit({ stage: "validate", verdict: "allow", tool: act.name, args });
+
+    // authorize (§6.2)
+    const gated = this.evalGates({ action: act, state: this.agent.state }, this.agent.gates);
+    if (!gated.ok) {
+      deny("authorize", "gate_denied", undefined, gated.verdict);
+      if (gated.verdict === "safe_state") {
+        if (origin === "recovery" || this.recovering) return "denied";
+        await this.safeFlow("gate_denied");
+        return "safe_state";
+      }
+      return "denied";
+    }
+
+    let spawnPacket: SpawnPacket | undefined;
+    if (act.name === SPAWN_TOOL) {
+      const s = this.checkSpawn(args);
+      if (!s.ok) {
+        deny("authorize", s.reason, s.failure);
+        return "denied";
+      }
+      spawnPacket = s.packet;
+    }
+
+    let contractEffect: ContractEffect | undefined;
+    if (reflection) {
+      const c = this.checkContractTool(act);
+      if (!c.ok) {
+        this.noteReflectionDenial(act.name);
+        deny("authorize", c.reason, buildHarnessPatchFailure(c.code));
+        return "denied";
+      }
+      contractEffect = c.effect;
+    }
+
+    const seq = this.checkSequences(act);
+    if (!seq.ok) {
+      deny("authorize", "sequence_requirement_failed", seq.failure);
+      return "denied";
+    }
+
+    const completion = this.checkCompletion(act.name);
+    if (!completion.ok) {
+      deny("authorize", "completion_gate_failed", completion.failure);
+      return "denied";
+    }
+
+    const cpReq = this.checkCheckpointRequest(act);
+    if (cpReq) {
+      deny("authorize", "checkpoint_authority_failed", buildCheckpointKeyFailure(cpReq));
+      return "denied";
+    }
+
+    if (this.toolCalls >= this.maxToolCalls()) {
+      deny("authorize", "limit_exceeded");
+      return "denied";
+    }
+    this.emit({ stage: "authorize", verdict: "allow", tool: act.name, args });
+
+    // execute (§6.3)
+    this.toolCalls += 1;
+    const invoked = await this.invoke(act.name, args);
+    if (!invoked.ok) {
+      this.emit({
+        stage: "execute",
+        verdict: "deny",
+        reason: invoked.infra ? "infra_failure" : "tool_execution_failed",
+        tool: act.name,
+        args,
+        failure: invoked.failure,
+        ...(invoked.error !== undefined ? { error: invoked.error } : {}),
+      });
+      if (invoked.infra) this.infraFailed = true;
+      return invoked.infra ? "infra" : "denied";
+    }
+    const env = readEnvelope(invoked.raw);
+    if (!env) {
+      deny("execute", "output_schema_invalid", { kind: "malformed_envelope" });
+      return "denied";
+    }
+    const outCanon = toCanonical(env.output, "$.result");
+    if (!outCanon.ok) {
+      deny("execute", "output_schema_invalid", buildNonCanonicalFailure(outCanon.path));
+      return "denied";
+    }
+    let transition: StateTransition | undefined;
+    if (env.transition) {
+      const tCanon = toCanonical(env.transition, "$.state_transition");
+      if (!tCanon.ok) {
+        deny("execute", "output_schema_invalid", buildNonCanonicalFailure(tCanon.path));
+        return "denied";
+      }
+      transition = tCanon.value as StateTransition;
+    }
+    const output = this.sanitize(outCanon.value) as Record<string, unknown>;
+    const outCheck = validateAgainstSchema(tool.output, output);
+    if (!outCheck.ok) {
+      deny("execute", "output_schema_invalid");
+      return "denied";
+    }
+    transition = this.withDeclaredEffects(tool, act, output, transition);
+    const authority = this.checkTransitionAuthority(act.name, transition);
+    if (authority) {
+      deny("execute", authority.reason, authority.failure);
+      return "denied";
+    }
+
+    const preState = this.agent.state;
+    this.agent.state = this.applyTransition(preState, transition);
+    this.emit({ stage: "execute", verdict: "allow", tool: act.name, args, result: output });
+
+    if (spawnPacket && spawnPacket.proposals && spawnPacket.proposals.length > 0) {
+      const childInfra = await this.runChild(spawnPacket, `spawn-${this.seq}`);
+      if (childInfra) {
+        this.agent.state = preState; // nothing is committed after an infrastructure failure
+        this.infraFailed = true;
+        return "infra";
+      }
+    }
+
+    // verify (§6.4)
+    const verifies: Verify[] = [...(tool.verify ?? [])];
+    if (origin === "recovery" && this.agent.recovery?.verify) verifies.push(this.agent.recovery.verify);
+    if (verifies.length === 0) {
+      this.emit({ stage: "verify", verdict: "allow" });
+    }
+    for (const v of verifies) {
+      const r = await this.evaluateVerify(v, act, output);
+      if (r.pass) {
+        this.emit(r.event);
+        continue;
+      }
+      this.agent.state = preState; // discard the provisional transition (D8)
+      this.emit(r.event);
+      if (r.infra) {
+        this.infraFailed = true;
+        return "infra";
+      }
+      if (r.verdict === "safe_state" && origin !== "recovery" && !this.recovering) {
+        await this.safeFlow(r.event.reason as ReasonCode);
+        return "safe_state";
+      }
+      return "denied";
+    }
+
+    // commit (§6.5)
+    this.commitProvenance(transition);
+    this.succeeded.add(act.name);
+    if (contractEffect) this.applyContractEffect(act, contractEffect);
+    this.applyActionInvalidation(act.name);
+    if (origin !== "recovery" && this.agent.counterbalance?.completion?.tool === act.name) {
+      this.emit({ stage: "record", verdict: "allow", reason: "run_complete", tool: act.name });
+      return "complete";
+    }
+    return "success";
+  }
+
+  // ---------------------------------------------------------------- authorize helpers
+
+  private evalGates(
+    snapshot: Snapshot,
+    gates: Gate[] | undefined,
+  ): { ok: true } | { ok: false; verdict: Verdict } {
+    for (const g of gates ?? []) {
       if (g.when && !evalPredicate(g.when, snapshot)) continue;
       if (!evalPredicate(g.require, snapshot)) {
-        return {
-          ok: false,
-          verdict: g.otherwise ?? "deny",
-          reason: "gate_denied",
-        };
+        return { ok: false, verdict: g.otherwise === "safe_state" ? "safe_state" : "deny" };
       }
     }
     return { ok: true };
   }
 
-  private successfulExecutes(): Set<string> {
-    const s = new Set<string>();
-    for (const e of this.events) {
-      if (e.stage === "execute" && e.verdict === "allow" && e.tool) s.add(e.tool);
+  private checkSpawn(
+    args: Record<string, unknown>,
+  ):
+    | { ok: true; packet: SpawnPacket }
+    | { ok: false; reason: ReasonCode; failure: DenyFailure } {
+    const escalation = (dimension: SpawnDimension) => ({
+      ok: false as const,
+      reason: "gate_denied" as ReasonCode,
+      failure: buildSpawnFailure("escalation", dimension),
+    });
+    if (this.agent.spawn?.allow !== true) {
+      return { ok: false, reason: "gate_denied", failure: buildSpawnFailure("not_allowed") };
     }
-    return s;
-  }
-
-  private collectCompletionPaths(p: unknown, out: string[] = []): string[] {
-    if (!p || typeof p !== "object") return out;
-    const obj = p as Record<string, unknown>;
-    if (typeof obj.path === "string") out.push(obj.path);
-    if (Array.isArray(obj.all)) {
-      for (const x of obj.all) this.collectCompletionPaths(x, out);
-    }
-    if (Array.isArray(obj.any)) {
-      for (const x of obj.any) this.collectCompletionPaths(x, out);
-    }
-    if (obj.not) this.collectCompletionPaths(obj.not, out);
-    return out;
-  }
-
-  private buildOrientationFrame(): Record<string, unknown> {
-    const cb = this.agent.counterbalance ?? {};
-    // Can-only: advertise tools this harness actually declares — never blocked_tools / modes.
-    let permitted = this.agent.tools.map((t) => t.id).sort();
-    const done = this.successfulExecutes();
-    const planApproved = Number(this.agent.state.plan_approved ?? 0) === 1;
-    // Once approved, drop user.approve from the menu and nudge toward phase.yield.
-    if (planApproved) {
-      permitted = permitted.filter((id) => id !== "user.approve");
-    }
-    const sequence_blockers = (cb.sequences ?? [])
-      .filter(
-        (s) =>
-          s.action &&
-          ((s.require_prior_tools?.length ?? 0) > 0 || (s.require_prior_any_of?.length ?? 0) > 0),
-      )
-      .map((s) => {
-        const missing_prior_tools = (s.require_prior_tools ?? []).filter((t) => !done.has(t)).sort();
-        const options = s.require_prior_any_of ?? [];
-        const missing_prior_any_of =
-          options.length > 0 && !options.some((t) => done.has(t))
-            ? [...options].sort()
-            : [];
-        return {
-          action: s.action,
-          ...(missing_prior_tools.length ? { missing_prior_tools } : {}),
-          ...(missing_prior_any_of.length ? { missing_prior_any_of } : {}),
-        };
-      })
-      .filter((x) => (x.missing_prior_tools?.length ?? 0) > 0 || (x.missing_prior_any_of?.length ?? 0) > 0);
-    const freshness: Record<string, number> = {};
-    for (const rule of cb.invalidate_after ?? []) {
-      for (const key of rule.memory_keys ?? []) {
-        freshness[key] = Number(this.agent.state[key] ?? 0);
-      }
-    }
-    const completion = cb.completion;
-    const completion_paths = completion?.require
-      ? Array.from(new Set(this.collectCompletionPaths(completion.require))).sort()
-      : [];
-    const completion_ready =
-      completion && completion.tool
-        ? this.checkCompletion(completion.tool).ok
-        : true;
-    const frame: Record<string, unknown> = {
-      permitted_tools: permitted,
-      tools: permitted,
-      sequence_blockers,
-      freshness,
-      completion: {
-        tool: completion?.tool ?? "task.complete",
-        require_paths: completion_paths,
-        ready: completion_ready ? 1 : 0,
-      },
+    const packet = parseSpawnPacket(args);
+    if (!packet) return { ok: false, reason: "schema_invalid", failure: buildSpawnFailure("malformed") };
+    if (packet.tools.some((t) => !this.isPermitted(t))) return escalation("tools");
+    const fs = this.agent.permissions?.filesystem;
+    const covered = (child: string, parents: string[] | undefined) => {
+      const c = parseScope(child);
+      if (!c.ok) return false;
+      return (parents ?? []).some((p) => {
+        const ps = parseScope(p);
+        return ps.ok && scopeContains(ps.scope, c.scope);
+      });
     };
-    if ("plan_approved" in this.agent.state) {
-      frame.plan = planApproved
-        ? {
-            approved: 1,
-            next_tool: "phase.yield",
-            note: "Plan already approved — call phase.yield next. Do not call user.approve again.",
-          }
-        : { approved: 0 };
+    if (packet.write_scopes && packet.write_scopes.some((s) => !covered(s, fs?.write_scopes))) {
+      return escalation("write_scopes");
     }
-    return frame;
+    if (packet.read_scopes && fs?.read_scopes && packet.read_scopes.some((s) => !covered(s, fs.read_scopes))) {
+      return escalation("read_scopes");
+    }
+    if (packet.max_steps !== undefined && packet.max_steps > this.effectiveMaxSteps() - this.steps) {
+      return escalation("max_steps");
+    }
+    if (packet.max_tool_calls !== undefined && packet.max_tool_calls > this.maxToolCalls() - this.toolCalls - 1) {
+      return escalation("max_tool_calls");
+    }
+    if (packet.nested && this.agent.spawn?.allow_nested !== true) return escalation("nested");
+    return { ok: true, packet };
   }
 
-  private checkSequences(
-    action: { name: string; args: Record<string, unknown> },
-  ): { ok: true } | { ok: false; reason: ReasonCode; failure: DenyFailure } {
-    const seqs = this.agent.counterbalance?.sequences;
-    if (!seqs || seqs.length === 0) return { ok: true };
-    const done = this.successfulExecutes();
-    const snap: Snapshot = { action, state: this.agent.state };
-    for (const seq of seqs) {
-      if (seq.action !== action.name) continue;
-      const missing = (seq.require_prior_tools ?? []).filter((t) => !done.has(t));
-      if (missing.length > 0) {
+  private noteReflectionDenial(tool: string): void {
+    this.reflectionDenials.set(tool, (this.reflectionDenials.get(tool) ?? 0) + 1);
+  }
+
+  private checkContractTool(
+    act: Action,
+  ):
+    | { ok: true; effect: ContractEffect }
+    | { ok: false; reason: "harness_patch_invalid" | "harness_patch_denied"; code: HarnessPatchCode } {
+    const invalid = (code: HarnessPatchCode) => ({ ok: false as const, reason: "harness_patch_invalid" as const, code });
+    if (REFLECTION_TOOLS.some((t) => this.succeeded.has(t))) return invalid("reflection_done");
+    if ((this.reflectionDenials.get(act.name) ?? 0) >= 1) return invalid("attempt_cap");
+    if (act.name === DECLINE_TOOL) {
+      const d = parseSkillsPatchDecline(act.args);
+      if (!d) return invalid("invalid_decline");
+      return { ok: true, effect: { kind: "decline", reason: d.reason, note: d.note } };
+    }
+    let patch: HarnessPatch | null;
+    let fromReflect = false;
+    if (act.name === REFLECT_TOOL) {
+      const r = parseSkillsReflectDetailed(act.args);
+      if (!r.ok) return invalid(r.code);
+      if (r.reflect.disposition === "decline") {
         return {
-          ok: false,
-          reason: "sequence_requirement_failed",
-          failure: buildMissingPriorToolsFailure(missing),
+          ok: true,
+          effect: { kind: "decline", reason: r.reflect.reason, note: r.reflect.note, reflect: true },
         };
       }
+      patch = r.reflect.patch;
+      fromReflect = true;
+    } else {
+      patch = parseHarnessPatch(act.args);
+      if (!patch) return invalid("malformed_patch");
+    }
+    const sec = validatePatchSecurity(this.agent, patch);
+    if (!sec.ok) return { ok: false, reason: sec.reason, code: sec.code };
+    return { ok: true, effect: { kind: "patch", patch, reflect: fromReflect } };
+  }
+
+  private checkSequences(act: Action): { ok: true } | { ok: false; failure: DenyFailure } {
+    const snap: Snapshot = { action: act, state: this.agent.state };
+    for (const seq of this.agent.counterbalance?.sequences ?? []) {
+      if (seq.action !== act.name) continue;
+      const missing = (seq.require_prior_tools ?? []).filter((t) => !this.succeeded.has(t));
+      if (missing.length > 0) return { ok: false, failure: buildMissingPriorToolsFailure(missing) };
       const anyOf = seq.require_prior_any_of ?? [];
-      if (anyOf.length > 0 && !anyOf.some((t) => done.has(t))) {
-        return {
-          ok: false,
-          reason: "sequence_requirement_failed",
-          failure: buildMissingPriorAnyOfFailure(anyOf),
-        };
+      if (anyOf.length > 0 && !anyOf.some((t) => this.succeeded.has(t))) {
+        return { ok: false, failure: buildMissingPriorAnyOfFailure(anyOf) };
       }
       if (seq.require_state && !evalPredicate(seq.require_state, snap)) {
-        return {
-          ok: false,
-          reason: "sequence_requirement_failed",
-          failure: buildPredicateFailure(
-            seq.require_state,
-            snap,
-            this.agent.counterbalance?.checkpoints ?? [],
-          ),
-        };
+        return { ok: false, failure: buildPredicateFailure(seq.require_state, snap, this.checkpoints()) };
       }
     }
     return { ok: true };
   }
 
-  /** End-of-phase skills reflection is XOR: propose, decline, or reflect once. */
-  private reflectionAlreadyDone(): boolean {
-    const done = this.successfulExecutes();
-    return (
-      done.has("harness.propose_skills_patch") ||
-      done.has("harness.decline_skills_patch") ||
-      done.has("harness.reflect_skills")
-    );
+  private completionSnapshot(name: string): Snapshot {
+    return { action: { name, args: {} }, state: this.agent.state };
   }
 
-  private noteReflectionAttempt(tool: string): void {
-    if (tool === "harness.propose_skills_patch") this.skillsProposeAttempts += 1;
-    if (tool === "harness.decline_skills_patch") this.skillsDeclineAttempts += 1;
-    if (tool === "harness.reflect_skills") this.skillsReflectAttempts += 1;
+  private checkCompletion(name: string): { ok: true } | { ok: false; failure: DenyFailure } {
+    const completion = this.agent.counterbalance?.completion;
+    if (!completion || completion.tool !== name || !completion.require) return { ok: true };
+    const snap = this.completionSnapshot(name);
+    if (evalPredicate(completion.require, snap)) return { ok: true };
+    return { ok: false, failure: buildPredicateFailure(completion.require, snap, this.checkpoints()) };
   }
 
-  private reflectionGate(
-    actionName: string,
-  ): { ok: true } | { ok: false; error: string } {
-    if (this.reflectionAlreadyDone()) {
-      return {
-        ok: false,
-        error: "skills reflection already completed this phase (propose XOR decline)",
-      };
+  /** D9 on the request: a checkpoint tool's `args.set` keys ⊆ its allow_set_keys. */
+  private checkCheckpointRequest(act: Action): string | null {
+    const cp = this.checkpoints().find((c) => c.tool === act.name);
+    if (!cp || !isPlainObject(act.args.set)) return null;
+    for (const key of sortCodePoints(Object.keys(act.args.set))) {
+      if (!cp.allow_set_keys.includes(key)) return key;
     }
-    if (actionName === "harness.propose_skills_patch" && this.skillsProposeAttempts >= 1) {
-      return {
-        ok: false,
-        error:
-          "propose already attempted this phase; call harness.decline_skills_patch with a reason instead",
-      };
-    }
-    if (actionName === "harness.decline_skills_patch" && this.skillsDeclineAttempts >= 1) {
-      return {
-        ok: false,
-        error: "decline already attempted this phase",
-      };
-    }
-    if (actionName === "harness.reflect_skills" && this.skillsReflectAttempts >= 1) {
-      return {
-        ok: false,
-        error: "reflect_skills already attempted this phase",
-      };
-    }
-    return { ok: true };
+    return null;
   }
 
-  private applyInvalidateAfter(actionName: string): void {
-    const rules = this.agent.counterbalance?.invalidate_after;
-    if (!rules) return;
-    let touched = false;
+  /** D9 on the transition (pre-commit): declared keys only; checkpoint keys only by owners. */
+  private checkTransitionAuthority(
+    toolId: string,
+    transition: StateTransition | undefined,
+  ): { reason: ReasonCode; failure: DenyFailure } | null {
+    if (!transition) return null;
+    const keys = [...sortCodePoints(Object.keys(transition.set ?? {})), ...(transition.remove ?? [])];
+    const own = this.checkpoints().find((c) => c.tool === toolId);
+    for (const key of keys) {
+      if (!this.declaredKeys.has(key)) {
+        return { reason: "state_write_denied", failure: buildStateKeyFailure(key) };
+      }
+      if (own) {
+        if (!own.allow_set_keys.includes(key)) {
+          return { reason: "checkpoint_authority_failed", failure: buildCheckpointKeyFailure(key) };
+        }
+      } else if (this.checkpoints().some((c) => c.allow_set_keys.includes(key))) {
+        return { reason: "checkpoint_authority_failed", failure: buildCheckpointKeyFailure(key) };
+      }
+    }
+    return null;
+  }
+
+  /** §6.3: declared effects whose `when` holds join the transition (they win over the host). */
+  private withDeclaredEffects(
+    tool: ToolDef,
+    act: Action,
+    result: Record<string, unknown>,
+    transition: StateTransition | undefined,
+  ): StateTransition | undefined {
+    const effects = tool.effects ?? [];
+    if (effects.length === 0) return transition;
+    const snap: Snapshot = { action: act, state: this.agent.state, result };
+    let set: Record<string, unknown> | undefined = transition?.set ? { ...transition.set } : undefined;
+    for (const eff of effects) {
+      if (eff.when && !evalPredicate(eff.when, snap)) continue;
+      set = { ...(set ?? {}), ...structuredClone(eff.set) };
+    }
+    if (!set) return transition;
+    return { ...(transition ?? {}), set };
+  }
+
+  // ---------------------------------------------------------------- state & provenance (§8.4)
+
+  private applyTransition(
+    state: Record<string, unknown>,
+    transition: StateTransition | undefined,
+  ): Record<string, unknown> {
+    if (!transition) return state;
+    const next = { ...state };
+    for (const [k, v] of Object.entries(transition.set ?? {})) next[k] = v;
+    for (const k of transition.remove ?? []) delete next[k];
+    return next;
+  }
+
+  private commitProvenance(transition: StateTransition | undefined): void {
+    if (!transition) return;
+    for (const [k, v] of Object.entries(transition.set ?? {})) {
+      this.provenance.set(k, { status: isFreshValue(v) ? "current" : "stale", updated_at_step: this.steps });
+    }
+    for (const k of transition.remove ?? []) {
+      this.provenance.set(k, { status: "stale", updated_at_step: this.steps });
+    }
+  }
+
+  private markStale(keys: string[]): void {
     const next = { ...this.agent.state };
-    for (const rule of rules) {
-      if (!rule.action || rule.action !== actionName) continue;
-      for (const key of rule.memory_keys) {
-        next[key] = 0;
-        touched = true;
-        this.touchProvenanceStale(key);
-      }
+    for (const k of keys) {
+      next[k] = 0;
+      this.provenance.set(k, { status: "stale", updated_at_step: this.steps });
     }
-    if (!touched) return;
     this.agent.state = next;
+  }
+
+  private applyActionInvalidation(actionName: string): void {
+    const keys: string[] = [];
+    let matched = false;
+    for (const rule of this.agent.counterbalance?.invalidate_after ?? []) {
+      if (rule.action !== actionName) continue;
+      matched = true;
+      for (const k of rule.memory_keys ?? []) if (!keys.includes(k)) keys.push(k);
+    }
+    if (!matched) return;
+    this.markStale(keys);
     this.emit({
       stage: "record",
       verdict: "allow",
       reason: "memory_stale",
       tool: actionName,
-      result: { invalidated: 1 },
+      result: { invalidated: sortCodePoints(keys) },
     });
   }
 
-  private touchProvenanceStale(key: string): void {
-    const mp = this.agent.counterbalance?.memory_provenance;
-    if (!mp || !mp[key]) return;
-    mp[key] = { ...mp[key], status: "stale", updated_at_step: this.steps };
-  }
-
-  private touchProvenanceFresh(key: string): void {
-    const cb = this.agent.counterbalance;
-    if (!cb) return;
-    if (!cb.memory_provenance) cb.memory_provenance = {};
-    const prev = cb.memory_provenance[key] ?? {};
-    cb.memory_provenance[key] = {
-      ...prev,
-      status: "current",
-      updated_at_step: this.steps,
-      source: prev.source ?? "world",
-    };
-  }
-
-  /** v0.3: ttl_steps invalidation — age evidence without requiring a mutating action. */
+  /** TTL: once per staleness transition; fresh through step updated_at_step + N. */
   private applyTtlInvalidation(): void {
-    const rules = this.agent.counterbalance?.invalidate_after;
-    if (!rules) return;
-    const mp = this.agent.counterbalance?.memory_provenance ?? {};
-    let touched = false;
-    const next = { ...this.agent.state };
-    for (const rule of rules) {
-      if (rule.action || !rule.ttl_steps || rule.ttl_steps < 1) continue;
-      for (const key of rule.memory_keys) {
-        const meta = mp[key];
-        const updated = meta?.updated_at_step ?? 0;
-        if (this.steps - updated < rule.ttl_steps) continue;
-        if (Number(next[key] ?? 0) === 0 && meta?.status === "stale") continue;
-        next[key] = 0;
-        this.touchProvenanceStale(key);
-        touched = true;
-      }
+    for (const rule of this.agent.counterbalance?.invalidate_after ?? []) {
+      const n = rule.ttl_steps;
+      if (rule.action !== undefined || n === undefined || !Number.isInteger(n) || n < 1) continue;
+      const due = (rule.memory_keys ?? []).filter((k) => {
+        const p = this.provenance.get(k);
+        return p !== undefined && p.status === "current" && this.steps - p.updated_at_step > n;
+      });
+      if (due.length === 0) continue;
+      const keys = [...new Set(due)];
+      this.markStale(keys);
+      this.emit({
+        stage: "record",
+        verdict: "allow",
+        reason: "memory_stale",
+        result: { invalidated: sortCodePoints(keys), ttl_steps: n },
+      });
     }
-    if (!touched) return;
-    this.agent.state = next;
-    this.emit({
-      stage: "record",
-      verdict: "allow",
-      reason: "memory_stale",
-      result: { invalidated: 1, ttl: 1 },
-    });
   }
 
-  /** Host-reported activation count vs intervention_budget (window: run). */
+  /** §8.7: telemetry once, at the first iteration where steps_used > max_activations. */
   private checkInterventionBudget(): void {
     const budget = this.agent.counterbalance?.intervention_budget;
-    if (!budget || budget.max_activations < 1) return;
-    if (budget.window === "host_day") return; // host-persisted; engine does not enforce
-    // Each loop iteration that reaches propose counts as one activation for window:run
-    // when steps exceeds max — emit telemetry once at the boundary.
-    if (this.steps === budget.max_activations + 1) {
+    if (!budget || this.budgetEmitted) return;
+    if ((budget.window ?? "run") !== "run") return;
+    if (!Number.isInteger(budget.max_activations) || budget.max_activations < 1) return;
+    if (this.steps > budget.max_activations) {
+      this.budgetEmitted = true;
       this.emit({
         stage: "record",
         verdict: "allow",
         reason: "budget_exceeded",
-        result: {
-          max_activations: budget.max_activations,
-          activations: this.steps,
-          window: budget.window ?? "run",
-        },
+        result: { max_activations: budget.max_activations, activations: this.steps, window: "run" },
       });
     }
   }
 
-  /** Designated end-of-run tool (default task.complete). */
-  private completionToolId(): string {
-    return this.agent.counterbalance?.completion?.tool ?? "task.complete";
-  }
+  // ---------------------------------------------------------------- orientation (§8.5)
 
-  /** Tools whose first successful execute should end the run loop. */
-  private isTerminalSuccessTool(name: string): boolean {
-    return name === this.completionToolId() || name === "phase.yield";
-  }
-
-  private checkCompletion(
-    actionName: string,
-  ): { ok: true } | { ok: false; reason: ReasonCode; failure: DenyFailure } {
-    const completion = this.agent.counterbalance?.completion;
-    if (!completion) return { ok: true };
-    const tool = this.completionToolId();
-    if (actionName !== tool) return { ok: true };
-    if (!completion.require) return { ok: true };
-    const snap: Snapshot = {
-      action: { name: actionName, args: {} },
-      state: this.agent.state,
+  private buildOrientationFrame(): Record<string, unknown> {
+    const cb = this.agent.counterbalance ?? {};
+    const sequence_blockers: Record<string, unknown>[] = [];
+    for (const s of cb.sequences ?? []) {
+      const prior = s.require_prior_tools ?? [];
+      const anyOf = s.require_prior_any_of ?? [];
+      if (prior.length === 0 && anyOf.length === 0) continue;
+      const missingPrior = sortCodePoints(prior.filter((t) => !this.succeeded.has(t)));
+      const missingAny = anyOf.length > 0 && !anyOf.some((t) => this.succeeded.has(t)) ? sortCodePoints(anyOf) : [];
+      if (missingPrior.length === 0 && missingAny.length === 0) continue;
+      sequence_blockers.push({
+        action: s.action,
+        ...(missingPrior.length ? { missing_prior_tools: missingPrior } : {}),
+        ...(missingAny.length ? { missing_prior_any_of: missingAny } : {}),
+      });
+    }
+    const freshness: Record<string, number> = {};
+    for (const rule of cb.invalidate_after ?? []) {
+      for (const key of rule.memory_keys ?? []) {
+        freshness[key] = this.provenance.get(key)?.status === "current" ? 1 : 0;
+      }
+    }
+    const frame: Record<string, unknown> = {
+      permitted_tools: this.permittedTools(),
+      sequence_blockers,
+      freshness,
     };
-    if (!evalPredicate(completion.require, snap)) {
+    if (cb.completion) {
+      const paths: string[] = [];
+      this.collectPaths(cb.completion.require, paths);
+      frame.completion = {
+        tool: cb.completion.tool,
+        require_paths: sortCodePoints(new Set(paths)),
+        ready: this.checkCompletion(cb.completion.tool).ok ? 1 : 0,
+      };
+    }
+    return frame;
+  }
+
+  private collectPaths(p: Predicate | undefined, out: string[]): void {
+    if (!p) return;
+    if ("path" in p) out.push(p.path);
+    if ("all" in p) for (const x of p.all) this.collectPaths(x, out);
+    if ("any" in p) for (const x of p.any) this.collectPaths(x, out);
+    if ("not" in p) this.collectPaths(p.not, out);
+  }
+
+  // ---------------------------------------------------------------- verifies (§7)
+
+  private async evaluateVerify(
+    v: Verify,
+    act: Action,
+    result: Record<string, unknown>,
+  ): Promise<{ pass: true; event: PartialEvent } | { pass: false; verdict: Verdict; event: PartialEvent; infra?: boolean }> {
+    const tool = act.name;
+    const args = act.args;
+    const state = this.agent.state;
+    const fallback: Verdict = v.kind === "output" || v.kind === "judge" ? "deny" : "safe_state";
+    const verdict: Verdict = v.otherwise === "deny" || v.otherwise === "safe_state" ? v.otherwise : fallback;
+
+    if (v.kind === "effect") {
+      const obs = await this.runObservation(v.observe);
+      if (!obs.ok && obs.infra) {
+        return {
+          pass: false,
+          verdict: "deny",
+          infra: true,
+          event: { stage: "verify", verdict: "deny", reason: "infra_failure", tool, args, failure: obs.infra },
+        };
+      }
+      if (!obs.ok) {
+        return {
+          pass: false,
+          verdict,
+          event: {
+            stage: "verify",
+            verdict,
+            reason: "verify_effect_failed",
+            tool,
+            args,
+            failure: { kind: "observation_failed" },
+          },
+        };
+      }
+      const snap: Snapshot = { action: act, state, result, observation: obs.observation };
+      if (!evalPredicate(v.require, snap)) {
+        return {
+          pass: false,
+          verdict,
+          event: { stage: "verify", verdict, reason: "verify_effect_failed", tool, args, observation: obs.observation },
+        };
+      }
+      return { pass: true, event: { stage: "verify", verdict: "allow", tool, observation: obs.observation } };
+    }
+
+    if (v.kind === "output") {
+      return this.evaluateOutputVerify(v, act, result, verdict);
+    }
+
+    if (v.kind === "judge") {
+      if (!this.allowJudge || !this.judge) {
+        return {
+          pass: false,
+          verdict,
+          event: {
+            stage: "verify",
+            verdict,
+            reason: "verify_judge_invalid",
+            tool,
+            args,
+            failure: { kind: "judge", code: "unavailable" },
+          },
+        };
+      }
+      const raw = await this.judge(v.rubric, { action: act, result, state });
+      const judgment = this.readJudgment(raw);
+      if (!judgment.ok) {
+        return {
+          pass: false,
+          verdict,
+          event: {
+            stage: "verify",
+            verdict,
+            reason: "verify_judge_invalid",
+            tool,
+            args,
+            failure: { kind: "judge", code: "invalid" },
+            ...(judgment.raw !== undefined ? { error: excerpt(judgment.raw, EXCERPT_CHARS) } : {}),
+          },
+        };
+      }
+      const snap: Snapshot = { action: act, state, result, judgment: judgment.value };
+      if (!evalPredicate(v.require, snap)) {
+        return {
+          pass: false,
+          verdict,
+          event: { stage: "verify", verdict, reason: "verify_judge_failed", tool, args, result: judgment.value },
+        };
+      }
+      return { pass: true, event: { stage: "verify", verdict: "allow", tool, result: judgment.value } };
+    }
+
+    const reason: ReasonCode = v.kind === "evidence" ? "verify_evidence_failed" : "verify_absence_failed";
+    const snap: Snapshot = { action: act, state, result };
+    if (!evalPredicate(v.require, snap)) {
+      return { pass: false, verdict, event: { stage: "verify", verdict, reason, tool, args, result } };
+    }
+    return { pass: true, event: { stage: "verify", verdict: "allow", tool, result } };
+  }
+
+  private readJudgment(raw: unknown): { ok: true; value: Record<string, unknown> } | { ok: false; raw?: string } {
+    if (isPlainObject(raw) && raw.invalid === true) {
+      return { ok: false, raw: typeof raw.raw === "string" ? raw.raw : undefined };
+    }
+    if (!isPlainObject(raw)) return { ok: false };
+    const score = raw.score;
+    const reason = raw.reason;
+    if (typeof reason !== "string" || !toCanonical(score).ok || typeof score !== "number") return { ok: false };
+    return { ok: true, value: { score: score === 0 ? 0 : score, reason: excerpt(reason, EXCERPT_CHARS) } };
+  }
+
+  private messageObservation(content: string): Record<string, unknown> {
+    const snap = buildMessageSnapshot(content);
+    return { message: { ...snap, content: excerpt(snap.content, this.maxObservationChars()) } };
+  }
+
+  private evaluateOutputVerify(
+    v: VerifyOutput,
+    act: Action,
+    result: Record<string, unknown>,
+    verdict: Verdict,
+  ): { pass: true; event: PartialEvent } | { pass: false; verdict: Verdict; event: PartialEvent } {
+    const content =
+      typeof act.args.message === "string"
+        ? act.args.message
+        : typeof result.message === "string"
+          ? result.message
+          : "";
+    const message = buildMessageSnapshot(content);
+    const snap: Snapshot = { action: act, state: this.agent.state, result, message };
+    const observation = this.messageObservation(content);
+    if (!evalPredicate(v.require, snap)) {
       return {
-        ok: false,
-        reason: "completion_gate_failed",
-        failure: buildPredicateFailure(
-          completion.require,
-          snap,
-          this.agent.counterbalance?.checkpoints ?? [],
-        ),
+        pass: false,
+        verdict,
+        event: {
+          stage: "verify",
+          verdict,
+          reason: "verify_output_failed",
+          tool: act.name,
+          args: act.args,
+          result,
+          observation,
+        },
       };
     }
-    return { ok: true };
+    return { pass: true, event: { stage: "verify", verdict: "allow", tool: act.name, result, observation } };
   }
 
-  private checkCheckpointAuthority(
-    action: { name: string; args: Record<string, unknown> },
-    transition: StateTransition | undefined,
-  ): { ok: true } | { ok: false; reason: ReasonCode; error: string; failure: DenyFailure } {
-    const policies = this.agent.counterbalance?.checkpoints ?? [];
-    const policy = policies.find((p) => p.tool === action.name);
-    if (!policy) return { ok: true };
-    const allowed = new Set(policy.allow_set_keys);
-    const requested = (action.args.set as Record<string, unknown>) ?? {};
-    for (const key of Object.keys(requested)) {
-      if (!allowed.has(key)) {
-        return {
-          ok: false,
-          reason: "checkpoint_authority_failed",
-          error: `checkpoint args attempted protected key '${key}'`,
-          failure: buildCheckpointKeyFailure(key),
-        };
+  /** §8.6 agent-level output verifies on a stop message. Returns the failing verdict, if any. */
+  private async runAgentOutputVerifies(content: string): Promise<Verdict | null> {
+    const message = buildMessageSnapshot(content);
+    const snap: Snapshot = { state: this.agent.state, message };
+    const observation = this.messageObservation(content);
+    for (const v of this.agent.counterbalance?.output_verifies ?? []) {
+      if (v.kind !== "output") continue;
+      if (evalPredicate(v.require, snap)) {
+        this.emit({ stage: "verify", verdict: "allow", observation });
+        continue;
       }
+      const verdict: Verdict = v.otherwise === "safe_state" ? "safe_state" : "deny";
+      this.emit({ stage: "verify", verdict, reason: "verify_output_failed", observation });
+      return verdict;
     }
-    const actualSet = transition?.set ?? {};
-    for (const key of Object.keys(actualSet)) {
-      if (!allowed.has(key)) {
-        return {
-          ok: false,
-          reason: "checkpoint_authority_failed",
-          error: `checkpoint transition attempted protected key '${key}'`,
-          failure: buildCheckpointKeyFailure(key),
-        };
-      }
-    }
-    return { ok: true };
+    return null;
   }
 
-  private applyStateTransition(transition: StateTransition | undefined): void {
-    if (!transition) return;
-    const next = { ...this.agent.state };
-    if (transition.set) {
-      for (const [k, v] of Object.entries(transition.set)) {
-        if (!(k in this.agent.state) && Object.keys(this.agent.state).length > 0) {
-          // allow setting keys already in state; also allow new keys that match writable convention
-        }
-        next[k] = v;
-        // Fresh write: reset TTL clock when value is truthy / non-zero
-        if (v !== 0 && v !== null && v !== undefined && v !== "") {
-          this.touchProvenanceFresh(k);
-        }
-      }
-    }
-    if (transition.remove) {
-      for (const k of transition.remove) {
-        delete next[k];
-      }
-    }
-    this.agent.state = next;
-  }
-
-  private async invokeNative(name: string, args: Record<string, unknown>): Promise<ToolResultEnvelope> {
-    if (this.recorded.length > this.recordedIdx) {
-      const entry = this.recorded[this.recordedIdx]!;
-      const expectedSeq = this.recordedIdx + 1;
-      if (
-        entry.call_seq !== expectedSeq ||
-        entry.tool !== name ||
-        !deepEq(entry.args ?? {}, args)
-      ) {
-        throw new Error(
-          `Recorded transcript mismatch: expected call_seq=${expectedSeq} tool=${name} args=${canonicalJson(args)}, got call_seq=${entry.call_seq} tool=${entry.tool}`,
-        );
-      }
-      this.recordedIdx += 1;
-      return normalizeEnvelope(entry.result as ToolResultEnvelope | Record<string, unknown>);
-    }
-    const handler = this.tools[name];
-    if (!handler) {
-      throw new Error(`No native handler for ${name}`);
-    }
-    return normalizeEnvelope(await handler(args, { state: this.agent.state }));
-  }
-
-  private applyFallbackState(): void {
-    const fb = fallbackStateOf(this.agent);
-    if (fb) {
-      this.agent.state = { ...this.agent.state, ...fb };
-    }
-    this.emit({
-      stage: "record",
-      verdict: "safe_state",
-      reason: "safe_state_entered",
-    });
-  }
-
-  private compareChildEnvelope(args: Record<string, unknown>): { ok: true } | { ok: false; reason: ReasonCode; error?: string } {
-    if (this.agent.spawn?.allow === false) {
-      return { ok: false, reason: "gate_denied", error: "spawn.allow is false" };
-    }
-    // If spawn policy exists and allow is explicitly required
-    if (this.agent.spawn && this.agent.spawn.allow !== true && this.agent.spawn.allow !== undefined) {
-      return { ok: false, reason: "gate_denied" };
-    }
-
-    const childTools = (args.tools as string[]) ?? [];
-    const parentTools = this.parentTools();
-    if (childTools.some((t) => !parentTools.includes(t))) {
-      return { ok: false, reason: "gate_denied", error: "tool escalation" };
-    }
-
-    const childFs = args.filesystem as { write_scopes?: string[]; read_scopes?: string[] } | undefined;
-    const parentFs = this.agent.permissions?.filesystem;
-    if (childFs?.write_scopes) {
-      const parents = parentFs?.write_scopes ?? [];
-      if (childFs.write_scopes.some((s) => !scopeCovered(s, parents))) {
-        return { ok: false, reason: "gate_denied", error: "write_scopes escalation" };
-      }
-    }
-    if (childFs?.read_scopes && parentFs?.read_scopes) {
-      if (childFs.read_scopes.some((s) => !scopeCovered(s, parentFs.read_scopes!))) {
-        return { ok: false, reason: "gate_denied", error: "read_scopes escalation" };
-      }
-    }
-
-    const childLimits = args.limits as { max_steps?: number; max_tool_calls?: number } | undefined;
-    const maxSteps = this.agent.limits?.max_steps ?? 1000;
-    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
-    const remainingSteps = maxSteps - this.steps;
-    const remainingCalls = maxTools - this.toolCalls;
-    if (childLimits?.max_steps !== undefined && childLimits.max_steps > remainingSteps) {
-      return { ok: false, reason: "gate_denied", error: "max_steps escalation" };
-    }
-    if (childLimits?.max_tool_calls !== undefined && childLimits.max_tool_calls > remainingCalls) {
-      return { ok: false, reason: "gate_denied", error: "max_tool_calls escalation" };
-    }
-
-    if (args.spawn_nested === true || (args.spawn as { allow?: boolean })?.allow === true) {
-      if (this.agent.spawn?.allow_nested !== true) {
-        return { ok: false, reason: "gate_denied", error: "nested spawn denied" };
-      }
-    }
-
-    return { ok: true };
-  }
-
-  /** Build a tighten-only child harness IR from spawn args. */
-  private buildChildAgent(args: Record<string, unknown>): AgentIR {
-    const childToolIds = (args.tools as string[]) ?? [];
-    const maxSteps = this.agent.limits?.max_steps ?? 1000;
-    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
-    const remainingSteps = Math.max(1, maxSteps - this.steps);
-    const remainingCalls = Math.max(1, maxTools - this.toolCalls);
-    const childLimits = args.limits as { max_steps?: number; max_tool_calls?: number } | undefined;
-    const childFs = args.filesystem as
-      | { write_scopes?: string[]; read_scopes?: string[] }
-      | undefined;
-
-    return {
-      spec: this.agent.spec,
-      name: `${this.agent.name}/child`,
-      state: { ...this.agent.state },
-      tools: this.agent.tools.filter((t) => childToolIds.includes(t.id)),
-      gates: this.agent.gates,
-      limits: {
-        max_steps: childLimits?.max_steps ?? remainingSteps,
-        max_tool_calls: childLimits?.max_tool_calls ?? remainingCalls,
-      },
-      fallback_state: this.agent.fallback_state,
-      safe_state: this.agent.safe_state,
-      recovery: this.agent.recovery,
-      permissions: {
-        tools: childToolIds,
-        filesystem: childFs ?? this.agent.permissions?.filesystem,
-      },
-      spawn: {
-        allow: this.agent.spawn?.allow_nested === true,
-        allow_nested: false,
-        tighten_only: true,
-      },
-      counterbalance: this.agent.counterbalance,
-    };
-  }
-
-  /**
-   * When spawn args include `proposals`, run a nested FaustRuntime and append
-   * child events to the parent log (with depth / spawn_id). Otherwise stub-only.
-   */
-  private async runNestedChild(
-    args: Record<string, unknown>,
-    spawnId: string,
-  ): Promise<{ child_steps: number }> {
-    const rawProposals = args.proposals;
-    if (!Array.isArray(rawProposals) || rawProposals.length === 0) {
-      return { child_steps: 0 };
-    }
-    const proposals = rawProposals as ModelProposal[];
-    let pi = 0;
-    const childAgent = this.buildChildAgent(args);
-    const childToolIds = new Set((args.tools as string[]) ?? []);
-    const childTools: Record<string, ToolHandler> = {};
-    for (const id of childToolIds) {
-      if (this.tools[id]) childTools[id] = this.tools[id]!;
-    }
-    const child = new FaustRuntime({
-      agent: childAgent,
-      propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-      tools: childTools,
-      depth: this.depth + 1,
-      spawnId,
-      allowJudge: false,
-    });
-    await child.runLoop(childAgent.limits?.max_steps ?? 32);
-    for (const cev of child.events) {
-      this.seq += 1;
-      const merged: Event = {
-        ...cev,
-        seq: this.seq,
-        ts_logical: this.seq,
-        depth: this.depth + 1,
-        spawn_id: spawnId,
-      };
-      this.events.push(merged);
-    }
-    return { child_steps: child.events.length };
-  }
-
-  /** Governed observation path for effect verifies. */
+  /** Governed observation for effect verifies (§7). */
   private async runObservation(
     observerId: string,
-  ): Promise<{ ok: true; observation: Record<string, unknown> } | { ok: false }> {
+  ): Promise<{ ok: true; observation: Record<string, unknown> } | { ok: false; infra?: DenyFailure }> {
     const observer = this.toolById(observerId);
-    if (!observer || observer.read_only !== true) {
-      this.emit({
-        stage: "validate",
-        verdict: "deny",
-        reason: "capability_missing",
-        tool: observerId,
-        error: "observer missing or not read_only",
-      });
+    if (!observer || observer.read_only !== true || (observer.channel ?? "world") !== "world") {
+      this.emit({ stage: "validate", verdict: "deny", reason: "capability_missing", tool: observerId });
       return { ok: false };
     }
-
-    const allowed = this.agent.permissions?.tools;
-    if (allowed && !allowed.includes(observerId)) {
-      this.emit({
-        stage: "authorize",
-        verdict: "deny",
-        reason: "capability_missing",
-        tool: observerId,
-      });
-      return { ok: false };
-    }
-
-    const maxTools = this.agent.limits?.max_tool_calls ?? 1000;
-    if (this.toolCalls >= maxTools) {
-      this.emit({
-        stage: "authorize",
-        verdict: "deny",
-        reason: "limit_exceeded",
-        tool: observerId,
-      });
-      return { ok: false };
-    }
-
-    this.toolCalls += 1;
-    let envelope: ToolResultEnvelope;
-    try {
-      envelope = await this.invokeNative(observerId, {});
-    } catch (e) {
-      this.emit({
-        stage: "observe",
-        verdict: "deny",
-        reason: "tool_execution_failed",
-        tool: observerId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      return { ok: false };
-    }
-
-    const outCheck = validateAgainstSchema(observer.output, envelope.output);
-    if (!outCheck.ok) {
-      this.emit({
-        stage: "observe",
-        verdict: "deny",
-        reason: "output_schema_invalid",
-        tool: observerId,
-        error: "output schema validation failed",
-      });
-      return { ok: false };
-    }
-
-    this.emit({
-      stage: "observe",
-      verdict: "allow",
-      tool: observerId,
-      args: {},
-      result: envelope.output,
-    });
-    return { ok: true, observation: envelope.output };
-  }
-
-  private async runRecovery(triggerReason: ReasonCode): Promise<void> {
-    const recovery = this.agent.recovery;
-    if (!recovery || this.recovering) {
-      this.applyFallbackState();
-      return;
-    }
-    if (recovery.on && recovery.on !== triggerReason) {
-      this.applyFallbackState();
-      return;
-    }
-
-    this.recovering = true;
-    const action = {
-      name: recovery.execute.tool,
-      args: recovery.execute.args ?? {},
-    };
-
-    // Governed recovery execute
-    this.emit({ stage: "propose", tool: action.name, args: action.args });
-
-    const tool = this.toolById(action.name);
-    if (!tool) {
-      this.emit({
-        stage: "validate",
-        verdict: "deny",
-        reason: "capability_missing",
-        tool: action.name,
-        args: action.args,
-      });
-      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
-      this.applyFallbackState();
-      this.recovering = false;
-      return;
-    }
-
-    const inCheck = validateAgainstSchema(tool.input, action.args);
+    const inCheck = validateAgainstSchema(observer.input, {});
     if (!inCheck.ok) {
       this.emit({
         stage: "validate",
         verdict: "deny",
-        reason: "input_schema_invalid",
-        tool: action.name,
-        args: action.args,
-        error: "input schema validation failed",
+        reason: inCheck.compileError ? "schema_invalid" : "input_schema_invalid",
+        tool: observerId,
       });
-      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
-      this.applyFallbackState();
-      this.recovering = false;
-      return;
+      return { ok: false };
     }
-    this.emit({ stage: "validate", verdict: "allow", tool: action.name, args: action.args });
-    this.emit({ stage: "authorize", verdict: "allow", tool: action.name, args: action.args });
-
-    this.toolCalls += 1;
-    let envelope: ToolResultEnvelope;
-    try {
-      envelope = await this.invokeNative(action.name, action.args);
-    } catch (e) {
+    if (!this.isBound(observerId)) {
       this.emit({
-        stage: "execute",
+        stage: "validate",
         verdict: "deny",
-        reason: "tool_execution_failed",
-        tool: action.name,
-        args: action.args,
-        error: e instanceof Error ? e.message : String(e),
+        reason: "capability_missing",
+        tool: observerId,
+        failure: { kind: "channel_unbound", channel: "world" },
       });
-      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
-      this.applyFallbackState();
-      this.recovering = false;
-      return;
+      return { ok: false };
     }
-
-    const outCheck = validateAgainstSchema(tool.output, envelope.output);
-    if (!outCheck.ok) {
+    if (!this.isPermitted(observerId)) {
+      this.emit({ stage: "authorize", verdict: "deny", reason: "capability_missing", tool: observerId });
+      return { ok: false };
+    }
+    if (this.toolCalls >= this.maxToolCalls()) {
+      this.emit({ stage: "authorize", verdict: "deny", reason: "limit_exceeded", tool: observerId });
+      return { ok: false };
+    }
+    this.toolCalls += 1;
+    const invoked = await this.invoke(observerId, {});
+    if (!invoked.ok) {
       this.emit({
-        stage: "execute",
+        stage: "observe",
+        verdict: "deny",
+        reason: invoked.infra ? "infra_failure" : "tool_execution_failed",
+        tool: observerId,
+        failure: invoked.failure,
+        ...(invoked.error !== undefined ? { error: invoked.error } : {}),
+      });
+      return invoked.infra ? { ok: false, infra: invoked.failure } : { ok: false };
+    }
+    const env = readEnvelope(invoked.raw);
+    if (!env) {
+      this.emit({
+        stage: "observe",
         verdict: "deny",
         reason: "output_schema_invalid",
-        tool: action.name,
-        args: action.args,
-        error: "output schema validation failed",
+        tool: observerId,
+        failure: { kind: "malformed_envelope" },
       });
-      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
-      this.applyFallbackState();
-      this.recovering = false;
+      return { ok: false };
+    }
+    const canon = toCanonical(env.output, "$.observation");
+    if (!canon.ok) {
+      this.emit({
+        stage: "observe",
+        verdict: "deny",
+        reason: "output_schema_invalid",
+        tool: observerId,
+        failure: buildNonCanonicalFailure(canon.path),
+      });
+      return { ok: false };
+    }
+    const observation = this.sanitize(canon.value) as Record<string, unknown>;
+    if (!validateAgainstSchema(observer.output, observation).ok) {
+      this.emit({ stage: "observe", verdict: "deny", reason: "output_schema_invalid", tool: observerId });
+      return { ok: false };
+    }
+    this.emit({ stage: "observe", verdict: "allow", tool: observerId, args: {}, result: observation });
+    return { ok: true, observation };
+  }
+
+  // ---------------------------------------------------------------- contract tools (§12)
+
+  private applyContractEffect(act: Action, effect: ContractEffect): void {
+    if (effect.kind === "patch") {
+      const before = harnessIrHash(this.agent, this.initialState);
+      applyHarnessPatch(this.agent, effect.patch);
+      const after = harnessIrHash(this.agent, this.initialState);
+      this.emit({
+        stage: "rebalance",
+        verdict: "allow",
+        reason: "harness_patch_applied",
+        tool: act.name,
+        args: act.args,
+        harness_hash_before: before,
+        harness_hash_after: after,
+        observation: { ops: effect.patch.ops.length, ...(effect.reflect ? { disposition: "propose" } : {}) },
+      });
       return;
     }
-
-    this.applyStateTransition(envelope.state_transition);
     this.emit({
-      stage: "execute",
+      stage: "record",
       verdict: "allow",
-      tool: action.name,
-      args: action.args,
-      result: envelope.output,
+      reason: "harness_patch_declined",
+      tool: act.name,
+      args: act.args,
+      observation: {
+        reason: effect.reason,
+        ...(effect.reflect ? { disposition: "decline" } : {}),
+        ...(effect.note !== undefined ? { note: effect.note } : {}),
+      },
     });
-
-    const verified = await this.runOneVerify(recovery.verify, action, envelope.output);
-    if (verified) {
-      this.emit({ stage: "record", verdict: "allow", reason: "recovery_succeeded" });
-      this.applyFallbackState();
-    } else {
-      this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
-      this.applyFallbackState();
-    }
-    this.recovering = false;
   }
 
-  private async enterSafeFlow(triggerReason: ReasonCode): Promise<void> {
-    await this.runRecovery(triggerReason);
+  // ---------------------------------------------------------------- spawn (§10)
+
+  private buildChildAgent(packet: SpawnPacket): AgentIR {
+    const parent = this.agent;
+    const remainingSteps = Math.max(0, this.effectiveMaxSteps() - this.steps);
+    const remainingCalls = Math.max(0, this.maxToolCalls() - this.toolCalls);
+    const childIds = new Set(packet.tools);
+    const fs = parent.permissions?.filesystem;
+    const filesystem: { write_scopes?: string[]; read_scopes?: string[] } = {};
+    const write = packet.write_scopes ?? fs?.write_scopes;
+    const read = packet.read_scopes ?? fs?.read_scopes;
+    if (write) filesystem.write_scopes = write;
+    if (read) filesystem.read_scopes = read;
+    let counterbalance = parent.counterbalance ? structuredClone(parent.counterbalance) : undefined;
+    if (counterbalance) {
+      delete counterbalance.intervention_budget;
+      delete counterbalance.triggers;
+      if (Object.keys(counterbalance).length === 0) counterbalance = undefined;
+    }
+    const child: AgentIR = {
+      spec: parent.spec,
+      name: `${parent.name}/child`,
+      state: structuredClone(parent.state),
+      tools: structuredClone(parent.tools.filter((t) => childIds.has(t.id))),
+      limits: {
+        max_steps: packet.max_steps ?? remainingSteps,
+        max_tool_calls: packet.max_tool_calls ?? remainingCalls,
+        ...(parent.limits?.max_observation_chars !== undefined
+          ? { max_observation_chars: parent.limits.max_observation_chars }
+          : {}),
+      },
+      permissions: {
+        tools: [...packet.tools],
+        ...(Object.keys(filesystem).length ? { filesystem } : {}),
+        ...(parent.permissions?.secrets ? { secrets: structuredClone(parent.permissions.secrets) } : {}),
+        ...(parent.permissions?.protected_paths ? { protected_paths: [...parent.permissions.protected_paths] } : {}),
+      },
+      spawn: { allow: parent.spawn?.allow_nested === true, allow_nested: false, tighten_only: true },
+    };
+    if (parent.gates) child.gates = structuredClone(parent.gates);
+    if (parent.fallback_state) child.fallback_state = structuredClone(parent.fallback_state);
+    if (parent.recovery) child.recovery = structuredClone(parent.recovery);
+    if (counterbalance) child.counterbalance = counterbalance;
+    return child;
   }
 
-  private async runVerifies(
-    tool: ToolDef,
-    action: { name: string; args: Record<string, unknown> },
-    result: Record<string, unknown>,
-  ): Promise<boolean> {
-    const verifies = tool.verify ?? [];
-    for (const v of verifies) {
-      const ok = await this.runOneVerify(v, action, result);
-      if (!ok) return false;
+  /** Runs the child reaction; returns true when it ended in an infrastructure failure. */
+  private async runChild(packet: SpawnPacket, spawnId: string): Promise<boolean> {
+    const childAgent = this.buildChildAgent(packet);
+    const proposals = (packet.proposals ?? []).map(toProposal);
+    let pi = 0;
+    const handlers: Record<string, ToolHandler> = {};
+    for (const id of packet.tools) {
+      const h = this.tools[id];
+      if (typeof h === "function") handlers[id] = h;
     }
-    if (verifies.length === 0) {
-      this.emit({ stage: "verify", verdict: "allow" });
+    const child = new FaustRuntime({
+      agent: childAgent,
+      propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
+      tools: handlers,
+      depth: this.depth + 1,
+      spawnId,
+      allowJudge: false,
+      ...(this.transcript ? { transcript: this.transcript } : {}),
+    });
+    await child.runLoop();
+    for (const cev of child.events) {
+      this.seq += 1;
+      this.events.push({ ...cev, seq: this.seq, ts_logical: this.seq });
     }
-    return true;
-  }
-
-  private async runOneVerify(
-    v: Verify,
-    action: { name: string; args: Record<string, unknown> },
-    result: Record<string, unknown>,
-  ): Promise<boolean> {
-    if (v.kind === "judge") {
-      if (!this.allowJudge) {
-        throw new Error("judge verify forbidden in Track A");
-      }
-      if (!this.judge) {
-        this.emit({
-          stage: "verify",
-          verdict: v.otherwise ?? "deny",
-          reason: "verify_judge_invalid",
-          tool: action.name,
-          args: action.args,
-        });
-        return false;
-      }
-      const judgmentRaw = await this.judge(v.rubric, {
-        action,
-        result,
-        state: this.agent.state,
-      });
-      if ("invalid" in judgmentRaw) {
-        this.emit({
-          stage: "verify",
-          verdict: v.otherwise ?? "deny",
-          reason: "verify_judge_invalid",
-          tool: action.name,
-          error: judgmentRaw.raw,
-        });
-        return false;
-      }
-      const snapshot: Snapshot = {
-        action,
-        state: this.agent.state,
-        result,
-        judgment: judgmentRaw,
-      };
-      if (!evalPredicate(v.require, snapshot)) {
-        this.emit({
-          stage: "verify",
-          verdict: v.otherwise ?? "deny",
-          reason: "verify_judge_failed",
-          tool: action.name,
-          result: judgmentRaw,
-        });
-        return false;
-      }
-      this.emit({ stage: "verify", verdict: "allow", tool: action.name, result: judgmentRaw });
-      return true;
-    }
-
-    if (v.kind === "effect") {
-      const obs = await this.runObservation(v.observe);
-      if (!obs.ok) return false;
-      const snapshot: Snapshot = {
-        action,
-        state: this.agent.state,
-        result,
-        observation: obs.observation,
-      };
-      if (!evalPredicate(v.require, snapshot)) {
-        const verdict = v.otherwise ?? "safe_state";
-        this.emit({
-          stage: "verify",
-          verdict,
-          reason: "verify_effect_failed",
-          tool: action.name,
-          args: action.args,
-          observation: obs.observation,
-        });
-        if (verdict === "safe_state" && !this.recovering) {
-          await this.enterSafeFlow("verify_effect_failed");
-        }
-        return false;
-      }
-      this.emit({
-        stage: "verify",
-        verdict: "allow",
-        tool: action.name,
-        observation: obs.observation,
-      });
-      return true;
-    }
-
-    if (v.kind === "output") {
-      return this.runOutputVerify(v, action, result);
-    }
-
-    const reason: ReasonCode =
-      v.kind === "evidence" ? "verify_evidence_failed" : "verify_absence_failed";
-    const snapshot: Snapshot = { action, state: this.agent.state, result };
-    if (!evalPredicate(v.require, snapshot)) {
-      const verdict = v.otherwise ?? "safe_state";
-      const observation: Record<string, unknown> = {};
-      if (v.kind === "evidence" && action.name === "shell.run_allowlisted") {
-        const stdout = typeof result.stdout === "string" ? result.stdout : "";
-        const stderr = typeof result.stderr === "string" ? result.stderr : "";
-        const exitCode = result.exit_code;
-        if (stdout) observation.stdout = stdout.slice(0, 8000);
-        if (stderr) observation.stderr = stderr.slice(0, 8000);
-        if (exitCode !== undefined) observation.exit_code = exitCode;
-        if (typeof result.error === "string" && result.error) observation.error = result.error;
-        observation.hint =
-          "cmd=test failed verify_evidence. Read stdout/stderr above, fix the approved source file, then re-run cmd=test.";
-      }
-      this.emit({
-        stage: "verify",
-        verdict,
-        reason,
-        tool: action.name,
-        args: action.args,
-        result,
-        ...(Object.keys(observation).length ? { observation } : {}),
-      });
-      if (verdict === "safe_state" && !this.recovering) {
-        await this.enterSafeFlow(reason);
-      }
-      return false;
-    }
-    this.emit({ stage: "verify", verdict: "allow", tool: action.name, result });
-    return true;
-  }
-
-  private messageContentFrom(
-    action: { name: string; args: Record<string, unknown> },
-    result: Record<string, unknown>,
-  ): string {
-    if (typeof action.args.message === "string") return action.args.message;
-    if (typeof result.message === "string") return result.message;
-    return "";
-  }
-
-  private async runOutputVerify(
-    v: VerifyOutput,
-    action: { name: string; args: Record<string, unknown> },
-    result: Record<string, unknown>,
-  ): Promise<boolean> {
-    const message = buildMessageSnapshot(this.messageContentFrom(action, result));
-    const snapshot: Snapshot = { action, state: this.agent.state, result, message };
-    if (!evalPredicate(v.require, snapshot)) {
-      const verdict = v.otherwise ?? "deny";
-      this.emit({
-        stage: "verify",
-        verdict,
-        reason: "verify_output_failed",
-        tool: action.name,
-        args: action.args,
-        result,
-        observation: { message },
-      });
-      if (verdict === "safe_state" && !this.recovering) {
-        await this.enterSafeFlow("verify_output_failed");
-      }
-      return false;
-    }
+    // Child budgets are charged to the parent (D6).
+    this.steps += child.steps;
+    this.toolCalls += child.toolCalls;
     this.emit({
-      stage: "verify",
+      stage: "record",
       verdict: "allow",
-      tool: action.name,
-      result,
-      observation: { message },
+      reason: "spawn_returned",
+      tool: SPAWN_TOOL,
+      result: { events: child.events.length, steps: child.steps, tool_calls: child.toolCalls },
     });
-    return true;
+    return child.infraFailed;
   }
 
-  private async runAgentOutputVerifies(content: string): Promise<boolean> {
-    const verifies = this.agent.counterbalance?.output_verifies ?? [];
-    if (verifies.length === 0) return true;
-    const action = { name: "assistant.message", args: { message: content } };
-    const result = { message: content };
-    for (const v of verifies) {
-      if (v.kind !== "output") continue;
-      const ok = await this.runOutputVerify(v, action, result);
-      if (!ok) return false;
-    }
-    return true;
+  // ---------------------------------------------------------------- safe flow (§11)
+
+  private applyFallbackState(): void {
+    const fb = fallbackStateOf(this.agent);
+    if (fb) this.agent.state = { ...this.agent.state, ...fb };
+    this.emit({ stage: "record", verdict: "safe_state", reason: "safe_state_entered" });
   }
 
-  async runLoop(maxIterations = 32): Promise<Event[]> {
-    let consecutiveEmptyProposals = 0;
-    for (let i = 0; i < maxIterations; i++) {
-      if (!this.checkLimits()) break;
-      this.steps += 1;
-      this.applyTtlInvalidation();
-      this.checkInterventionBudget();
-
-      if (this.agent.counterbalance?.orientation?.emit_each_step === true) {
-        this.emit({
-          stage: "orient",
-          verdict: "allow",
-          observation: this.buildOrientationFrame(),
-        });
-      }
-
-      const proposal = await this.propose();
-      if (!proposal || proposal.type === "stop") {
-        const stopMessage =
-          proposal?.type === "stop" && proposal.message
-            ? String(proposal.message)
-            : undefined;
-        if (stopMessage !== undefined) {
-          const ok = await this.runAgentOutputVerifies(stopMessage);
-          if (!ok) break;
-        }
-        this.emit({
-          stage: "propose",
-          verdict: "allow",
-          ...(stopMessage
-            ? { observation: { stop_message: stopMessage.slice(0, 500) } }
-            : {}),
-        });
-        break;
-      }
-      if (proposal.type === "invalid") {
-        consecutiveEmptyProposals += 1;
-        this.emit({
-          stage: "propose",
-          verdict: "deny",
-          reason: "empty_proposal",
-          error: proposal.message ?? proposal.reason,
-          observation: {
-            invalid_reason: proposal.reason,
-            stop_message: proposal.message ? String(proposal.message).slice(0, 500) : null,
-          },
-        });
-        // Cap empty-proposal thrash even when continue_after_deny is on.
-        if (this.denyIsTerminal() || consecutiveEmptyProposals >= 2) break;
-        continue;
-      }
-      consecutiveEmptyProposals = 0;
-
-      const action = { name: proposal.name, args: proposal.args };
-      this.emit({
-        stage: "propose",
-        tool: action.name,
-        args: action.args,
-      });
-
-      const tool = this.toolById(action.name);
-      if (!tool) {
-        this.emit({
-          stage: "validate",
-          verdict: "deny",
-          reason: "capability_missing",
-          tool: action.name,
-          args: action.args,
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      const allowed = this.agent.permissions?.tools;
-      if (allowed && !allowed.includes(action.name) && action.name !== "agent.spawn") {
-        this.emit({
-          stage: "validate",
-          verdict: "deny",
-          reason: "capability_missing",
-          tool: action.name,
-          args: action.args,
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      const inCheck = validateAgainstSchema(tool.input, action.args);
-      if (!inCheck.ok) {
-        if (isSkillsReflectionTool(action.name)) {
-          this.noteReflectionAttempt(action.name);
-        }
-        this.emit({
-          stage: "validate",
-          verdict: "deny",
-          reason: "input_schema_invalid",
-          tool: action.name,
-          args: action.args,
-          error: "input schema validation failed",
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      this.emit({ stage: "validate", verdict: "allow", tool: action.name, args: action.args });
-
-      const gateSnap: Snapshot = { action, state: this.agent.state };
-      const gated = this.evalGates(gateSnap, this.agent.gates);
-      if (!gated.ok) {
-        this.emit({
-          stage: "authorize",
-          verdict: gated.verdict,
-          reason: gated.reason,
-          tool: action.name,
-          args: action.args,
-        });
-        if (gated.verdict === "safe_state") {
-          await this.enterSafeFlow("gate_denied");
-          break;
-        }
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      if (action.name === "agent.spawn") {
-        const child = this.compareChildEnvelope(action.args);
-        if (!child.ok) {
-          this.emit({
-            stage: "authorize",
-            verdict: "deny",
-            reason: child.reason,
-            tool: action.name,
-            args: action.args,
-            error: child.error,
-          });
-          if (this.denyIsTerminal()) break;
-          continue;
-        }
-      }
-
-      if (isSkillsReflectionTool(action.name)) {
-        const gate = this.reflectionGate(action.name);
-        if (!gate.ok) {
-          this.noteReflectionAttempt(action.name);
-          this.emit({
-            stage: "authorize",
-            verdict: "deny",
-            reason: "harness_patch_invalid",
-            tool: action.name,
-            args: action.args,
-            error: gate.error,
-          });
-          if (this.denyIsTerminal()) break;
-          continue;
-        }
-      }
-
-      if (action.name === "harness.propose_skills_patch") {
-        const patch = parseHarnessPatch(action.args);
-        if (!patch) {
-          this.noteReflectionAttempt(action.name);
-          this.emit({
-            stage: "authorize",
-            verdict: "deny",
-            reason: "harness_patch_invalid",
-            tool: action.name,
-            args: action.args,
-            error: "patch requires exactly one op in ops array",
-          });
-          if (this.denyIsTerminal()) break;
-          continue;
-        }
-        const patchCheck = validatePatchSecurity(this.agent, patch);
-        if (!patchCheck.ok) {
-          this.noteReflectionAttempt(action.name);
-          this.emit({
-            stage: "authorize",
-            verdict: "deny",
-            reason: patchCheck.reason,
-            tool: action.name,
-            args: action.args,
-            error: patchCheck.error,
-          });
-          if (this.denyIsTerminal()) break;
-          continue;
-        }
-      }
-
-      if (action.name === "harness.decline_skills_patch") {
-        const decline = parseSkillsPatchDecline(action.args);
-        if (!decline) {
-          this.noteReflectionAttempt(action.name);
-          this.emit({
-            stage: "authorize",
-            verdict: "deny",
-            reason: "harness_patch_invalid",
-            tool: action.name,
-            args: action.args,
-            error:
-              "decline requires reason in {no_new_heuristic,insufficient_evidence,would_overfit_task,skills_already_adequate}",
-          });
-          if (this.denyIsTerminal()) break;
-          continue;
-        }
-      }
-
-      if (action.name === "harness.reflect_skills") {
-        const reflect = parseSkillsReflect(action.args);
-        if (!reflect) {
-          this.noteReflectionAttempt(action.name);
-          this.emit({
-            stage: "authorize",
-            verdict: "deny",
-            reason: "harness_patch_invalid",
-            tool: action.name,
-            args: action.args,
-            error:
-              "reflect_skills requires disposition decline|propose; decline needs reason; propose needs exactly one op",
-          });
-          if (this.denyIsTerminal()) break;
-          continue;
-        }
-        if (reflect.disposition === "propose") {
-          const patchCheck = validatePatchSecurity(this.agent, reflect.patch);
-          if (!patchCheck.ok) {
-            this.noteReflectionAttempt(action.name);
-            this.emit({
-              stage: "authorize",
-              verdict: "deny",
-              reason: patchCheck.reason,
-              tool: action.name,
-              args: action.args,
-              error: patchCheck.error,
-            });
-            if (this.denyIsTerminal()) break;
-            continue;
-          }
-        }
-      }
-
-      const seqCheck = this.checkSequences(action);
-      if (!seqCheck.ok) {
-        this.emit({
-          stage: "authorize",
-          verdict: "deny",
-          reason: seqCheck.reason,
-          failure: seqCheck.failure,
-          tool: action.name,
-          args: action.args,
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      const completionAuth = this.checkCompletion(action.name);
-      if (!completionAuth.ok) {
-        this.emit({
-          stage: "authorize",
-          verdict: "deny",
-          reason: completionAuth.reason,
-          failure: completionAuth.failure,
-          tool: action.name,
-          args: action.args,
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      this.emit({ stage: "authorize", verdict: "allow", tool: action.name, args: action.args });
-
-      this.toolCalls += 1;
-
-      let envelope: ToolResultEnvelope;
+  private async safeFlow(trigger: ReasonCode): Promise<void> {
+    const recovery = this.agent.recovery;
+    if (recovery && !this.recovering && (recovery.on === undefined || recovery.on === trigger)) {
+      this.recovering = true;
+      let outcome: Outcome;
       try {
-        envelope = await this.invokeNative(action.name, action.args);
-      } catch (e) {
-        this.emit({
-          stage: "execute",
-          verdict: "deny",
-          reason: "tool_execution_failed",
-          tool: action.name,
-          args: action.args,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
+        outcome = await this.processAction(
+          { name: recovery.execute.tool, args: (recovery.execute.args ?? {}) as Record<string, unknown> },
+          "recovery",
+        );
+      } finally {
+        this.recovering = false;
       }
-
-      const outCheck = validateAgainstSchema(tool.output, envelope.output);
-      if (!outCheck.ok) {
-        this.emit({
-          stage: "execute",
-          verdict: "deny",
-          reason: "output_schema_invalid",
-          tool: action.name,
-          args: action.args,
-          error: "output schema validation failed",
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      const checkpoint = this.checkCheckpointAuthority(action, envelope.state_transition);
-      if (!checkpoint.ok) {
-        this.emit({
-          stage: "execute",
-          verdict: "deny",
-          reason: checkpoint.reason,
-          tool: action.name,
-          args: action.args,
-          error: checkpoint.error,
-          failure: checkpoint.failure,
-        });
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      this.applyStateTransition(envelope.state_transition);
-
-      this.emit({
-        stage: "execute",
-        verdict: "allow",
-        tool: action.name,
-        args: action.args,
-        result: envelope.output,
-      });
-
-      if (action.name === "agent.spawn") {
-        const spawnId = `spawn-${this.seq}`;
-        const nested = await this.runNestedChild(action.args, spawnId);
-        if (nested.child_steps > 0) {
-          // Annotate parent execute result with child event count (non-breaking for stub-only).
-          const execEv = this.events[this.events.length - 1 - nested.child_steps];
-          if (execEv && execEv.stage === "execute" && execEv.tool === "agent.spawn") {
-            execEv.result = { ...envelope.output, child_events: nested.child_steps };
-          }
-        }
-      }
-
-      if (action.name === "harness.propose_skills_patch") {
-        const patch = parseHarnessPatch(action.args);
-        if (patch) {
-          const before = harnessIrHash(this.agent);
-          applyHarnessPatch(this.agent, patch);
-          const after = harnessIrHash(this.agent);
-          this.emit({
-            stage: "rebalance",
-            verdict: "allow",
-            reason: "harness_patch_applied",
-            tool: action.name,
-            args: action.args,
-            harness_hash_before: before,
-            harness_hash_after: after,
-            observation: { ops: patch.ops.length },
-          });
-        }
-      }
-
-      if (action.name === "harness.decline_skills_patch") {
-        const decline = parseSkillsPatchDecline(action.args);
-        if (decline) {
-          this.emit({
-            stage: "record",
-            verdict: "allow",
-            reason: "harness_patch_declined",
-            tool: action.name,
-            args: action.args,
-            observation: {
-              reason: decline.reason,
-              ...(decline.note !== undefined ? { note: decline.note } : {}),
-            },
-          });
-        }
-      }
-
-      if (action.name === "harness.reflect_skills") {
-        const reflect = parseSkillsReflect(action.args);
-        if (reflect?.disposition === "propose") {
-          const before = harnessIrHash(this.agent);
-          applyHarnessPatch(this.agent, reflect.patch);
-          const after = harnessIrHash(this.agent);
-          this.emit({
-            stage: "rebalance",
-            verdict: "allow",
-            reason: "harness_patch_applied",
-            tool: action.name,
-            args: action.args,
-            harness_hash_before: before,
-            harness_hash_after: after,
-            observation: { ops: reflect.patch.ops.length, disposition: "propose" },
-          });
-        } else if (reflect?.disposition === "decline") {
-          this.emit({
-            stage: "record",
-            verdict: "allow",
-            reason: "harness_patch_declined",
-            tool: action.name,
-            args: action.args,
-            observation: {
-              reason: reflect.reason,
-              disposition: "decline",
-              ...(reflect.note !== undefined ? { note: reflect.note } : {}),
-            },
-          });
-        }
-      }
-
-      const verified = await this.runVerifies(tool, action, envelope.output);
-      if (!verified) {
-        // CB: deliver the failed observation (via conversational propose) and let the
-        // model recover when continue_after_deny is set — same as authorize denies.
-        if (this.denyIsTerminal()) break;
-        continue;
-      }
-
-      this.applyInvalidateAfter(action.name);
-
-      // First successful terminal tool ends the run. Without this, models spam
-      // task.complete / phase.yield until max_steps / limit_exceeded.
-      if (this.isTerminalSuccessTool(action.name)) {
-        this.emit({
-          stage: "record",
-          verdict: "allow",
-          reason: action.name === "phase.yield" ? "phase_yielded" : "run_complete",
-          tool: action.name,
-        });
-        break;
+      if (outcome === "infra") return; // nothing is claimed after an infrastructure failure
+      if (outcome === "success") {
+        this.emit({ stage: "record", verdict: "allow", reason: "recovery_succeeded" });
+      } else {
+        this.emit({ stage: "record", verdict: "deny", reason: "terminal_failure" });
       }
     }
-    return this.events;
+    this.applyFallbackState();
+  }
+
+  // ---------------------------------------------------------------- introspection
+
+  /** Successful (executed + verified) tool ids, sorted. */
+  successfulTools(): string[] {
+    return sortCodePoints(this.succeeded);
+  }
+
+  /** Steps and tool calls used so far (children included). */
+  usage(): { steps: number; tool_calls: number } {
+    return { steps: this.steps, tool_calls: this.toolCalls };
   }
 }
+
+type ContractEffect =
+  | { kind: "patch"; patch: HarnessPatch; reflect: boolean }
+  | { kind: "decline"; reason: string; note?: string; reflect?: boolean };
 
 export function eventsToJsonl(events: Event[]): string {
   return events.map((e) => canonicalJson(e)).join("\n") + "\n";

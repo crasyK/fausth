@@ -1,0 +1,11 @@
+{"args":{},"seq":1,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":1}
+{"args":{},"seq":2,"stage":"validate","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":2,"verdict":"allow"}
+{"args":{},"seq":3,"stage":"authorize","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":3,"verdict":"allow"}
+{"args":{},"result":{"ok":1},"seq":4,"stage":"execute","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":4,"verdict":"allow"}
+{"seq":5,"stage":"verify","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":5,"verdict":"allow"}
+{"args":{},"seq":6,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":6}
+{"args":{},"seq":7,"stage":"validate","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":7,"verdict":"allow"}
+{"args":{},"seq":8,"stage":"authorize","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":8,"verdict":"allow"}
+{"args":{},"result":{"ok":1},"seq":9,"stage":"execute","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"noop.ping","ts_logical":9,"verdict":"allow"}
+{"seq":10,"stage":"verify","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":10,"verdict":"allow"}
+{"seq":11,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":11,"verdict":"allow"}

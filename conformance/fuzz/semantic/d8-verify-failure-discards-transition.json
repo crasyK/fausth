@@ -1,0 +1,63 @@
+{
+  "world": "replay",
+  "id": "d8-verify-failure-discards-transition",
+  "decision": "D8",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {
+      "out_of_scope_writes": 0
+    },
+    "tools": [
+      {
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "id": "fs.write_scoped",
+        "verify": [
+          {
+            "kind": "absence",
+            "require": {
+              "path": "result.out_of_scope",
+              "eq": 0
+            },
+            "otherwise": "deny"
+          }
+        ]
+      }
+    ],
+    "permissions": {
+      "filesystem": {
+        "write_scopes": [
+          "src/"
+        ]
+      }
+    }
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "fs.write_scoped",
+      "args": {
+        "path": "docs/x.md",
+        "content": "x"
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "verify",
+        "reason": "verify_absence_failed",
+        "failure": {
+          "kind": "transition_discarded",
+          "keys": [
+            "out_of_scope_writes"
+          ]
+        }
+      }
+    ]
+  }
+}

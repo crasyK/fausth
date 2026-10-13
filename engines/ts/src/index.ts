@@ -1,7 +1,37 @@
-export { FaustRuntime, eventsToJsonl } from "./runtime.js";
-export { canonicalJson, stateHash } from "./canonical.js";
-export { evalPredicate } from "./predicates.js";
-export { validateAgent, validateAgentPath } from "./validate.js";
+export { FaustRuntime, eventsToJsonl, TranscriptCursor } from "./runtime.js";
+export type { ToolHandler, JudgeFn, RuntimeOptions } from "./runtime.js";
+export {
+  canonicalJson,
+  compareCodePoints,
+  cpLength,
+  deepEq,
+  excerpt,
+  isCanonical,
+  sortCodePoints,
+  stateHash,
+  toCanonical,
+} from "./canonical.js";
+export { evalPredicate, getPath, isMissing, MISSING } from "./predicates.js";
+export { validateAgent, validateAgentPath, CONTRACT_SCHEMA_PATH } from "./validate.js";
+export { normalizeAgentIr, parseRecordedProposal, parseYamlText, YAML_OPTIONS } from "./load.js";
+export { normalizeScope, parseScope, scopeContains, scopeCoveredBy } from "./scopes.js";
+export type { Scope, ScopeParse, ScopeProblem } from "./scopes.js";
+export {
+  buildReplayWorld,
+  fixtureUserChannel,
+  materializeFixture,
+  replayFixtureDir,
+  runFixture,
+  withoutUserChannelHandlers,
+} from "./replay.js";
+export type { FixtureSpec, ReplayResult } from "./replay.js";
+export {
+  isPreExecutionPolicyDeny,
+  lastExitCode,
+  permittedToolDefs,
+  runCompleted,
+  systemPromptFor,
+} from "./cli-support.js";
 export {
   applyCandidatePatch,
   applyHarnessPatch,

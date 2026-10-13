@@ -4,13 +4,10 @@
  * Track A is mode-free: a harness advertises exactly the tools it may use, and ordering comes
  * from sequences, freshness invalidation and completion gates — never from a mode register.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FaustRuntime, eventsToJsonl } from "./runtime.js";
-import { createCodingTools, codingWorldFromAgent } from "./tools/world.js";
-import { canonicalJson } from "./canonical.js";
-import type { AgentIR, ModelProposal, RecordedToolCall, ToolDef } from "./types.js";
+import { materializeFixture } from "./replay.js";
+import type { AgentIR, ModelProposal, RecordedToolCall, ToolDef, ToolEffect } from "./types.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const fixturesRoot = join(root, "conformance/fixtures");
@@ -61,6 +58,7 @@ const codingToolDefs: Record<string, ToolDef> = {
   },
   "user.approve": {
     id: "user.approve",
+    channel: "user",
     input: { type: "object", additionalProperties: true, properties: {} },
     output: {
       type: "object",
@@ -71,6 +69,7 @@ const codingToolDefs: Record<string, ToolDef> = {
   },
   "user.correct": {
     id: "user.correct",
+    channel: "user",
     input: {
       type: "object",
       additionalProperties: true,
@@ -88,6 +87,7 @@ const codingToolDefs: Record<string, ToolDef> = {
   },
   "user.ask": {
     id: "user.ask",
+    channel: "user",
     input: {
       type: "object",
       additionalProperties: true,
@@ -223,13 +223,29 @@ const codingToolDefs: Record<string, ToolDef> = {
   },
 };
 
-function codingTools(ids: string[]): ToolDef[] {
+function codingTools(ids: string[], effects: Record<string, ToolEffect[]> = {}): ToolDef[] {
   return ids.map((id) => {
     const def = codingToolDefs[id];
     if (!def) throw new Error(`unknown coding tool: ${id}`);
-    return def;
+    return effects[id] ? { ...def, effects: effects[id] } : def;
   });
 }
+
+/**
+ * Harness memory semantics of the coding slice, declared in the IR (D11): hosts report results,
+ * the harness says what they mean for memory.
+ */
+const codingEffects: Record<string, ToolEffect[]> = {
+  "fs.read": [{ when: { path: "result.found", eq: 1 }, set: { researched: 1 } }],
+  "shell.run_allowlisted": [{ when: { path: "result.exit_code", eq: 0 }, set: { test_evidence_current: 1 } }],
+  "user.approve": [{ when: { path: "result.approved", eq: 1 }, set: { plan_approved: 1 } }],
+};
+
+/** User decisions are checkpoint keys owned by user-channel tools (D14). */
+const codingCheckpoints = [
+  { tool: "user.correct", allow_set_keys: ["open_todos"] },
+  { tool: "user.approve", allow_set_keys: ["plan_approved"] },
+];
 
 /** Tools the full coding slice actually uses — no mode register, no blocked-tool advertising. */
 const codingToolIds = [
@@ -252,7 +268,7 @@ function baseAgent(over: Partial<AgentIR> & { counterbalance?: AgentIR["counterb
       open_todos: 1,
       out_of_scope_writes: 0,
     },
-    tools: codingTools(codingToolIds),
+    tools: codingTools(codingToolIds, codingEffects),
     limits: { max_steps: 20, max_tool_calls: 16 },
     permissions: {
       tools: [...codingToolIds],
@@ -278,12 +294,7 @@ function baseAgent(over: Partial<AgentIR> & { counterbalance?: AgentIR["counterb
           ],
         },
       },
-      checkpoints: [
-        {
-          tool: "user.correct",
-          allow_set_keys: ["open_todos"],
-        },
-      ],
+      checkpoints: codingCheckpoints,
       orientation: {
         emit_each_step: true,
       },
@@ -308,7 +319,7 @@ function researchAgent(): AgentIR {
       open_todos: 1,
       out_of_scope_writes: 0,
     },
-    tools: codingTools(["fs.read", "user.correct"]),
+    tools: codingTools(["fs.read", "user.correct"], codingEffects),
     limits: { max_steps: 20, max_tool_calls: 16 },
     permissions: {
       tools: ["fs.read", "user.correct"],
@@ -321,42 +332,24 @@ function researchAgent(): AgentIR {
   };
 }
 
+/**
+ * `recorded` = the complete tool transcript (strict recorded mode, spec-v0.3 §15.1); [] = no
+ * transcript: world tools come from the reference world, user tools only from `user` answers.
+ */
 async function materialize(
   name: string,
   agent: AgentIR,
   proposals: ModelProposal[],
   recorded: RecordedToolCall[],
-  worldOpts?: { write_scopes?: string[]; read_scopes?: string[]; files?: Record<string, string> },
+  user?: unknown[],
 ): Promise<void> {
-  const dir = join(fixturesRoot, name);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "agent.json"), canonicalJson(agent) + "\n");
-  writeFileSync(
-    join(dir, "model.jsonl"),
-    proposals.map((p) => canonicalJson(p)).join("\n") + "\n",
-  );
-  writeFileSync(
-    join(dir, "tools.jsonl"),
-    recorded.map((r) => canonicalJson(r)).join("\n") + (recorded.length ? "\n" : ""),
-  );
-
-  let pi = 0;
-  const writeScopes = worldOpts?.write_scopes ?? agent.permissions?.filesystem?.write_scopes ?? ["src/"];
-  const readScopes = worldOpts?.read_scopes ?? agent.permissions?.filesystem?.read_scopes ?? writeScopes;
-  const rt = new FaustRuntime({
-    agent: structuredClone(agent),
-    propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: createCodingTools(
-      codingWorldFromAgent(agent, {
-        files: worldOpts?.files ?? { "src/app.ts": "export {}" },
-        testExit: 0,
-      }),
-    ),
-    recordedToolResults: recorded.length ? recorded : undefined,
+  const n = await materializeFixture(fixturesRoot, name, {
+    agent,
+    proposals,
+    ...(recorded.length ? { transcript: recorded } : {}),
+    ...(user ? { user } : {}),
   });
-  await rt.runLoop();
-  writeFileSync(join(dir, "expected.jsonl"), eventsToJsonl(rt.events));
-  console.log("wrote", name, "events=", rt.events.length);
+  console.log("wrote", name, "events=", n);
 }
 
 async function main(): Promise<void> {
@@ -401,7 +394,6 @@ async function main(): Promise<void> {
         args: {},
         result: {
           output: { approved: 1 },
-          state_transition: { set: { plan_approved: 1 } },
         },
       },
       {
@@ -410,7 +402,6 @@ async function main(): Promise<void> {
         args: { cmd: "test" },
         result: {
           output: { exit_code: 0, cmd: "test" },
-          state_transition: { set: { test_evidence_current: 1 } },
         },
       },
       {
@@ -442,6 +433,9 @@ async function main(): Promise<void> {
       },
     ],
     [],
+    // The user channel is bound (recorded answers) but never asked: the request is refused at
+    // authorize, before any side effect (D9).
+    [{ tool: "user.correct", result: { output: { ok: 1 }, state_transition: { set: { open_todos: 0 } } } }],
   );
 
   // Behaviour: open todos block completion (ability+fresh evidence ok)
@@ -479,7 +473,6 @@ async function main(): Promise<void> {
         args: { path: "src/app.ts" },
         result: {
           output: { path: "src/app.ts", content: "export {}", found: 1 },
-          state_transition: { set: { researched: 1 } },
         },
       },
       {
@@ -488,7 +481,6 @@ async function main(): Promise<void> {
         args: {},
         result: {
           output: { approved: 1 },
-          state_transition: { set: { plan_approved: 1 } },
         },
       },
       {
@@ -503,7 +495,6 @@ async function main(): Promise<void> {
         args: { cmd: "test" },
         result: {
           output: { exit_code: 0, cmd: "test" },
-          state_transition: { set: { test_evidence_current: 1 } },
         },
       },
       {
@@ -574,6 +565,7 @@ async function main(): Promise<void> {
     },
     {
       id: "user.correct",
+      channel: "user",
       input: { type: "object", additionalProperties: true, properties: { set: { type: "object" } } },
       output: {
         type: "object",
@@ -582,7 +574,22 @@ async function main(): Promise<void> {
         properties: { ok: { type: "integer" } },
       },
     },
+    {
+      // Declared (the example harness lists it) but NOT permitted: capability is withheld by
+      // permissions, and orientation/hosts never advertise it (SPEC-12).
+      id: "refund.request",
+      input: { type: "object", additionalProperties: true, properties: {} },
+      output: {
+        type: "object",
+        required: ["ok"],
+        additionalProperties: false,
+        properties: { ok: { type: "integer" } },
+      },
+    },
   ] as AgentIR["tools"];
+  // Memory semantics declared in the IR (D11), not written by the host by key name.
+  supportTools[0]!.effects = [{ when: { path: "result.ok", eq: 1 }, set: { kb_cited: 1 } }];
+  supportTools[2]!.effects = [{ when: { path: "result.ok", eq: 1 }, set: { handoff: 1 } }];
 
   const supportAgent: AgentIR = {
     spec: "counterbalance-contract/v0.1",
@@ -627,7 +634,6 @@ async function main(): Promise<void> {
         args: { query: "refund-policy" },
         result: {
           output: { ok: 1, article_id: "kb-refund-policy" },
-          state_transition: { set: { kb_cited: 1 } },
         },
       },
       {
@@ -667,7 +673,6 @@ async function main(): Promise<void> {
         args: {},
         result: {
           output: { approved: 1 },
-          state_transition: { set: { plan_approved: 1 } },
         },
       },
       {
@@ -682,7 +687,6 @@ async function main(): Promise<void> {
         args: { cmd: "test" },
         result: {
           output: { exit_code: 0, cmd: "test" },
-          state_transition: { set: { test_evidence_current: 1 } },
         },
       },
       {
@@ -765,7 +769,6 @@ async function main(): Promise<void> {
         args: { path: "src/app.ts" },
         result: {
           output: { path: "src/app.ts", content: "export {}", found: 1 },
-          state_transition: { set: { researched: 1 } },
         },
       },
     ],
@@ -820,14 +823,15 @@ async function main(): Promise<void> {
     ],
   );
 
-  // Mutable cells: security surface patch always denied
+  // Mutable cells: security surface patch always denied. The write/approve tools are declared
+  // (the sequence refers to them) but withheld by permissions; the patch tries to permit them.
   await materialize(
     "cb-harness-patch-security-denied",
     {
       spec: "counterbalance-contract/v0.1",
       name: "mutable-skills-slice",
       state: { open_todos: 1 },
-      tools: codingTools(patchToolIds),
+      tools: codingTools([...patchToolIds, "fs.write_scoped", "user.approve"]),
       limits: { max_steps: 8, max_tool_calls: 4 },
       permissions: { tools: [...patchToolIds] },
       mutable: ["skills"],
@@ -875,13 +879,15 @@ async function main(): Promise<void> {
 
   // End-of-phase reflection: unified reflect_skills (decline)
   const reflectToolIds = ["fs.read", "harness.reflect_skills", "phase.yield"];
+  // The phase ends on its declared terminal tool (D11: phase.yield is not special by name).
+  const reflectEffects: Record<string, ToolEffect[]> = { "phase.yield": [{ set: { phase_yielded: 1 } }] };
   await materialize(
     "cb-decline-skills-ok",
     {
       spec: "counterbalance-contract/v0.1",
       name: "mutable-skills-slice",
       state: { open_todos: 1, phase_yielded: 0 },
-      tools: codingTools(reflectToolIds),
+      tools: codingTools(reflectToolIds, reflectEffects),
       limits: { max_steps: 8, max_tool_calls: 4 },
       permissions: { tools: [...reflectToolIds] },
       mutable: ["skills"],
@@ -893,6 +899,7 @@ async function main(): Promise<void> {
             require_prior_any_of: ["harness.reflect_skills"],
           },
         ],
+        completion: { tool: "phase.yield" },
         orientation: { emit_each_step: true },
       },
     },
@@ -925,7 +932,6 @@ async function main(): Promise<void> {
         args: {},
         result: {
           output: { ok: 1 },
-          state_transition: { set: { phase_yielded: 1, researched: 1 } },
         },
       },
     ],
@@ -938,7 +944,7 @@ async function main(): Promise<void> {
       spec: "counterbalance-contract/v0.1",
       name: "mutable-skills-slice",
       state: { open_todos: 1, phase_yielded: 0 },
-      tools: codingTools(reflectToolIds),
+      tools: codingTools(reflectToolIds, reflectEffects),
       limits: { max_steps: 8, max_tool_calls: 4 },
       permissions: { tools: [...reflectToolIds] },
       mutable: ["skills"],
@@ -950,6 +956,7 @@ async function main(): Promise<void> {
             require_prior_any_of: ["harness.reflect_skills"],
           },
         ],
+        completion: { tool: "phase.yield" },
         orientation: { emit_each_step: true },
       },
     },
@@ -1069,7 +1076,7 @@ async function main(): Promise<void> {
             ],
           },
         },
-        checkpoints: [{ tool: "user.correct", allow_set_keys: ["open_todos"] }],
+        checkpoints: codingCheckpoints,
         orientation: { emit_each_step: true },
       },
       state: {
@@ -1082,7 +1089,6 @@ async function main(): Promise<void> {
     }),
     [{ type: "tool", name: "fs.write_scoped", args: { path: "README.md", content: "ok" } }],
     [],
-    { write_scopes: ["."], read_scopes: ["."], files: { "src/app.ts": "export {}", "README.md": "old" } },
   );
 
   // Dangerous shell: non-allowlisted cmd → exit_code 1 + verify deny; then allowlisted test
@@ -1136,7 +1142,9 @@ async function main(): Promise<void> {
       spec: "counterbalance-contract/v0.1",
       name: "ask-before-act-slice",
       state: { clarified: 0 },
-      tools: codingTools(["user.ask", "fs.write_scoped"]),
+      tools: codingTools(["user.ask", "fs.write_scoped"], {
+        "user.ask": [{ when: { path: "result.answer", neq: "" }, set: { clarified: 1 } }],
+      }),
       limits: { max_steps: 8, max_tool_calls: 4, continue_after_deny: true },
       permissions: {
         tools: ["user.ask", "fs.write_scoped"],
@@ -1150,6 +1158,7 @@ async function main(): Promise<void> {
             require_prior_tools: ["user.ask"],
           },
         ],
+        checkpoints: [{ tool: "user.ask", allow_set_keys: ["clarified"] }],
         orientation: { emit_each_step: true },
       },
     },
@@ -1164,7 +1173,9 @@ async function main(): Promise<void> {
       spec: "counterbalance-contract/v0.1",
       name: "ask-before-act-slice",
       state: { clarified: 0 },
-      tools: codingTools(["user.ask", "fs.write_scoped"]),
+      tools: codingTools(["user.ask", "fs.write_scoped"], {
+        "user.ask": [{ when: { path: "result.answer", neq: "" }, set: { clarified: 1 } }],
+      }),
       limits: { max_steps: 8, max_tool_calls: 4 },
       permissions: {
         tools: ["user.ask", "fs.write_scoped"],
@@ -1178,6 +1189,7 @@ async function main(): Promise<void> {
             require_prior_tools: ["user.ask"],
           },
         ],
+        checkpoints: [{ tool: "user.ask", allow_set_keys: ["clarified"] }],
         orientation: { emit_each_step: true },
       },
     },
@@ -1192,8 +1204,13 @@ async function main(): Promise<void> {
         args: { question: "which file?" },
         result: {
           output: { answer: "src/app.ts" },
-          state_transition: { set: { clarified: 1 } },
         },
+      },
+      {
+        call_seq: 2,
+        tool: "fs.write_scoped",
+        args: { path: "src/app.ts", content: "x" },
+        result: { output: { ok: 1, out_of_scope: 0, path: "src/app.ts" } },
       },
     ],
   );

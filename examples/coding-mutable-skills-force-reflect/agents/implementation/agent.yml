@@ -36,6 +36,9 @@ tools:
         path: { type: string }
         content: { type: string }
         found: { type: integer }
+    effects:
+      - when: { path: result.found, eq: 1 }
+        set: { researched: 1 }
   - id: fs.list
     description: List files under a scoped directory
     read_only: true
@@ -53,6 +56,9 @@ tools:
         path: { type: string }
         entries: { type: array, items: { type: string } }
         found: { type: integer }
+    effects:
+      - when: { path: result.found, eq: 1 }
+        set: { researched: 1 }
   - id: fs.write_scoped
     description: Write within scoped paths only
     input:
@@ -94,7 +100,11 @@ tools:
       - kind: evidence
         require: { path: result.exit_code, eq: 0 }
         otherwise: deny
+    effects:
+      - when: { path: result.exit_code, eq: 0 }
+        set: { test_evidence_current: 1 }
   - id: user.correct
+    channel: user
     input:
       type: object
       additionalProperties: true
@@ -196,3 +206,6 @@ counterbalance:
       allow_set_keys: [open_todos]
   orientation:
     emit_each_step: true
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: fs.list, fs.read, fs.write_scoped, harness.reflect_skills, shell.run_allowlisted, task.complete, user.correct. For tests call shell.run_allowlisted with cmd \"test\" (not npm/node directly). Use only listed tools; never invent tools, shell commands, or mode.enter. Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd=\"test\" → user.correct → task.complete. After tests pass and todos are clear, call harness.reflect_skills once, then task.complete."

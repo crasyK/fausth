@@ -21,8 +21,10 @@ bindings:
   shell.run_allowlisted:
     native: stub.shell
   user.approve:
-    native: stub.approve
+    user:
+      source: human
   user.correct:
-    native: stub.user_correct
+    user:
+      source: human
   task.complete:
     native: stub.task_complete

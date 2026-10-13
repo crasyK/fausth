@@ -184,10 +184,9 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
   return { ...greenhouse, ...coding, ...spawn };
 }
 
-/** IR channel declaration (types.ts gains `channel` via the contract WP; read it loosely). */
+/** IR channel declaration (spec-v0.3 §2.3; default world). */
 function toolChannel(tool: ToolDef): string | undefined {
-  const ch = (tool as ToolDef & { channel?: unknown }).channel;
-  return typeof ch === "string" ? ch : undefined;
+  return tool.channel;
 }
 
 function stateTypesFor(agent: AgentIR, keys: readonly string[]): Record<string, StateValueType> {

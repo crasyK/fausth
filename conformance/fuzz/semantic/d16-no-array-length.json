@@ -1,0 +1,49 @@
+{
+  "world": "replay",
+  "id": "d16-no-array-length",
+  "decision": "D16",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {},
+    "tools": [
+      {
+        "id": "echo.ping",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    ],
+    "gates": [
+      {
+        "require": {
+          "path": "action.args.items.length",
+          "eq": 2
+        }
+      }
+    ]
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "echo.ping",
+      "args": {
+        "items": [
+          1,
+          2
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "authorize",
+        "verdict": "deny",
+        "reason": "gate_denied"
+      }
+    ]
+  }
+}

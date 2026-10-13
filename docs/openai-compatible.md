@@ -9,7 +9,7 @@ provider profile (defaults + quirks)
         ↓
 OpenAI-compatible HTTP /chat/completions
         ↓
-normalized Faust proposal (tool | stop | invalid)   — or a thrown ModelInfraError
+normalized Faust proposal (tool | stop | invalid)   — or a thrown ModelInfraError / ModelRequestError
         ↓
 Counterbalance runtime validates / authorizes
 ```
@@ -67,15 +67,22 @@ Tool `arguments` must decode to a JSON **object**: an empty string means `{}`; `
 and scalars are `tool_arguments_not_object`; non-integral or non-int53 numbers are
 `tool_arguments_non_canonical` (D3 — rejected where they enter, never at the end of a run).
 
-## Errors: infra vs model protocol
+## Errors: infra vs request rejected vs model protocol
 
-Experiments must be able to exclude infrastructure failures from model scores, so the two
-classes never mix:
+Experiments must be able to exclude infrastructure failures from model scores **without
+hiding failures the harness itself caused**, so three classes never mix:
 
 | Class | Surface | Values |
 |-------|---------|--------|
-| Infra (no model answer) | thrown `ModelInfraError` (`isModelInfraError(e)`), fields `kind`, `status?`, `model?` | `timeout`, `rate_limit`, `server_error`, `network`, `auth`, `bad_request`, `model_unavailable` |
+| Infra (no model answer, not the harness's fault) | thrown `ModelInfraError` (`isModelInfraError(e)`, `infra: true`) | `timeout`, `rate_limit`, `server_error`, `network`, `auth`, `model_unavailable` |
+| Request rejected (the endpoint refused the request the harness built — context overflow, invalid schema, unsupported parameter) | thrown `ModelRequestError` (`isModelRequestError(e)`, `infra: false`) | `request_rejected` |
 | Model protocol (answer unusable) | returned `{ type: "invalid", reason }` | `empty_choices`, `unknown_transport_tool`, `invalid_tool_arguments_json`, `tool_arguments_not_object`, `tool_arguments_non_canonical`, `multiple_tool_calls`, `empty_proposal` (closed set `MODEL_PROTOCOL_INVALID_REASONS`) |
+
+Both thrown classes are **structured**: `kind`, `status`, `model` (the last model tried),
+`attempts` (requests sent to that model) and `total_attempts` (requests across the fallback
+chain) are fields, and `JSON.stringify(e)` / `modelTransportErrorJson(e)` give
+`{name, infra, kind, status?, model?, attempts?, total_attempts?, message}` (message bounded
+and redacted). Put that object — not the message string — into reports and events.
 
 Retry / fallback policy per request (models are tried in deployment order):
 
@@ -87,7 +94,8 @@ Retry / fallback policy per request (models are tried in deployment order):
 | HTTP 5xx, non-JSON 2xx body, provider error inside a 2xx body | `server_error` | yes | yes |
 | HTTP 401 / 402 / 403 | `auth` | no | **no** (stop) |
 | HTTP 404 | `model_unavailable` | no | yes |
-| other 4xx | `bad_request` | no | yes |
+| other 4xx whose body is a known transient gateway error (KIT answers `400 ServiceUnavailable` when overloaded; also "overloaded", "try again later", "bad gateway", …) | `server_error` (infra) | yes | yes |
+| other 4xx (400, 413, 422, …), incl. a 4xx code inside a 2xx body | `request_rejected` (**not** infra) | no | yes (another model may accept it) |
 
 Backward compatibility: rate-limit errors keep the `RATE_LIMIT:` message prefix and
 `code === 2`. Provider text in error messages is bounded (500 code points) and key-like
@@ -96,6 +104,18 @@ tokens are redacted. The proposal reports the model that answered (`proposal.mod
 
 Timeouts: `deployment.model.timeout_ms` (default 120000) bounds connect **and** body read
 of every request, via an `AbortController` whose timer is cleared when the body is read.
+
+## Per-call log and completion ids
+
+Every HTTP request the adapter makes is recorded in `adapter.callLog` (and passed to the
+optional `onCall` hook; `drainCallLog()` empties it): `{seq, model, attempt, status (null when
+no response), outcome (ok | http_error | provider_error | malformed | timeout | network),
+completion_id?, created?, system_fingerprint?, repeat_of?, error_kind?, latency_ms}`.
+`completion_id` is the provider response `id`. When a later call returns an id this adapter
+has already seen, the record carries `repeat_of: <earlier seq>` — the signature of a gateway
+cache hit. Proposals carry the same identity (`call_seq`, `completion_id`, `repeat_of_call`)
+so a run log can mark steps whose model answer was a replayed response. This log is host-side
+diagnostics, not part of the canonical event log.
 
 ## Preserved provider fields (reasoning)
 
@@ -142,7 +162,8 @@ Observed through `OpenAICompatibleAdapter` (7 requests in total):
   fully deterministic at temperature 0. In this smoke, two identical sequential temperature-0
   requests to `kit.glm-5.3-flash` were **not** byte-identical (different response and tool-call
   ids, same 785-byte length), so caching is intermittent. Consequences: repeated identical
-  requests are not independent samples (check response ids before counting repetitions), and
+  requests are not independent samples (check `completion_id` / `repeat_of` in the per-call log
+  before counting repetitions), and
   temperature 0 is not a determinism guarantee — Track A recordings remain the replay source.
 - One request hit the 60 s client timeout during a latency spike — the reason every request is
   bounded and classified as `timeout` infra rather than a model failure.

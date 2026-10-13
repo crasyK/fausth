@@ -10,9 +10,5 @@ bindings:
     native: sim.fs_write
   shell.run_allowlisted:
     native: sim.shell
-  user.approve:
-    native: sim.approve
-  user.correct:
-    native: sim.user_correct
   task.complete:
     native: sim.task_complete

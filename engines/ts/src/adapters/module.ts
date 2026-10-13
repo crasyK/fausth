@@ -35,7 +35,7 @@ export function deploymentUsesModule(deployment: Deployment): boolean {
   );
 }
 
-type ModuleServerConfig = DeploymentModuleServer & { env_passthrough?: string[] };
+type ModuleServerConfig = DeploymentModuleServer;
 
 /**
  * Build handlers for module.* natives. Sessions are created lazily per server; `cleanup`

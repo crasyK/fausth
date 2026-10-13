@@ -1,12 +1,20 @@
 /**
  * Pure scoring/aggregation for the advisory model matrix (run-model-matrix.ts).
  *
- * Honesty rule: a cell that threw (transport infra failure or harness/setup error)
- * produced no model behaviour to score. It is excluded from TP/FP/FN/TN and from the
- * precision/recall/usefulness denominators, and counted separately.
+ * Honesty rule: a cell that threw produced no model behaviour to score. It is excluded
+ * from TP/FP/FN/TN and from the precision/recall/usefulness denominators, and counted
+ * separately by cause: transport infra failure, request rejected by the endpoint (the
+ * harness built a request it refuses — context overflow, invalid schema; surfaced, not
+ * hidden as an outage), or harness/setup error.
  */
 import type { ReviewFinding } from "../integrations/github/submission-check.js";
-import { isModelInfraError, type ModelInfraErrorKind } from "./errors.js";
+import {
+  isModelInfraError,
+  isModelRequestError,
+  modelTransportErrorJson,
+  type ModelInfraErrorKind,
+  type ModelTransportErrorJson,
+} from "./errors.js";
 
 export type Expectation = {
   label: string;
@@ -29,11 +37,13 @@ export type Score = {
 };
 
 /** Why a cell has no model score. */
-export type CellErrorClass = "infra" | "setup";
+export type CellErrorClass = "infra" | "request_rejected" | "setup";
 
 export type CellErrorInfo = {
   error_class: CellErrorClass;
   infra_kind?: ModelInfraErrorKind;
+  /** Structured transport error (kind/status/model/attempts/total_attempts/message). */
+  transport_error?: ModelTransportErrorJson;
   /** Review conclusion for the cell report: never a pass. */
   conclusion: "neutral" | "infrastructure_error";
 };
@@ -53,6 +63,8 @@ export type LeaderboardRow = Score & {
   /** Cells that produced model behaviour and entered the denominators. */
   scored_cells: number;
   infra_errors: number;
+  /** Requests the endpoint rejected (harness-caused; not an outage, not a model failure). */
+  request_rejected: number;
   setup_errors: number;
   precision: number | null;
   recall: number | null;
@@ -63,13 +75,22 @@ export function emptyScore(note?: string): Score {
   return { tp: 0, fp: 0, fn: 0, tn: 0, bonus_tp: 0, policy_violations: 0, notes: note ? [note] : [] };
 }
 
-/** Classify a thrown cell error. Neither class is a model failure. */
+/** Classify a thrown cell error. No class is a model failure. */
 export function classifyCellError(e: unknown): CellErrorInfo {
+  const transport_error = modelTransportErrorJson(e) ?? undefined;
   if (isModelInfraError(e)) {
     return {
       error_class: "infra",
       infra_kind: e.kind,
+      ...(transport_error ? { transport_error } : {}),
       conclusion: e.kind === "rate_limit" ? "neutral" : "infrastructure_error",
+    };
+  }
+  if (isModelRequestError(e)) {
+    return {
+      error_class: "request_rejected",
+      ...(transport_error ? { transport_error } : {}),
+      conclusion: "infrastructure_error",
     };
   }
   return { error_class: "setup", conclusion: "infrastructure_error" };
@@ -152,6 +173,7 @@ export function aggregateLeaderboard(cells: ScoredCell[]): LeaderboardRow[] {
         ok_runs: 0,
         scored_cells: 0,
         infra_errors: 0,
+        request_rejected: 0,
         setup_errors: 0,
         precision: null,
         recall: null,
@@ -161,6 +183,8 @@ export function aggregateLeaderboard(cells: ScoredCell[]): LeaderboardRow[] {
     if (c.ok) cur.ok_runs += 1;
     if (c.error_class === "infra") {
       cur.infra_errors += 1;
+    } else if (c.error_class === "request_rejected") {
+      cur.request_rejected += 1;
     } else if (c.error_class === "setup") {
       cur.setup_errors += 1;
     } else {

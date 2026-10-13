@@ -8,7 +8,5 @@ bindings:
     native: stub.answer_send
   human.handoff:
     native: stub.human_handoff
-  user.correct:
-    native: stub.user_correct
   refund.request:
     native: stub.refund_request

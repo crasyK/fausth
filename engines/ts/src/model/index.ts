@@ -9,14 +9,25 @@ export {
   adapterFromProfile,
   DEFAULT_MODEL_TIMEOUT_MS,
 } from "./transports/openai-compatible.js";
+export type { ModelCallRecord } from "./transports/openai-compatible.js";
 export {
   ModelInfraError,
+  ModelRequestError,
   isModelInfraError,
+  isModelRequestError,
   isModelProtocolInvalidReason,
+  modelTransportErrorJson,
   MODEL_INFRA_ERROR_KINDS,
+  MODEL_REQUEST_ERROR_KINDS,
   MODEL_PROTOCOL_INVALID_REASONS,
 } from "./errors.js";
-export type { ModelInfraErrorKind, ModelProtocolInvalidReason } from "./errors.js";
+export type {
+  ModelInfraErrorKind,
+  ModelRequestErrorKind,
+  ModelProtocolInvalidReason,
+  ModelTransportError,
+  ModelTransportErrorJson,
+} from "./errors.js";
 export {
   createAdapterFromDeployment,
   createOpenRouterAdapter,

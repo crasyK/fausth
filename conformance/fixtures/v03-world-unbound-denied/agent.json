@@ -1,0 +1,1 @@
+{"name":"v03-world-unbound-denied","spec":"counterbalance-contract/v0.3","state":{},"tools":[{"id":"noop.ping","input":{"additionalProperties":false,"properties":{},"type":"object"},"output":{"additionalProperties":false,"properties":{"ok":{"type":"integer"}},"required":["ok"],"type":"object"}}]}

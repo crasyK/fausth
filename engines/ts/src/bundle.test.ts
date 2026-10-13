@@ -321,14 +321,16 @@ describe("bundle v0.2", () => {
 });
 
 describe("bundle signatures", () => {
-  it("unsigned coding pack stays 15463 bytes", () => {
+  it("unsigned coding pack stays 15765 bytes", () => {
     const outDir = mkdtempSync(join(tmpdir(), "fausth-unsigned-size-"));
     const { out, signed } = packHarness(
       codingHarness,
       join(outDir, "coding.fausth.json"),
     );
     assert.equal(signed, false);
-    assert.equal(readFileSync(out).byteLength, 15463);
+    // examples/coding-counterbalance changed for the v0.3 contract (user channel, effects,
+    // instinct_text, KIT ids, smoke golden); update deliberately when that example changes.
+    assert.equal(readFileSync(out).byteLength, 15765);
     assert.equal("signature" in JSON.parse(readFileSync(out, "utf8")), false);
     rmSync(outDir, { recursive: true, force: true });
   });

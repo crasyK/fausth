@@ -5,7 +5,7 @@ import copy
 import hashlib
 from typing import Any
 
-from .canonical import canonical_json
+from .canonical import UNDEFINED, canonical_json, jget, js_string, js_truthy, nn
 
 FORBIDDEN_OPS = {
     "set_permissions_tools",
@@ -17,18 +17,24 @@ FORBIDDEN_OPS = {
     "set_tool_output",
 }
 
-SKILLS_PATCH_DECLINE_REASONS = frozenset(
-    {
-        "no_new_heuristic",
-        "insufficient_evidence",
-        "would_overfit_task",
-        "skills_already_adequate",
-    }
+SKILLS_PATCH_DECLINE_REASONS = (
+    "no_new_heuristic",
+    "insufficient_evidence",
+    "would_overfit_task",
+    "skills_already_adequate",
 )
+_DECLINE_REASON_SET = frozenset(SKILLS_PATCH_DECLINE_REASONS)
 
 
-def parse_harness_patch(args: dict[str, Any]) -> dict[str, Any] | None:
-    ops = args.get("ops")
+def _args_prop(args: Any, key: str) -> Any:
+    """``args.key`` (throws on null/undefined like the TS engine)."""
+    from .runtime import jprop
+
+    return jprop(args, key)
+
+
+def parse_harness_patch(args: Any) -> dict[str, Any] | None:
+    ops = _args_prop(args, "ops")
     if not isinstance(ops, list) or len(ops) == 0:
         return None
     if len(ops) > 1:
@@ -36,12 +42,12 @@ def parse_harness_patch(args: dict[str, Any]) -> dict[str, Any] | None:
     return {"ops": ops}
 
 
-def parse_skills_patch_decline(args: dict[str, Any]) -> dict[str, Any] | None:
-    reason = args.get("reason")
-    if not isinstance(reason, str) or reason not in SKILLS_PATCH_DECLINE_REASONS:
+def parse_skills_patch_decline(args: Any) -> dict[str, Any] | None:
+    reason = _args_prop(args, "reason")
+    if not isinstance(reason, str) or reason not in _DECLINE_REASON_SET:
         return None
-    note = args.get("note")
-    if note is not None and not isinstance(note, str):
+    note = _args_prop(args, "note")
+    if note is not UNDEFINED and not isinstance(note, str):
         return None
     out: dict[str, Any] = {"reason": reason}
     if isinstance(note, str):
@@ -49,9 +55,9 @@ def parse_skills_patch_decline(args: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def parse_skills_reflect(args: dict[str, Any]) -> dict[str, Any] | None:
-    """Unified end-of-phase skills reflection (`harness.reflect_skills`)."""
-    disposition = args.get("disposition")
+def parse_skills_reflect(args: Any) -> dict[str, Any] | None:
+    """Unified end-of-phase skills reflection (``harness.reflect_skills``)."""
+    disposition = _args_prop(args, "disposition")
     if disposition == "decline":
         decline = parse_skills_patch_decline(args)
         if decline is None:
@@ -65,8 +71,11 @@ def parse_skills_reflect(args: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _cell_allowed(mutable: list[str] | None, cell: str) -> bool:
-    return cell in (mutable or [])
+def _cell_allowed(mutable: Any, cell: str) -> bool:
+    m = nn(mutable, [])
+    if isinstance(m, (list, str)):
+        return cell in m if isinstance(m, list) else cell in m
+    return False
 
 
 def validate_patch_security(agent: dict[str, Any], patch: dict[str, Any]) -> tuple[bool, str, str]:
@@ -74,10 +83,9 @@ def validate_patch_security(agent: dict[str, Any], patch: dict[str, Any]) -> tup
     ops = patch.get("ops") or []
     if not ops:
         return False, "harness_patch_invalid", "empty patch"
-    tool_ids = {t["id"] for t in agent.get("tools") or []}
-    mutable = agent.get("mutable")
+    mutable = agent.get("mutable", UNDEFINED)
     for op in ops:
-        if not isinstance(op, dict) or "op" not in op:
+        if not isinstance(op, dict) or not isinstance(op.get("op"), str):
             return False, "harness_patch_invalid", "malformed patch op"
         kind = op["op"]
         if kind in FORBIDDEN_OPS:
@@ -89,15 +97,15 @@ def validate_patch_security(agent: dict[str, Any], patch: dict[str, Any]) -> tup
         if kind == "set_tool_description":
             if not _cell_allowed(mutable, "skills"):
                 return False, "harness_patch_denied", "skills not in mutable; cannot set_tool_description"
-            tool_id = str(op.get("tool_id") or "")
-            if tool_id not in tool_ids:
+            tool_id = js_string(nn(op.get("tool_id", UNDEFINED), ""))
+            if not any(jget(t, "id") == tool_id for t in agent.get("tools") or []):
                 return False, "harness_patch_invalid", f"unknown tool_id '{tool_id}'"
             if not isinstance(op.get("description"), str):
                 return False, "harness_patch_invalid", "set_tool_description requires string description"
         elif kind == "set_memory_note":
             if not _cell_allowed(mutable, "memory"):
                 return False, "harness_patch_denied", "memory not in mutable; cannot set_memory_note"
-            if not str(op.get("key") or ""):
+            if not js_string(nn(op.get("key", UNDEFINED), "")):
                 return False, "harness_patch_invalid", "set_memory_note requires key"
             if not isinstance(op.get("note"), str):
                 return False, "harness_patch_invalid", "set_memory_note requires string note"
@@ -116,22 +124,27 @@ def harness_ir_hash(agent: dict[str, Any]) -> str:
 
 
 def apply_harness_patch(agent: dict[str, Any], patch: dict[str, Any]) -> None:
+    """Apply a validated patch in place. Caller must validate_patch_security first."""
     for op in patch.get("ops") or []:
-        kind = op["op"]
+        kind = op.get("op")
         if kind == "set_tool_description":
             for t in agent.get("tools") or []:
-                if t.get("id") == op["tool_id"]:
+                if jget(t, "id") == op.get("tool_id"):
                     t["description"] = op["description"]
                     break
         elif kind == "set_memory_note":
-            cb = agent.setdefault("counterbalance", {})
-            notes = cb.setdefault("memory_notes", {})
-            notes[op["key"]] = op["note"]
+            if not js_truthy(agent.get("counterbalance")):
+                agent["counterbalance"] = {}
+            cb = agent["counterbalance"]
+            if not js_truthy(cb.get("memory_notes")):
+                cb["memory_notes"] = {}
+            cb["memory_notes"][js_string(op.get("key", UNDEFINED))] = op["note"]
         elif kind == "set_instinct_text":
             agent["instinct_text"] = op["text"]
 
 
 def apply_candidate_patch(agent: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply candidate patch to a clone; raises ValueError on validation failure."""
     clone = copy.deepcopy(agent)
     ok, reason, error = validate_patch_security(clone, patch)
     if not ok:

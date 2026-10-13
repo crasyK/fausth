@@ -23,9 +23,10 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { canonicalJson } from "../canonical.js";
 import type { ToolHandler } from "../runtime.js";
-import type { Deployment, ToolDef, ToolResultEnvelope } from "../types.js";
+import type { Deployment, DeploymentUserBinding, ToolDef, ToolResultEnvelope } from "../types.js";
 import type { ModelPort } from "../model/port.js";
 import { createAdapterFromDeployment } from "../model/resolve.js";
+import { modelTransportErrorJson } from "../model/errors.js";
 import { validateAgainstSchema } from "../schema-validate.js";
 import { AdapterError } from "./error.js";
 import { resolveHarnessFile } from "./stdio-session.js";
@@ -34,19 +35,8 @@ export type UserChannelSource = "recorded" | "simulator" | "human";
 
 export const USER_CHANNEL_SOURCES: readonly UserChannelSource[] = ["recorded", "simulator", "human"];
 
-/** `bindings.<tool>.user` (local type until types.ts carries it). */
-export type UserChannelBinding = {
-  source: UserChannelSource;
-  answers?: string;
-  model?: string;
-  system_prompt_file?: string;
-  context_file?: string;
-  /** Optional simulator transport overrides (default: deployment.model settings). */
-  profile?: string;
-  base_url?: string;
-  api_key_env?: string;
-  max_tokens?: number;
-};
+/** `bindings.<tool>.user` (shared IR/deployment type, spec-v0.3 §9). */
+export type UserChannelBinding = DeploymentUserBinding;
 
 export type StateValueType = "integer" | "number" | "string" | "boolean" | "object" | "array" | "null";
 
@@ -460,7 +450,12 @@ export function createUserChannelHandler(
       } catch (e) {
         // Transport / gateway failure of the simulator is infrastructure, not agent behavior.
         messages.pop();
-        return fail(`user simulator for '${tool.id}' failed: ${e instanceof Error ? e.message : String(e)}`);
+        const modelError = modelTransportErrorJson(e);
+        throw new AdapterError(
+          "user_channel_unavailable",
+          `adapter failure: user simulator for '${tool.id}' failed: ${e instanceof Error ? e.message : String(e)}`,
+          modelError ? { detail: { model_error: modelError } } : {},
+        );
       }
       const text = proposal.type === "stop" ? (proposal.message ?? "") : "";
       responses.push(text);

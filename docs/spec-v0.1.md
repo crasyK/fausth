@@ -1,7 +1,7 @@
 # Counterbalance Contract — Specification v0.1
 
-**Status:** Normative for Faust Harness v0.1.x  
-**Spec id:** `counterbalance-contract/v0.1`
+**Status:** Baseline. Normative for Fausth 0.3.x only where [`spec-v0.3.md`](spec-v0.3.md) does not override it — **spec-v0.3.md wins on every conflict** (it is the single normative description of the executable contract).  
+**Spec id:** `counterbalance-contract/v0.1` (accepted by 0.3 engines for the same IR as v0.2/v0.3)
 
 This document is the source of truth for the v0.1 baseline. Golden `expected.jsonl` files MUST be hand-derived from this prose before any engine is treated as correct. Live OpenRouter runs MUST NOT rewrite golden expectations automatically.
 
@@ -19,7 +19,7 @@ Declares identity, state schema defaults, tools (canonical IDs + I/O schemas), g
 
 ### 1.2 `deployment.yml` (local binding)
 
-Declares model transport, capability → native bindings, permissions, optional `judge_model`.
+Declares model transport, capability → native bindings (world natives, and `user:` bindings for user-channel tools — spec-v0.3 §9), optional `judge_model`. **Permissions live in `agent.yml`** (`permissions:`), never in the deployment; a deployment may only narrow world scopes.
 
 ### 1.3 Canonical JSON IR
 
@@ -64,7 +64,7 @@ Named stubs (may emit events): `record`, `rebalance`.
 | Verdict | Meaning |
 |---------|---------|
 | `allow` | Step accepted |
-| `deny` | Step rejected; tool not executed (or spawn rejected) |
+| `deny` | At propose/validate/authorize: step rejected, tool **not executed**. At execute/observe/verify: the call ran (or was attempted) but its outcome is rejected — not successful, state transition **not committed**, external side effects not undone (spec-v0.3 §13.1) |
 | `safe_state` | Failure after execute (or authorize policy); enter recovery / fallback flow |
 
 ### Limits
@@ -136,7 +136,7 @@ If `otherwise` is omitted, default is `deny` for gates and `safe_state` for veri
 Executable tools SHOULD declare JSON Schema `input` and `output` objects. When present:
 
 - `validate` MUST reject args that fail `input` (`input_schema_invalid`).
-- Unknown properties are rejected unless the schema sets `additionalProperties: true`.
+- ~~Unknown properties are rejected unless the schema sets `additionalProperties: true`.~~ Superseded by spec-v0.3 §2.3: standard JSON Schema semantics (set `additionalProperties: false` to close a schema).
 - After native execution, the **output object** MUST match `output` (`output_schema_invalid`).
 
 ### 5.2 Result envelope
@@ -155,7 +155,7 @@ Legacy `_state_patch` is forbidden in v0.1.1+.
 Sequence:
 
 1. Validate `output` against `tool.output` (if present)
-2. Validate `state_transition.set` / `remove` against allowed writable state keys (any key present in initial `state`, unless a future `state_writable` list is declared)
+2. Validate `state_transition.set` / `remove` against allowed writable state keys (any key present in initial `state`) — enforced in 0.3 as `state_write_denied` / `checkpoint_authority_failed` before commit (spec-v0.3 §6.3, §8.3)
 3. Apply transition to agent `state`
 4. Emit `execute` with `result` = `output` and `state_hash` of the post-transition state
 5. Run verification
@@ -251,7 +251,7 @@ Tighten-only capability lattice — child MUST be ≤ parent on every governed d
 - `child.limits.max_steps ≤ parent.remaining_steps` (when specified)
 - `child.limits.max_tool_calls ≤ parent.remaining_calls` (when specified)
 - Nested spawn: denied unless parent `spawn.allow_nested: true`
-- If parent `spawn.allow` is `false` (or omitted when spawn tool is used without policy allow), deny
+- If parent `spawn.allow` is not `true` (false, omitted, or no `spawn` block), deny (spec-v0.3 §10)
 
 Escalation → `deny` with `gate_denied` (or `schema_invalid` if malformed).
 

@@ -1,2 +1,2 @@
-{"call_seq":1,"tool":"noop.ping","args":{},"result":{"ok":1}}
-{"call_seq":2,"tool":"noop.ping","args":{},"result":{"ok":1}}
+{"args":{},"call_seq":1,"result":{"ok":1},"tool":"noop.ping"}
+{"args":{},"call_seq":2,"result":{"ok":1},"tool":"noop.ping"}

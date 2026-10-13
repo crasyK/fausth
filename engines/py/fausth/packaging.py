@@ -4,11 +4,13 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
-from .canonical import canonical_json
+from .canonical import canonical_json, read_jsonl, read_text_utf8
 from .registry import AdapterError, load_agent_dir, load_yaml, resolve_tools_from_deployment
+from .validate import validate_agent
 from .runtime import FaustRuntime, default_tools, events_to_jsonl, replay_fixture
 from .connectors import ConnectorError, decode_utf8_strict, resolve_harness, resolved_harness_hash
 from .bundle_signature import load_sign_key_from_path, sign_bundle
@@ -165,12 +167,6 @@ def inspect_harness(
         "name": agent.get("name"),
         "spec": agent.get("spec"),
         "tools": [t["id"] for t in agent.get("tools") or []],
-        "permissions_tools": (agent.get("permissions") or {}).get("tools"),
-        "sequences": [
-            s.get("id") or s.get("action")
-            for s in (agent.get("counterbalance") or {}).get("sequences") or []
-        ],
-        "spawn": agent.get("spawn"),
         "deployments": deployments,
         "smoke": {
             "model": (d / "smoke.model.jsonl").is_file(),
@@ -178,24 +174,45 @@ def inspect_harness(
         },
         "resolution": resolution,
     }
+    # Mirror TS inspectHarness: optional IR facts are omitted when undefined (never null).
+    permissions = agent.get("permissions") if isinstance(agent.get("permissions"), dict) else {}
+    if "tools" in permissions and permissions["tools"] is not None:
+        report["permissions_tools"] = permissions["tools"]
+    counterbalance = agent.get("counterbalance") if isinstance(agent.get("counterbalance"), dict) else {}
+    if counterbalance.get("sequences") is not None:
+        report["sequences"] = [
+            s.get("id") if s.get("id") is not None else s.get("action")
+            for s in counterbalance["sequences"]
+        ]
+    if agent.get("mutable") is not None:
+        report["mutable"] = agent["mutable"]
+    if agent.get("spawn") is not None:
+        report["spawn"] = agent["spawn"]
     dep_path = pick_test_deployment(d)
     if dep_path:
         try:
-            resolve_tools_from_deployment(
+            with resolve_tools_from_deployment(
                 agent,
                 load_yaml(str(dep_path)),
                 harness_dir=str(d),
                 resolved=resolved,
-            )
+                deployment_path=str(dep_path),
+            ):
+                pass
             report["binding_coverage"] = {
                 "deployment": dep_path.name,
                 "missing": [],
                 "ok": True,
             }
-        except AdapterError as e:
+        except Exception as e:  # TS reports every binding failure, not only AdapterError
+            missing: list[str] = []
+            if isinstance(e, AdapterError) and e.code == "binding_missing":
+                m = re.search(r"tool '([^']+)'", str(e))
+                if m:
+                    missing.append(m.group(1))
             report["binding_coverage"] = {
                 "deployment": dep_path.name,
-                "missing": [],
+                "missing": missing,
                 "ok": False,
                 "error": str(e),
             }
@@ -228,57 +245,85 @@ def test_harness(
             details.append(
                 f"resolve OK ({len(resolved['resolution']['connectors'])} connectors)"
             )
-    except ConnectorError as e:
+    except Exception as e:  # TS: any resolve/load failure is a test failure, not a crash
         return {
             "ok": False,
+            "validate_ok": False,
             "bindings_ok": False,
             "smoke_ok": None,
             "fixtures_ok": None,
             "errors": [str(e)],
+            "details": [],
+        }
+    # Mirror TS testHarness: the resolved IR must validate before anything runs.
+    validate_ok, validate_errors, validate_warnings = validate_agent(agent)
+    if not validate_ok:
+        return {
+            "ok": False,
+            "validate_ok": False,
+            "bindings_ok": False,
+            "smoke_ok": None,
+            "fixtures_ok": None,
+            "errors": list(validate_errors),
             "details": details,
         }
+    details.append("validate OK")
+    details.extend(f"warn: {w}" for w in validate_warnings)
     dep_path = pick_test_deployment(d, deployment)
     if not dep_path:
         return {
             "ok": False,
-            "errors": ["no deployment found"],
+            "validate_ok": True,
+            "bindings_ok": False,
+            "smoke_ok": None,
+            "fixtures_ok": None,
+            "errors": ["no deployment found for harness test (need fixture/simulation or --deployment)"],
             "details": details,
         }
+    deployment_doc = load_yaml(str(dep_path))
+    bindings_ok = True
     try:
-        tools = resolve_tools_from_deployment(
+        # Binding check only; the smoke run binds its own (closed) tool set.
+        with resolve_tools_from_deployment(
             agent,
-            load_yaml(str(dep_path)),
+            deployment_doc,
             harness_dir=str(d),
             resolved=resolved,
-        )
+            deployment_path=str(dep_path),
+        ):
+            pass
         details.append(f"bindings OK ({dep_path.name})")
-        bindings_ok = True
-    except AdapterError as e:
+    except Exception as e:  # TS reports every binding failure, not only AdapterError
         errors.append(str(e))
         bindings_ok = False
-        tools = {}
 
     smoke_ok: bool | None = None
     model_path = d / "smoke.model.jsonl"
     expected_path = d / "smoke.expected.jsonl"
     if bindings_ok and model_path.is_file():
-        proposals = [
-            json.loads(line)
-            for line in model_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        rt = FaustRuntime(agent, proposals, tools, None)
-        rt.run_loop(32)
-        actual = events_to_jsonl(rt.events)
-        if not expected_path.is_file():
+        try:
+            with resolve_tools_from_deployment(
+                agent,
+                deployment_doc,
+                harness_dir=str(d),
+                resolved=resolved,
+                deployment_path=str(dep_path),
+            ) as tools:
+                rt = FaustRuntime(agent, read_jsonl(model_path), tools, None)
+                rt.run_loop(32)
+            actual = events_to_jsonl(rt.events)
+            if not expected_path.is_file():
+                smoke_ok = False
+                errors.append("smoke.model.jsonl present but smoke.expected.jsonl missing")
+            else:
+                expected = read_text_utf8(expected_path).replace("\r\n", "\n")
+                smoke_ok = actual == expected
+                details.append("smoke OK" if smoke_ok else "smoke mismatch")
+                if not smoke_ok:
+                    errors.append("smoke event log ≠ smoke.expected.jsonl")
+        except Exception as e:
             smoke_ok = False
-            errors.append("smoke.expected.jsonl missing")
-        else:
-            expected = expected_path.read_text(encoding="utf-8").replace("\r\n", "\n")
-            smoke_ok = actual == expected
-            details.append("smoke OK" if smoke_ok else "smoke mismatch")
-            if not smoke_ok:
-                errors.append("smoke event log ≠ smoke.expected.jsonl")
+            errors.append(str(e))
     elif not model_path.is_file():
         details.append("no smoke.model.jsonl (skipped)")
 
@@ -299,6 +344,7 @@ def test_harness(
     ok = bindings_ok and (smoke_ok is None or smoke_ok) and (fixtures_ok is None or fixtures_ok)
     return {
         "ok": ok,
+        "validate_ok": True,
         "bindings_ok": bindings_ok,
         "smoke_ok": smoke_ok,
         "fixtures_ok": fixtures_ok,

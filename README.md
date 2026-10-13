@@ -4,7 +4,7 @@ Portable runtime for **agent harnesses**: declare tools, gates, and verify rules
 
 The model proposes. Fausth governs what may run and how the world must prove it worked.
 
-**Status:** [v0.3.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.3.0-alpha) · contract `counterbalance-contract/v0.2` (+ v0.3 candidates) · **not** production-safe
+**Status:** [v0.3.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.3.0-alpha) · executable contract normative in [`docs/spec-v0.3.md`](docs/spec-v0.3.md) (one IR, spec ids `counterbalance-contract/v0.1`–`v0.3`; the v0.2 agent/world/exchange authoring shape is a non-loadable draft) · **not** production-safe
 
 **Human map:** [`docs/README.md`](docs/README.md) · **Issues:** [github.com/crasyK/fausth/issues](https://github.com/crasyK/fausth/issues)
 
@@ -44,7 +44,7 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 | Case studies | [`docs/case-studies/`](docs/case-studies/) |
 | Evidence pack | [`docs/evidence-pack.md`](docs/evidence-pack.md) |
 | Packaging roadmap (M4–M15) | [`docs/harness-packaging-roadmap.md`](docs/harness-packaging-roadmap.md) |
-| Spec & theory | [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) · [`docs/notion-hub/`](docs/notion-hub/) |
+| Spec & theory | [`docs/spec-v0.3.md`](docs/spec-v0.3.md) (normative) · [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) (open candidates) · [`docs/notion-hub/`](docs/notion-hub/) |
 | Known issues | [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md) |
 
 ## What 0.3.0 proves (short)
@@ -78,7 +78,7 @@ See [`docs/production-isolation.md`](docs/production-isolation.md) and PROTOCOL 
 
 ## Spec & theory
 
-[`docs/spec-v0.2.md`](docs/spec-v0.2.md) · [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) · [`docs/spec-v0.1.md`](docs/spec-v0.1.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md) · [`docs/glossary.md`](docs/glossary.md)
+[`docs/spec-v0.3.md`](docs/spec-v0.3.md) (normative; overrides v0.1/v0.2 on conflict) · [`docs/spec-v0.2.md`](docs/spec-v0.2.md) · [`docs/spec-v0.1.md`](docs/spec-v0.1.md) · [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) · [`docs/architecture.md`](docs/architecture.md) · [`docs/counterbalance-architecture.md`](docs/counterbalance-architecture.md) · [`docs/glossary.md`](docs/glossary.md)
 
 Point-in-time release notes: [`docs/archive/releases/`](docs/archive/releases/). Changelog: [`CHANGELOG.md`](CHANGELOG.md).
 

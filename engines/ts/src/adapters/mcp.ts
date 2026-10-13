@@ -46,8 +46,8 @@ export function mcpToolMapFromResolved(resolved?: ResolvedHarnessIR): Record<str
   return out;
 }
 
-/** Server config extension: explicit host env names to pass through (non-secret only). */
-type McpServerConfig = DeploymentMcpServer & { env_passthrough?: string[] };
+/** Server config (shared type, incl. env_passthrough). */
+type McpServerConfig = DeploymentMcpServer;
 
 function validateServerEnv(serverId: string, server: McpServerConfig): void {
   if (server.env !== undefined) {
