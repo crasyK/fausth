@@ -205,15 +205,35 @@ async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<numbe
   return failed === 0 ? 0 : 1;
 }
 
+/**
+ * Validate the harness as it executes: the resolved IR (connector-provided tools linked in),
+ * so references to connector tools are checked against what the engine will actually see.
+ */
 async function cmdValidate(target: string): Promise<number> {
-  const r = validateAgentPath(resolve(target));
+  const abs = resolve(target);
+  const raw = validateAgentPath(abs);
+  let agent: AgentIR;
+  if (existsSync(join(abs, "agent.yml")) || existsSync(join(abs, "agent.json"))) {
+    try {
+      agent = resolveHarness(abs).agent;
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      return 1;
+    }
+  } else if (raw.ok) {
+    agent = raw.agent;
+  } else {
+    console.error(raw.errors.join("\n"));
+    return 1;
+  }
+  const r = validateAgent(agent);
   if (!r.ok) {
     console.error(r.errors.join("\n"));
     return 1;
   }
   for (const w of r.warnings) console.warn(`WARN ${w}`);
-  console.log(`OK ${r.agent.name}`);
-  console.log(toCanonicalIrJson(r.agent).trim());
+  console.log(`OK ${agent.name}`);
+  console.log(toCanonicalIrJson(agent).trim());
   return 0;
 }
 
