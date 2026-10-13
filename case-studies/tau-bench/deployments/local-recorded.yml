@@ -1,3 +1,5 @@
+# τ-bench retail — recorded deployment (CI plumbing: model traces in ../recorded/<task>/,
+# user answers replayed from recorded/; no network, no simulator).
 platform: case-study-tau-recorded
 model:
   transport: recorded
@@ -9,28 +11,16 @@ world:
   shell_timeout_ms: 60000
   commands:
     tau: ["node", "tau.mjs", "from-request"]
-    test: ["node", "tau.mjs", "hash"]
-  scopes:
-    read: ["."]
-    write: ["tau/", "data/"]
 
 bindings:
-  fs.read:
-    native: local.fs_read
-  fs.list:
-    native: local.fs_list
-  fs.write_scoped:
-    native: local.fs_write
-  shell.run_allowlisted:
-    native: local.shell
   tau.invoke:
     native: local.tau_invoke
   todo.complete:
     native: local.todo_complete
   user.ask:
-    native: local.user_ask_auto
-  user.correct:
-    native: local.user_correct_auto
+    user:
+      source: recorded
+      answers: recorded/user-answers.retail-000.jsonl
   task.complete:
     native: local.task_complete
   phase.yield:

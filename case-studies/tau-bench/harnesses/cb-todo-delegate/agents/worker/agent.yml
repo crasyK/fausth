@@ -1,3 +1,7 @@
+# RETIRED (2026-10-13 audit, see ../README.md): this pipeline depended on todo slots the
+# runner derived from the GOLD actions (leakage), on τ-specific engine natives, and on a
+# scripted user that always answered "yes". Its results are invalid. The file is kept only
+# as a loadable fixture for engine tests; it is not listed in any manifest. Do not run it.
 spec: counterbalance-contract/v0.1
 name: tau-worker
 
@@ -165,14 +169,13 @@ tools:
         require: { path: result.ok, eq: 1 }
         otherwise: deny
   - id: user.ask
+    channel: user
     description: >
       OPTIONAL, at most ONCE: confirm a consequential action (cancel/return/exchange) before mutating.
       Name EVERY order_id and item_id (or product) you will mutate in that single question — "yes"
       confirms the full set. Do not confirm a subset (e.g. only two skateboards) if the customer
       also needs other items returned/exchanged on the same or other orders.
-      The scripted user sim returns "yes"/"yes please" — that is CONFIRMATION only, never an email,
-      name, order id, or reason. Do NOT ask for identity or reasons — get those from the task prompt
-      and tau.invoke. Do NOT ask more than once; proceed to fill the slots.
+      (Retired text: the old scripted user always answered "yes".)
     input:
       type: object
       additionalProperties: true
@@ -205,17 +208,14 @@ permissions:
     - user.ask
     - phase.yield
   filesystem:
-    write_scopes: ["tau/", "data/"]
-    read_scopes: ["."]
+    write_scopes: []
+    read_scopes: ["tau/todos.json"]
 
 counterbalance:
   sequences:
     - id: wiki-before-mutate
       action: tau.invoke
       require_prior_tools: [fs.read]
-  invalidate_after:
-    - action: tau.invoke
-      memory_keys: [test_evidence_current]
   completion:
     tool: phase.yield
     require:
