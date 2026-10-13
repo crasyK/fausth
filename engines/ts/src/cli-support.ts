@@ -52,6 +52,7 @@ export function lastExitCode(events: Event[]): number | null {
 
 /** Flags that never consume the next token unless it is an explicit boolean literal. */
 const BOOLEAN_FLAGS = new Set([
+  "require-trusted",
   "expect-complete",
   "apply-overlays",
   "skip-fixtures",
@@ -64,6 +65,14 @@ const BOOLEAN_FLAGS = new Set([
 ]);
 
 const BOOLEAN_LITERALS = new Set(["true", "false", "1", "0"]);
+
+/** Flags that may repeat; values accumulate comma-separated. */
+const LIST_FLAGS = new Set(["allow-command"]);
+
+function setFlag(flags: Record<string, string>, name: string, value: string): void {
+  if (LIST_FLAGS.has(name) && flags[name] !== undefined) flags[name] = `${flags[name]},${value}`;
+  else flags[name] = value;
+}
 
 /**
  * `--flag value`, `--flag=value`, boolean flags (`--expect-complete [true|false|1|0]`) and
@@ -81,7 +90,7 @@ export function parseArgs(argv: string[]): { flags: Record<string, string>; posi
     const body = a.slice(2);
     const eq = body.indexOf("=");
     if (eq >= 0) {
-      flags[body.slice(0, eq)] = body.slice(eq + 1);
+      setFlag(flags, body.slice(0, eq), body.slice(eq + 1));
       continue;
     }
     if (BOOLEAN_FLAGS.has(body)) {
@@ -96,9 +105,9 @@ export function parseArgs(argv: string[]): { flags: Record<string, string>; posi
     }
     const next = argv[i + 1];
     if (next === undefined || next.startsWith("--")) {
-      flags[body] = "true";
+      setFlag(flags, body, "true");
     } else {
-      flags[body] = next;
+      setFlag(flags, body, next);
       i += 1;
     }
   }

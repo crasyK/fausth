@@ -7,6 +7,7 @@ import { FaustRuntime, eventsToJsonl, type JudgeFn, type ToolHandler } from "./r
 import { stateHash } from "./canonical.js";
 import { harnessIrHash } from "./harness-patch.js";
 import { buildReplayWorld } from "./replay.js";
+import { AdapterError } from "./adapters/error.js";
 import type { AgentIR, Event, ModelProposal, RecordedToolCall, ToolDef } from "./types.js";
 
 const OPEN = { type: "object", additionalProperties: true } as const;
@@ -419,6 +420,52 @@ describe("D14: the user channel", () => {
     const world = buildReplayWorld({ ...a, tools: [...a.tools, tool("fs.read")] });
     assert.equal(world["user.ask"], undefined);
     assert.equal(typeof world["fs.read"], "function");
+  });
+});
+
+describe("integrator wiring: unbound handlers and host infrastructure", () => {
+  it("a world tool without a host handler is denied before execution (capability_missing)", async () => {
+    const { rt, events } = await run(agent({ tools: [tool("t")] }), [call("t")], {});
+    const deny = find(events, { stage: "validate", reason: "capability_missing" })!;
+    assert.deepEqual(deny.failure, { kind: "channel_unbound", channel: "world" });
+    assert.equal(find(events, { stage: "execute" }), undefined);
+    assert.equal(rt.usage().tool_calls, 0);
+  });
+
+  it("an AdapterError is infra_failure (not tool_execution_failed) and ends the run", async () => {
+    const a = agent({ state: { x: 0 }, tools: [tool("t"), tool("u")], limits: { continue_after_deny: true } });
+    const { rt, events } = await run(a, [call("t"), call("u")], {
+      t: () => {
+        throw new AdapterError("user_channel_unavailable", "adapter failure: no recorded user answer");
+      },
+      u: () => ({ ok: 1 }),
+    });
+    const f = find(events, { stage: "execute", reason: "infra_failure" })!;
+    assert.deepEqual(f.failure, { kind: "adapter", code: "user_channel_unavailable" });
+    assert.equal(find(events, { reason: "tool_execution_failed" }), undefined);
+    assert.equal(find(events, { stage: "propose", tool: "u" }), undefined, "run ended despite continue_after_deny");
+    assert.equal(rt.infraFailed, true);
+  });
+
+  it("an observer infra failure ends verification without claiming a verify result", async () => {
+    const a = agent({
+      state: { x: 0 },
+      tools: [
+        tool("set", { verify: [{ kind: "effect", observe: "read", require: { path: "observation.ok", eq: 1 } }] }),
+        tool("read", { read_only: true, input: { type: "object" } }),
+      ],
+    });
+    const { rt, events } = await run(a, [call("set")], {
+      set: () => ({ output: { ok: 1 }, state_transition: { set: { x: 1 } } }),
+      read: () => {
+        throw new AdapterError("host_session_failed", "adapter failure: sensor offline");
+      },
+    });
+    assert.ok(find(events, { stage: "observe", reason: "infra_failure" }));
+    const v = find(events, { stage: "verify", reason: "infra_failure" })!;
+    assert.deepEqual(v.failure, { kind: "adapter", code: "host_session_failed" });
+    assert.equal(find(events, { reason: "safe_state_entered" }), undefined);
+    assert.deepEqual(rt.agent.state, { x: 0 }, "nothing committed after infra");
   });
 });
 

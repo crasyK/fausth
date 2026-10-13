@@ -83,13 +83,8 @@ export type LocalWorldOptions = {
   extensions?: LocalWorldExtension[];
 };
 
-/** Deployment world settings this adapter understands beyond the shared type. */
-type WorldConfig = NonNullable<Deployment["world"]> & {
-  /** Extra host env var names passed to world commands (non-secret names only). */
-  env_passthrough?: string[];
-  /** Literal env values for world commands (non-secret names only). */
-  env?: Record<string, string>;
-};
+/** Deployment world settings (shared type, incl. env / env_passthrough). */
+type WorldConfig = NonNullable<Deployment["world"]>;
 
 export type LocalWorld = {
   root: string;

@@ -32,6 +32,13 @@ describe("parseArgs (CORE-17)", () => {
     assert.equal(r.flags.json, "true");
   });
 
+  it("--allow-command repeats accumulate; --require-trusted is boolean", () => {
+    const r = parseArgs(["--allow-command", "node", "--allow-command=python3", "--require-trusted", "bundle.json"]);
+    assert.equal(r.flags["allow-command"], "node,python3");
+    assert.equal(r.flags["require-trusted"], "true");
+    assert.deepEqual(r.positionals, ["bundle.json"]);
+  });
+
   it("a value flag at the end or before another flag is 'true', not the next flag", () => {
     const r = parseArgs(["--report", "--json"]);
     assert.equal(r.flags.report, "true");

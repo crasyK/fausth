@@ -107,11 +107,7 @@ export function createAdapterFromDeployment(deployment: Deployment): ResolvedMod
     }
   }
 
-  // `timeout_ms` is not (yet) part of the DeploymentModel type; read it defensively.
-  const timeoutMs = positiveIntOrUndefined(
-    (m as { timeout_ms?: unknown }).timeout_ms,
-    "deployment.model.timeout_ms",
-  );
+  const timeoutMs = positiveIntOrUndefined(m.timeout_ms, "deployment.model.timeout_ms");
 
   const adapter = adapterFromProfile(profile, {
     baseUrl,

@@ -28,6 +28,7 @@ import { evalPredicate } from "./predicates.js";
 import { validateAgainstSchema } from "./schema-validate.js";
 import { fallbackStateOf, normalizeAgentIr } from "./load.js";
 import { parseScope, scopeContains } from "./scopes.js";
+import { ADAPTER_ERROR_CODES, type AdapterErrorCode } from "./adapters/error.js";
 import type {
   AgentIR,
   DenyFailure,
@@ -76,17 +77,16 @@ export type JudgeFn = (
 ) => Promise<{ score: number; reason: string } | { invalid: true; raw: string } | unknown>;
 
 /**
- * Thrown by recorded user-channel handlers (spec-v0.3 §15.2) to report a structured
- * transcript failure instead of a host error.
+ * Host infrastructure failures (deployment adapters: bindings, recorded responses, the user
+ * channel, host sessions) are reported as `infra_failure`, never as model or tool behaviour
+ * (spec-v0.3 §6.3). Recognised structurally so the engine does not depend on adapter classes.
  */
-export class TranscriptError extends Error {
-  constructor(
-    readonly code: "mismatch" | "exhausted",
-    readonly callSeq: number,
-  ) {
-    super(`recorded transcript ${code} at call ${callSeq}`);
-    this.name = "TranscriptError";
-  }
+function adapterErrorCode(e: unknown): AdapterErrorCode | null {
+  if (!(e instanceof Error) || e.name !== "AdapterError") return null;
+  const code = (e as Error & { code?: unknown }).code;
+  return typeof code === "string" && (ADAPTER_ERROR_CODES as readonly string[]).includes(code)
+    ? (code as AdapterErrorCode)
+    : null;
 }
 
 /** Shared recorded-transcript cursor (parent and children consume one transcript). */
@@ -119,7 +119,10 @@ export type RuntimeOptions = {
 
 type Action = { name: string; args: Record<string, unknown> };
 type Origin = "model" | "recovery";
-type Outcome = "success" | "complete" | "denied" | "safe_state";
+type Outcome = "success" | "complete" | "denied" | "safe_state" | "infra";
+type Invoked =
+  | { ok: true; raw: unknown }
+  | { ok: false; infra: boolean; failure: DenyFailure; error?: string };
 type PartialEvent = Omit<Event, "seq" | "ts_logical" | "state_hash">;
 type Provenance = { status: "current" | "stale" | "contradicted" | "unknown"; updated_at_step: number };
 
@@ -268,6 +271,8 @@ export class FaustRuntime {
   private readonly reflectionDenials = new Map<string, number>();
   private budgetEmitted = false;
   private recovering = false;
+  /** Set when a host infrastructure failure ended the reaction (spec-v0.3 §6.3). */
+  infraFailed = false;
 
   constructor(opts: RuntimeOptions) {
     const agent = normalizeAgentIr(structuredClone(opts.agent));
@@ -385,38 +390,37 @@ export class FaustRuntime {
 
   // ---------------------------------------------------------------- invocation (§15.1)
 
-  private async invoke(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<{ ok: true; raw: unknown } | { ok: false; failure: DenyFailure; error?: string }> {
+  private async invoke(name: string, args: Record<string, unknown>): Promise<Invoked> {
     if (this.transcript) {
       const cur = this.transcript;
       const expected = cur.idx + 1;
       const entry = cur.entries[cur.idx];
       if (!entry) {
-        return { ok: false, failure: { kind: "transcript", code: "exhausted", call_seq: expected } };
+        return { ok: false, infra: false, failure: { kind: "transcript", code: "exhausted", call_seq: expected } };
       }
       if (entry.call_seq !== expected || entry.tool !== name || !deepEq(entry.args ?? {}, args)) {
-        return { ok: false, failure: { kind: "transcript", code: "mismatch", call_seq: expected } };
+        return { ok: false, infra: false, failure: { kind: "transcript", code: "mismatch", call_seq: expected } };
       }
       cur.idx += 1;
       return { ok: true, raw: entry.result };
     }
     const handler = this.tools[name];
-    if (typeof handler !== "function") return { ok: false, failure: { kind: "host_error" } };
+    if (typeof handler !== "function") {
+      return { ok: false, infra: false, failure: { kind: "channel_unbound", channel: "world" } };
+    }
     try {
       return { ok: true, raw: await handler(args, { state: structuredClone(this.agent.state) }) };
     } catch (e) {
-      if (e instanceof TranscriptError) {
-        return { ok: false, failure: { kind: "transcript", code: e.code, call_seq: e.callSeq } };
-      }
       const msg = e instanceof Error ? e.message : String(e);
-      return { ok: false, failure: { kind: "host_error" }, ...(msg ? { error: this.sanitizeString(msg) } : {}) };
+      const error = msg ? { error: this.sanitizeString(msg) } : {};
+      const code = adapterErrorCode(e);
+      if (code) return { ok: false, infra: true, failure: { kind: "adapter", code }, ...error };
+      return { ok: false, infra: false, failure: { kind: "host_error" }, ...error };
     }
   }
 
-  /** §9: user channel bound = recorded-transcript mode or a host handler for the tool. */
-  private userChannelBound(id: string): boolean {
+  /** §6.1: a tool is bound when the run is in recorded-transcript mode or the host has a handler. */
+  private isBound(id: string): boolean {
     return this.transcript !== undefined || typeof this.tools[id] === "function";
   }
 
@@ -481,7 +485,7 @@ export class FaustRuntime {
         { name: String(proposal.name), args: proposal.args as Record<string, unknown> },
         "model",
       );
-      if (outcome === "complete" || outcome === "safe_state") break;
+      if (outcome === "complete" || outcome === "safe_state" || outcome === "infra") break;
       if (outcome === "denied" && !this.continueAfterDeny()) break;
     }
     return this.events;
@@ -520,10 +524,6 @@ export class FaustRuntime {
       deny("validate", "capability_missing");
       return "denied";
     }
-    if ((tool.channel ?? "world") === "user" && !this.userChannelBound(tool.id)) {
-      deny("validate", "capability_missing", { kind: "channel_unbound", channel: "user" });
-      return "denied";
-    }
     const reflection = (REFLECTION_TOOLS as readonly string[]).includes(act.name);
     if (!isPlainObject(args)) {
       if (reflection) this.noteReflectionDenial(act.name);
@@ -538,6 +538,10 @@ export class FaustRuntime {
       }
       if (reflection) this.noteReflectionDenial(act.name);
       deny("validate", "input_schema_invalid");
+      return "denied";
+    }
+    if (!this.isBound(tool.id)) {
+      deny("validate", "capability_missing", { kind: "channel_unbound", channel: tool.channel ?? "world" });
       return "denied";
     }
     this.emit({ stage: "validate", verdict: "allow", tool: act.name, args });
@@ -606,13 +610,14 @@ export class FaustRuntime {
       this.emit({
         stage: "execute",
         verdict: "deny",
-        reason: "tool_execution_failed",
+        reason: invoked.infra ? "infra_failure" : "tool_execution_failed",
         tool: act.name,
         args,
         failure: invoked.failure,
         ...(invoked.error !== undefined ? { error: invoked.error } : {}),
       });
-      return "denied";
+      if (invoked.infra) this.infraFailed = true;
+      return invoked.infra ? "infra" : "denied";
     }
     const env = readEnvelope(invoked.raw);
     if (!env) {
@@ -650,7 +655,12 @@ export class FaustRuntime {
     this.emit({ stage: "execute", verdict: "allow", tool: act.name, args, result: output });
 
     if (spawnPacket && spawnPacket.proposals && spawnPacket.proposals.length > 0) {
-      await this.runChild(spawnPacket, `spawn-${this.seq}`);
+      const childInfra = await this.runChild(spawnPacket, `spawn-${this.seq}`);
+      if (childInfra) {
+        this.agent.state = preState; // nothing is committed after an infrastructure failure
+        this.infraFailed = true;
+        return "infra";
+      }
     }
 
     // verify (§6.4)
@@ -667,6 +677,10 @@ export class FaustRuntime {
       }
       this.agent.state = preState; // discard the provisional transition (D8)
       this.emit(r.event);
+      if (r.infra) {
+        this.infraFailed = true;
+        return "infra";
+      }
       if (r.verdict === "safe_state" && origin !== "recovery" && !this.recovering) {
         await this.safeFlow(r.event.reason as ReasonCode);
         return "safe_state";
@@ -987,7 +1001,7 @@ export class FaustRuntime {
     v: Verify,
     act: Action,
     result: Record<string, unknown>,
-  ): Promise<{ pass: true; event: PartialEvent } | { pass: false; verdict: Verdict; event: PartialEvent }> {
+  ): Promise<{ pass: true; event: PartialEvent } | { pass: false; verdict: Verdict; event: PartialEvent; infra?: boolean }> {
     const tool = act.name;
     const args = act.args;
     const state = this.agent.state;
@@ -996,6 +1010,14 @@ export class FaustRuntime {
 
     if (v.kind === "effect") {
       const obs = await this.runObservation(v.observe);
+      if (!obs.ok && obs.infra) {
+        return {
+          pass: false,
+          verdict: "deny",
+          infra: true,
+          event: { stage: "verify", verdict: "deny", reason: "infra_failure", tool, args, failure: obs.infra },
+        };
+      }
       if (!obs.ok) {
         return {
           pass: false,
@@ -1146,7 +1168,7 @@ export class FaustRuntime {
   /** Governed observation for effect verifies (§7). */
   private async runObservation(
     observerId: string,
-  ): Promise<{ ok: true; observation: Record<string, unknown> } | { ok: false }> {
+  ): Promise<{ ok: true; observation: Record<string, unknown> } | { ok: false; infra?: DenyFailure }> {
     const observer = this.toolById(observerId);
     if (!observer || observer.read_only !== true || (observer.channel ?? "world") !== "world") {
       this.emit({ stage: "validate", verdict: "deny", reason: "capability_missing", tool: observerId });
@@ -1159,6 +1181,16 @@ export class FaustRuntime {
         verdict: "deny",
         reason: inCheck.compileError ? "schema_invalid" : "input_schema_invalid",
         tool: observerId,
+      });
+      return { ok: false };
+    }
+    if (!this.isBound(observerId)) {
+      this.emit({
+        stage: "validate",
+        verdict: "deny",
+        reason: "capability_missing",
+        tool: observerId,
+        failure: { kind: "channel_unbound", channel: "world" },
       });
       return { ok: false };
     }
@@ -1176,12 +1208,12 @@ export class FaustRuntime {
       this.emit({
         stage: "observe",
         verdict: "deny",
-        reason: "tool_execution_failed",
+        reason: invoked.infra ? "infra_failure" : "tool_execution_failed",
         tool: observerId,
         failure: invoked.failure,
         ...(invoked.error !== undefined ? { error: invoked.error } : {}),
       });
-      return { ok: false };
+      return invoked.infra ? { ok: false, infra: invoked.failure } : { ok: false };
     }
     const env = readEnvelope(invoked.raw);
     if (!env) {
@@ -1293,7 +1325,8 @@ export class FaustRuntime {
     return child;
   }
 
-  private async runChild(packet: SpawnPacket, spawnId: string): Promise<void> {
+  /** Runs the child reaction; returns true when it ended in an infrastructure failure. */
+  private async runChild(packet: SpawnPacket, spawnId: string): Promise<boolean> {
     const childAgent = this.buildChildAgent(packet);
     const proposals = (packet.proposals ?? []).map(toProposal);
     let pi = 0;
@@ -1326,6 +1359,7 @@ export class FaustRuntime {
       tool: SPAWN_TOOL,
       result: { events: child.events.length, steps: child.steps, tool_calls: child.toolCalls },
     });
+    return child.infraFailed;
   }
 
   // ---------------------------------------------------------------- safe flow (§11)
@@ -1349,6 +1383,7 @@ export class FaustRuntime {
       } finally {
         this.recovering = false;
       }
+      if (outcome === "infra") return; // nothing is claimed after an infrastructure failure
       if (outcome === "success") {
         this.emit({ stage: "record", verdict: "allow", reason: "recovery_succeeded" });
       } else {

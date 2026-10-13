@@ -122,11 +122,15 @@ export function renderDenyFailureProse(failure: DenyFailure): string | null {
     case "malformed_envelope":
       return "The tool returned a malformed result envelope.";
     case "channel_unbound":
-      return "No user channel is available on this host for that tool.";
+      return failure.channel === "user"
+        ? "No user channel is available on this host for that tool."
+        : "This host has no binding for that tool.";
     case "transcript":
       return `Recorded transcript ${failure.code} at call ${failure.call_seq}.`;
     case "host_error":
       return "The host failed to execute the tool.";
+    case "adapter":
+      return `Host infrastructure failure (${failure.code}).`;
     case "observation_failed":
       return "The effect could not be observed.";
     case "judge":

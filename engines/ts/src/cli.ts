@@ -11,10 +11,20 @@ import {
   loadDeployment,
   parseRecordedProposal,
 } from "./load.js";
-import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
+import {
+  AdapterError,
+  bindToolsFromDeployment,
+  type ResolveToolsOptions,
+} from "./adapters/registry.js";
 import { deploymentUsesLocal } from "./adapters/local.js";
 import { inspectHarness, packHarness, testHarness, selectHarness } from "./packaging.js";
-import { BundleError, loadBundleFile, unpackBundle, withHarnessRef } from "./bundle.js";
+import {
+  BundleError,
+  formatBundleVerifyReport,
+  unpackBundle,
+  verifyBundleFile,
+  withHarnessRef,
+} from "./bundle.js";
 import { BundleSignatureError } from "./bundle-signature.js";
 import {
   ConnectorError,
@@ -44,7 +54,8 @@ import {
   runCompleted,
   systemPromptFor,
 } from "./cli-support.js";
-import { resolveRecordedUserBindings, worldChannelAgent } from "./user-channel.js";
+import { boundProviderText, isModelInfraError } from "./model/errors.js";
+import { redactSecrets } from "./integrations/github/submission-check.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
 import {
   buildAdvisoryPrompt,
@@ -84,21 +95,28 @@ function loadDotEnv(path = join(repoRoot(), ".env")): void {
 
 loadDotEnv();
 
-/** Host tools: world handlers from the deployment registry + user channel from user bindings (D14). */
-function resolveHostTools(
+/**
+ * Host tools from the deployment: world natives and user-channel bindings (D14) in one map,
+ * plus the cleanup that closes host sessions. Callers must always call cleanup.
+ */
+function bindHostTools(
   agent: AgentIR,
   deployment: Deployment,
-  opts: Parameters<typeof resolveToolsFromDeployment>[2] & { harnessDir?: string },
-): Record<string, ToolHandler> {
-  const world = resolveToolsFromDeployment(worldChannelAgent(agent), deployment, opts) as Record<
-    string,
-    ToolHandler
-  >;
-  const user = resolveRecordedUserBindings(agent, deployment, { harnessDir: opts.harnessDir ?? process.cwd() });
-  for (const u of user.unbound) {
-    console.error(`user channel: '${u.tool}' unbound (${u.why}); calls will be denied (capability_missing)`);
+  opts: ResolveToolsOptions,
+): { tools: Record<string, ToolHandler>; cleanup: () => void } {
+  const bound = bindToolsFromDeployment(agent, deployment, opts);
+  for (const t of agent.tools) {
+    if (t.channel === "user" && typeof bound.tools[t.id] !== "function") {
+      console.error(`user channel: '${t.id}' is not bound by this deployment; calls will be denied (capability_missing)`);
+    }
   }
-  return { ...world, ...user.handlers };
+  return { tools: bound.tools as Record<string, ToolHandler>, cleanup: bound.cleanup };
+}
+
+/** Infra failure of the model transport, reported apart from model behaviour. */
+function infraErrorReport(e: unknown): { kind: string; message: string } | null {
+  if (!isModelInfraError(e)) return null;
+  return { kind: e.kind, message: boundProviderText(e.message) };
 }
 
 /** Live judge from the deployment (judge_model or models). Returns the raw judgment. */
@@ -223,6 +241,7 @@ async function cmdLive(args: {
     let unsafeAttempted = 0;
     let unsafeCaught = 0;
     let unsafeDetectedPostExec = 0;
+    let infraFailures = 0;
     let e2eAttempted = 0;
     let e2ePassed = 0;
     let verifyTriggers = 0;
@@ -240,14 +259,15 @@ async function cmdLive(args: {
       if (expectComplete) e2eAttempted++;
 
       let tools: Record<string, ToolHandler>;
+      let cleanup: () => void = () => {};
       try {
-        tools = resolveHostTools(agent, bindingsForAgentDir(agentDir, deployment), {
+        ({ tools, cleanup } = bindHostTools(agent, bindingsForAgentDir(agentDir, deployment), {
           testExit: Number(scen.test_exit_code ?? 0),
           sensorHealthy: Number(scen.sensor_healthy ?? 1),
           workspace:
             args.workspace ?? (typeof scen.workspace === "string" ? scen.workspace : undefined),
           harnessDir: agentDir,
-        });
+        }));
       } catch (e) {
         if (e instanceof AdapterError) {
           console.error(e.message);
@@ -283,11 +303,25 @@ async function cmdLive(args: {
       try {
         await runtime.runLoop(Number(scen.max_steps ?? 6));
       } catch (e) {
-        if (e instanceof Error && (e.message.startsWith("RATE_LIMIT") || (e as Error & { code?: number }).code === 2)) {
+        const infra = infraErrorReport(e);
+        if (infra?.kind === "rate_limit") {
           writeReport(args.report, { rate_limited: true, results });
           return 2;
         }
-        results.push({ scenario: f, error: String(e) });
+        // Infrastructure failures are not model outcomes: excluded from every rate below.
+        if (expectCatch) unsafeAttempted--;
+        if (expectComplete) e2eAttempted--;
+        infraFailures++;
+        results.push({ scenario: f, infra_error: infra ?? { kind: "host", message: boundProviderText(String(e)) } });
+        continue;
+      } finally {
+        cleanup();
+      }
+      if (runtime.infraFailed) {
+        if (expectCatch) unsafeAttempted--;
+        if (expectComplete) e2eAttempted--;
+        infraFailures++;
+        results.push({ scenario: f, infra_failure: true, events: runtime.events });
         continue;
       }
 
@@ -334,13 +368,17 @@ async function cmdLive(args: {
         unsafe_attempted: unsafeAttempted,
         unsafe_caught: unsafeCaught,
         unsafe_detected_post_execution: unsafeDetectedPostExec,
+        infra_failures: infraFailures,
       },
     };
     writeReport(args.report, report);
     console.log(JSON.stringify(report.totals, null, 2));
     return catch_rate < args.catchRateMin ? 1 : 0;
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith("RATE_LIMIT")) return 2;
+    if (infraErrorReport(e)) {
+      console.error(`infra: ${infraErrorReport(e)!.kind}: ${infraErrorReport(e)!.message}`);
+      return 2;
+    }
     console.error(e);
     return 1;
   }
@@ -425,13 +463,15 @@ async function cmdRun(
   }
 
   let tools: Record<string, ToolHandler>;
+  let cleanup: () => void;
   try {
-    tools = resolveHostTools(agent, deployment, {
+    ({ tools, cleanup } = bindHostTools(agent, deployment, {
       workspace: opts.workspace,
       interactive: Boolean(process.stdin.isTTY) && !String(depFile).includes("local-fixture"),
       harnessDir: dir,
+      deploymentPath: depFile,
       resolved: { ...resolvedHarness, agent },
-    });
+    }));
   } catch (e) {
     if (e instanceof AdapterError) {
       console.error(e.message);
@@ -439,6 +479,32 @@ async function cmdRun(
     }
     throw e;
   }
+  try {
+    return await runWithTools(agent, deployment, depFile, dir, resolvedHarness, tools, opts, overlayHint);
+  } finally {
+    cleanup();
+  }
+}
+
+async function runWithTools(
+  agent: AgentIR,
+  deployment: Deployment,
+  depFile: string,
+  dir: string,
+  resolvedHarness: ReturnType<typeof resolveHarness>,
+  tools: Record<string, ToolHandler>,
+  opts: {
+    model?: string;
+    dump?: string;
+    maxSteps?: number;
+    workspace?: string;
+    prompt?: string;
+    taskFile?: string;
+    report?: string;
+    expectComplete?: boolean;
+  },
+  overlayHint: string | undefined,
+): Promise<number> {
 
   const userPrompt =
     opts.prompt ??
@@ -487,7 +553,13 @@ async function cmdRun(
     tools,
     ...(judge ? { judge, allowJudge: true } : {}),
   });
-  await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? 32 : 16));
+  let infraError: { kind: string; message: string } | null = null;
+  try {
+    await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? 32 : 16));
+  } catch (e) {
+    infraError = infraErrorReport(e);
+    if (!infraError) throw e;
+  }
   const jsonl = eventsToJsonl(runtime.events);
   if (opts.dump) {
     mkdirSync(dirname(resolve(opts.dump)), { recursive: true });
@@ -522,6 +594,9 @@ async function cmdRun(
         bytes: Buffer.byteLength(e.args!.content as string, "utf8"),
       })),
     event_count: runtime.events.length,
+    // Infrastructure failures (model transport or host adapters) are not model outcomes.
+    infra_error: infraError,
+    infra_failure: runtime.infraFailed,
   };
 
   if (opts.report) {
@@ -530,6 +605,14 @@ async function cmdRun(
   }
 
   console.log(jsonl);
+  if (infraError) {
+    console.error(`infra: ${infraError.kind}: ${infraError.message}`);
+    return 2;
+  }
+  if (runtime.infraFailed) {
+    console.error("infra: a host adapter failed (see the infra_failure event)");
+    return 2;
+  }
   if (opts.expectComplete && !completed) {
     console.error("expected run_complete but completion was not reached");
     return 1;
@@ -583,7 +666,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
         pr_body: "",
       }),
       ai_findings: [],
-      markdown: `## Faust submission review\n\n**Conclusion:** \`infrastructure_error\`\n\n${e instanceof Error ? e.message : String(e)}\n`,
+      markdown: `## Faust submission review\n\n**Conclusion:** \`infrastructure_error\`\n\n${redactSecrets(e instanceof Error ? e.message : String(e))}\n`,
     };
     if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2));
     if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
@@ -628,7 +711,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     deployment = loadDeployment(resolve(depPath)) as Deployment;
   } catch (e) {
-    console.error(e);
+    console.error(redactSecrets(e instanceof Error ? e.message : String(e)));
     return 2;
   }
 
@@ -636,7 +719,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     ({ adapter } = createAdapterFromDeployment(deployment));
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = redactSecrets(e instanceof Error ? e.message : String(e));
     const report: ReviewReport = {
       mode: "advisory",
       conclusion: "infrastructure_error",
@@ -671,7 +754,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     await runtime.runLoop(12);
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith("RATE_LIMIT")) {
+    if (isModelInfraError(e)) {
       const report: ReviewReport = {
         mode: "advisory",
         conclusion: "neutral",
@@ -685,7 +768,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
           deterministic: packet,
           ai_findings: [],
           model: adapter.lastModelUsed,
-        }) + "\n_Rate limited — neutral, not pass._\n",
+        }) + "\n_Model infrastructure failure — neutral, not pass._\n",
       };
       if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
       if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
@@ -745,6 +828,13 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   const { flags: a, positionals } = parseArgs(rest);
+  // Operator trust / spawn policy flags map onto the env switches the host layer reads.
+  if (a["trusted-keys"]) process.env.FAUSTH_TRUSTED_KEYS = a["trusted-keys"];
+  if (flagOn(a, "require-trusted")) process.env.FAUSTH_REQUIRE_TRUSTED_BUNDLES = "1";
+  if (a["allow-command"]) {
+    const prior = (process.env.FAUSTH_ALLOW_COMMANDS ?? "").trim();
+    process.env.FAUSTH_ALLOW_COMMANDS = prior && prior !== "*" ? `${prior},${a["allow-command"]}` : a["allow-command"];
+  }
   if (cmd === "--version" || cmd === "-V" || cmd === "version") {
     const pkg = JSON.parse(
       readFileSync(join(here, "../package.json"), "utf8"),
@@ -762,7 +852,7 @@ Usage:
   fausth resolve <harness|bundle> [--out <resolved.json>]
   fausth pack <harness> [--out <file|dir>] [--sign-key <seed.hex|pem>]
   fausth unpack <bundle.fausth.json> --out <dir> [--force]
-  fausth verify <bundle.fausth.json>
+  fausth verify <bundle.fausth.json>      (exit 0 ok · 1 invalid · 2 bad trust store · 3 policy-rejected)
   fausth run <harness|bundle> [--deployment <yml>] [--model <jsonl>] [--dump <jsonl>]
            [--workspace <linked-worktree>] [--prompt <text>|--task-file <path>]
            [--max-steps <n>] [--report <json>] [--expect-complete] [--apply-overlays]
@@ -775,6 +865,8 @@ Usage:
   fausth audit <events.jsonl> [--json]
 
 Harness refs may be a directory or a .fausth.json bundle (validate/test/inspect/resolve/run unpack to a temp dir).
+Trust and spawn policy (any command): --trusted-keys <file> (FAUSTH_TRUSTED_KEYS), --require-trusted
+(FAUSTH_REQUIRE_TRUSTED_BUNDLES=1), --allow-command <cmd>[,<cmd>…] (FAUSTH_ALLOW_COMMANDS; repeatable).
 Pack signing is opt-in (--sign-key or FAUSTH_SIGN_KEY); unsigned packs stay byte-identical.
 Local real I/O requires an explicit deployment.local-*.yml and --workspace (linked disposable git worktree).
 `);
@@ -908,23 +1000,15 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
   if (cmd === "verify") {
     const target = positionals[0] ?? "";
     if (!target) {
-      console.error("Usage: fausth verify <bundle.fausth.json>");
+      console.error("Usage: fausth verify <bundle.fausth.json> [--trusted-keys <file>] [--require-trusted]");
       process.exit(1);
     }
-    try {
-      const bundle = loadBundleFile(resolve(target));
-      if (bundle.signature) {
-        console.log(
-          `OK signature ed25519 public_key=${bundle.signature.public_key} (${bundle.format})`,
-        );
-      } else {
-        console.log(`OK unsigned bundle (${bundle.format})`);
-      }
-      process.exit(0);
-    } catch (e) {
-      console.error(e instanceof BundleError || e instanceof Error ? e.message : e);
-      process.exit(1);
-    }
+    // 0 accepted · 1 invalid/tampered · 2 bad trust store · 3 rejected by trust policy
+    const report = verifyBundleFile(resolve(target));
+    const line = formatBundleVerifyReport(report);
+    if (report.exit_code === 0) console.log(line);
+    else console.error(line);
+    process.exit(report.exit_code);
   }
   if (cmd === "replay") {
     const fixturesRoot = positionals[0];

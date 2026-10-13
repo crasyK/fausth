@@ -11,6 +11,7 @@ export const REASON_CODES = [
   "output_schema_invalid",
   "schema_invalid",
   "tool_execution_failed",
+  "infra_failure",
   "state_write_denied",
   "checkpoint_authority_failed",
   "sequence_requirement_failed",
@@ -50,6 +51,7 @@ export const FAILURE_KINDS = [
   "channel_unbound",
   "transcript",
   "host_error",
+  "adapter",
   "observation_failed",
   "judge",
   "spawn",
@@ -249,9 +251,10 @@ export type DenyFailure =
   | { kind: "state_key"; state_key: string }
   | { kind: "non_canonical"; path: string }
   | { kind: "malformed_envelope" }
-  | { kind: "channel_unbound"; channel: "user" }
+  | { kind: "channel_unbound"; channel: ToolChannel }
   | { kind: "transcript"; code: "mismatch" | "exhausted"; call_seq: number }
   | { kind: "host_error" }
+  | { kind: "adapter"; code: import("./adapters/error.js").AdapterErrorCode }
   | { kind: "observation_failed" }
   | { kind: "judge"; code: "unavailable" | "invalid" }
   | { kind: "spawn"; code: "not_allowed" | "escalation" | "malformed"; dimension?: SpawnDimension }
@@ -403,6 +406,8 @@ export type DeploymentModel = {
   temperature?: number;
   max_tokens?: number;
   judge_model?: string;
+  /** Per-request transport timeout (ms) for live model calls. */
+  timeout_ms?: number;
   compatibility?: {
     preserve_response_fields?: string[];
     gateway_system_prompt?: "prohibited" | "unknown";
@@ -438,6 +443,10 @@ export type DeploymentWorld = {
     read?: string[];
     write?: string[];
   };
+  /** Literal env values for world commands (non-secret names only). */
+  env?: Record<string, string>;
+  /** Host env var names passed through to world commands (non-secret names only). */
+  env_passthrough?: string[];
 };
 
 export type DeploymentMcpServer = {
@@ -449,6 +458,8 @@ export type DeploymentMcpServer = {
   args?: string[];
   /** Optional env overlay (no secret-like keys). */
   env?: Record<string, string>;
+  /** Host env var names passed through to the server (non-secret names only). */
+  env_passthrough?: string[];
   timeout_ms?: number;
 };
 
@@ -460,7 +471,38 @@ export type DeploymentModuleServer = {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Host env var names passed through to the module (non-secret names only). */
+  env_passthrough?: string[];
   timeout_ms?: number;
+};
+
+/**
+ * User-channel binding (D14, spec-v0.3 §9): `bindings.<tool>.user`. A `channel: user` tool is
+ * answered by recorded answers (Track A), a declared simulator, or a human — never by a world
+ * native and never from the acting model's arguments.
+ */
+export type DeploymentUserBinding = {
+  source: "recorded" | "simulator" | "human";
+  /** recorded: JSONL answers file, resolved inside the deployment directory. */
+  answers?: string;
+  /** simulator: model id (temperature 0). */
+  model?: string;
+  /** simulator: persona / instructions file. */
+  system_prompt_file?: string;
+  /** simulator: private context the agent never sees. */
+  context_file?: string;
+  /** simulator transport overrides (default: the deployment's model settings). */
+  profile?: string;
+  base_url?: string;
+  api_key_env?: string;
+  max_tokens?: number;
+};
+
+/** One deployment binding: a host native (world channel) or a user-channel binding. */
+export type DeploymentBinding = {
+  native?: string;
+  user?: DeploymentUserBinding;
+  [k: string]: unknown;
 };
 
 export type Deployment = {
@@ -472,7 +514,7 @@ export type Deployment = {
     classification?: string;
     require?: { residency?: string };
   };
-  bindings: Record<string, { native: string; [k: string]: unknown }>;
+  bindings: Record<string, DeploymentBinding>;
   permissions?: Record<string, unknown>;
   /** Real local I/O settings for `local.*` bindings. */
   world?: DeploymentWorld;

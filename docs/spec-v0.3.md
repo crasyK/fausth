@@ -310,8 +310,8 @@ The host calls the engine with an iteration cap `H` (Track A replay: 32). For ea
 6. **Proposal** from the model (or the recorded fixture):
    - **stop** (or no proposal): §5.4.
    - **invalid**: §5.5.
-   - **tool**: process the action (§6) with origin `model`. Outcome: *complete* ⇒ end;
-     *safe_state* ⇒ end; *denied* ⇒ end unless `continue_after_deny` is `true`; *success* ⇒ next
+   - **tool**: process the action (§6) with origin `model`. Outcome: *complete*, *safe_state* or
+     *infra* ⇒ end; *denied* ⇒ end unless `continue_after_deny` is `true`; *success* ⇒ next
      iteration.
 
 When the iteration cap is reached the run ends without an extra event.
@@ -348,10 +348,12 @@ Stages run in this order. A deny at any stage ends the processing (*denied*), un
 
 1. Tool not declared ⇒ `validate`/`deny`/`capability_missing`.
 2. Tool not permitted (§4.1) ⇒ `validate`/`deny`/`capability_missing`.
-3. `channel: user` and the user channel is not bound for this tool (§9) ⇒
-   `validate`/`deny`/`capability_missing`, `failure: {kind: "channel_unbound", channel: "user"}`.
-4. `args` is not an object, or fails the input schema ⇒ `validate`/`deny`/`input_schema_invalid`.
+3. `args` is not an object, or fails the input schema ⇒ `validate`/`deny`/`input_schema_invalid`.
    (A schema that does not compile ⇒ `validate`/`deny`/`schema_invalid`.)
+4. The tool is not **bound** — the run is not in recorded-transcript mode (§15.1) and the host
+   supplied no handler for it (world channel: no native binding; user channel: no user-channel
+   binding, §9) ⇒ `validate`/`deny`/`capability_missing`,
+   `failure: {kind: "channel_unbound", channel: "world"|"user"}`. Nothing is executed.
 5. Emit `validate`/`allow`.
 
 ### 6.2 authorize
@@ -372,11 +374,17 @@ Stages run in this order. A deny at any stage ends the processing (*denied*), un
 ### 6.3 execute
 
 1. `tool_calls_used += 1`.
-2. **Invoke** (§15.1): the recorded transcript if present, else the host handler. A transcript
-   mismatch, an exhausted transcript, a missing handler or a host exception ⇒
-   `execute`/`deny`/`tool_execution_failed` with `failure` (`{kind: "transcript", code:
-   "mismatch"|"exhausted", call_seq}` or `{kind: "host_error"}`); a host error message, if any, is
-   carried in `error` as world feedback (§14).
+2. **Invoke** (§15.1): the recorded transcript if present, else the host handler.
+   - A transcript mismatch or an exhausted transcript ⇒ `execute`/`deny`/`tool_execution_failed`,
+     `failure: {kind: "transcript", code: "mismatch"|"exhausted", call_seq}`.
+   - A host **infrastructure** failure — the handler throws an adapter error (closed codes
+     `binding_missing`, `adapter_unresolved`, `spawn_not_allowed`, `recorded_response_missing`,
+     `user_channel_unavailable`, `host_session_failed`) ⇒ `execute`/`deny`/`infra_failure`,
+     `failure: {kind: "adapter", code}`. The outcome is *infra*: nothing is committed and **the
+     run ends** regardless of `continue_after_deny` (infrastructure is never model behaviour).
+   - Any other exception from the handler (the tool itself failed) ⇒
+     `execute`/`deny`/`tool_execution_failed`, `failure: {kind: "host_error"}`.
+   The host's error message, if any, is carried in `error` as world feedback (§14).
 3. **Envelope.** The handler returns `{output, state_transition?}`; a bare object without an
    `output` member is wrapped as `{output: <object>}`. Anything else (non-object `output`,
    unknown envelope members, `_state_patch`, `set` not an object, `remove` not an array of
@@ -407,6 +415,10 @@ verify's reason as trigger (not for recovery actions) and the action's outcome i
 failure with `deny` ⇒ *denied*.
 
 If the list is empty, emit `verify`/`allow` with no `tool`.
+
+If an effect observation fails with an infrastructure failure (`observe`/`deny`/`infra_failure`),
+the provisional transition is discarded and `verify`/`deny`/`infra_failure` (with the same
+`failure`) is emitted; the outcome is *infra* (the run ends; no safe flow, nothing is claimed).
 
 ### 6.5 commit and success (D8)
 
@@ -451,8 +463,10 @@ Events (`tool` = the verified tool):
 not declared / not read_only ⇒ `validate`/`deny`/`capability_missing`; input schema rejects `{}`
 ⇒ `validate`/`deny`/`input_schema_invalid`; not permitted ⇒ `authorize`/`deny`/`capability_missing`;
 `tool_calls_used ≥ max_tool_calls` ⇒ `authorize`/`deny`/`limit_exceeded`; otherwise
-`tool_calls_used += 1`, invoke (as §6.3.2/3, failures as `observe`/`deny`/`tool_execution_failed`
-or `output_schema_invalid`), then emit `observe`/`allow` with `tool: observer`, `args: {}`,
+unbound observer (no handler, not in transcript mode) ⇒ `validate`/`deny`/`capability_missing`
+with `failure: {kind: "channel_unbound", channel: "world"}`; otherwise `tool_calls_used += 1`,
+invoke (as §6.3.2/3, failures as `observe`/`deny`/`tool_execution_failed`, `infra_failure` or
+`output_schema_invalid`), then emit `observe`/`allow` with `tool: observer`, `args: {}`,
 `result: <output>`. The observer's `state_transition`, if any, is ignored. Gates do not apply to
 observers. If the observation fails, the verify fails: `verify`/`<otherwise>`/
 `verify_effect_failed` with `failure: {kind: "observation_failed"}`.
@@ -577,9 +591,13 @@ host MUST NOT answer a user-channel tool from the acting model's arguments.**
 
 - The user channel is *bound* for a tool when the run is in recorded-transcript mode (§15.1) or
   the host supplied a handler for that tool. Hosts MUST supply user-channel handlers only from a
-  user-channel binding (deployment form below), never from a world stub.
+  user-channel binding (deployment form below), never from a world native; a deployment that
+  binds a `channel: user` tool to a `native` is an adapter error.
 - Unbound ⇒ `validate`/`deny`/`capability_missing`, `failure: {kind: "channel_unbound",
-  channel: "user"}`.
+  channel: "user"}` (§6.1 step 4).
+- A bound user channel that cannot answer (no matching recorded answer, no interactive human,
+  simulator down) is an infrastructure failure (`infra_failure`, `adapter`
+  `user_channel_unavailable`), never a synthesized answer.
 - User decisions written to state are protected by checkpoint authority (§8.3).
 
 Deployment binding form (host side; implemented by the deployment adapters):
@@ -589,11 +607,16 @@ bindings:
   user.approve:
     user:
       source: recorded | simulator | human
-      answers: <path>              # recorded: JSONL of answers (§15.2)
-      model: <id>                  # simulator
-      system_prompt_file: <path>   # simulator
-      context_file: <path>         # simulator
+      answers: <path>              # recorded: JSONL of answers (§15.2), inside the deployment dir
+      model: <id>                  # simulator (temperature 0)
+      system_prompt_file: <path>   # simulator persona / instructions
+      context_file: <path>         # simulator-only context the agent never sees
+      profile / base_url / api_key_env / max_tokens   # optional simulator transport overrides
 ```
+
+A user answer is an envelope `{output, state_transition?}` (recorded) or `{output, set?}`
+(simulator / human, `set` ⊆ the tool's `allow_set_keys` with the declared state types); the
+engine then applies checkpoint authority (§8.3) like for any tool.
 
 ---
 
@@ -727,12 +750,13 @@ qualifies the recorded fact.
 | Code | Stage · verdict | Meaning |
 |------|-----------------|---------|
 | `gate_denied` | authorize · deny/safe_state | gate failed; spawn not allowed / escalation (§10) |
-| `capability_missing` | validate/authorize · deny | undeclared, not permitted, channel unbound, observer missing/not permitted |
+| `capability_missing` | validate/authorize · deny | undeclared, not permitted, unbound (world or user channel), observer missing/not permitted |
 | `limit_exceeded` | authorize · deny | step or tool-call budget exhausted |
 | `input_schema_invalid` | propose/validate · deny | args not canonical / not an object / input schema |
 | `output_schema_invalid` | execute/observe · deny | malformed envelope, non-canonical or schema-invalid output |
 | `schema_invalid` | validate/authorize · deny | uncompilable tool schema; malformed spawn packet |
-| `tool_execution_failed` | execute/observe · deny | transcript mismatch/exhausted, host error |
+| `tool_execution_failed` | execute/observe · deny | transcript mismatch/exhausted, the tool's handler failed |
+| `infra_failure` | execute/observe/verify · deny | host infrastructure (adapter) failure; the run ends (§6.3) |
 | `state_write_denied` | execute · deny | transition writes an undeclared state key |
 | `checkpoint_authority_failed` | authorize/execute · deny | checkpoint authority (§8.3) |
 | `sequence_requirement_failed` | authorize · deny | §8.1 |
@@ -769,9 +793,10 @@ qualifies the recorded fact.
 | `state_key` | `state_key` | `state_write_denied` |
 | `non_canonical` | `path` | `input_schema_invalid`, `output_schema_invalid` |
 | `malformed_envelope` | — | `output_schema_invalid` |
-| `channel_unbound` | `channel: "user"` | `capability_missing` |
+| `channel_unbound` | `channel: "world"\|"user"` | `capability_missing` |
 | `transcript` | `code: "mismatch"\|"exhausted"`, `call_seq` | `tool_execution_failed` |
 | `host_error` | — | `tool_execution_failed` |
+| `adapter` | `code` (closed adapter codes, §6.3) | `infra_failure` |
 | `observation_failed` | — | `verify_effect_failed` |
 | `judge` | `code: "unavailable"\|"invalid"` | `verify_judge_invalid` |
 | `spawn` | `code: "not_allowed"\|"escalation"\|"malformed"`, `dimension?` | `gate_denied`, `schema_invalid` |
@@ -815,10 +840,11 @@ The engine invokes a tool through, in order of precedence:
 ### 15.2 Recorded user answers
 
 A recorded user source (`user.jsonl` in a fixture, or `answers:` of a `recorded` binding) is a
-JSONL file of `{tool, args?, result}` lines. Answers are consumed per tool in file order; when an
-answer has `args` they must be canonically equal to the proposal's args (else
-`transcript`/`mismatch`); no answer left ⇒ `transcript`/`exhausted`. `call_seq` for these
-failures is the 1-based count of calls to that tool.
+JSONL file of `{tool, call_seq?, args?, result}` lines, `result` = `{output, state_transition?}`.
+For the n-th call of a tool (n = 1-based count of calls to **that** tool), the first unused
+answer for the tool whose `call_seq` (if present) equals n and whose `args` (if present) are
+canonically equal to the call's args is used, at most once. No such answer ⇒ infrastructure
+failure (`infra_failure`, `adapter` `user_channel_unavailable`).
 
 ### 15.3 Host conduct
 
@@ -828,6 +854,8 @@ failures is the 1-based count of calls to that tool.
 - Hosts MAY render prose from `failure` objects for the model; such prose never enters the event
   log.
 - A run's success is `record`/`run_complete` — never a bare `execute`/`allow` (D8).
+- Infrastructure failures — model transport errors raised to the host and `infra_failure`
+  events — are reported apart from model outcomes and excluded from model metrics.
 - Host metrics of "caught unsafe actions" count only pre-execution policy denies (`validate` /
   `authorize` with `gate_denied`, `capability_missing` other than `channel_unbound`,
   `sequence_requirement_failed`, `completion_gate_failed`, `checkpoint_authority_failed`,
