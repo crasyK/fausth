@@ -485,16 +485,17 @@ Events (`tool` = the verified tool):
   `failure: {kind: "judge", code: "unavailable"|"invalid"}` (+ `error` = excerpt of the raw judge
   text for `invalid`).
 
-**Governed observation (effect).** With `observer = verify.observe`, args `{}`:
-not declared / not read_only ⇒ `validate`/`deny`/`capability_missing`; input schema rejects `{}`
-⇒ `validate`/`deny`/`input_schema_invalid`; not permitted ⇒ `authorize`/`deny`/`capability_missing`;
-`tool_calls_used ≥ max_tool_calls` ⇒ `authorize`/`deny`/`limit_exceeded`; otherwise
-unbound observer (no handler, not in transcript mode) ⇒ `validate`/`deny`/`capability_missing`
-with `failure: {kind: "channel_unbound", channel: "world"}`; otherwise `tool_calls_used += 1`,
-invoke (as §6.3.2/3, failures as `observe`/`deny`/`tool_execution_failed`, `infra_failure` or
-`output_schema_invalid`), then emit `observe`/`allow` with `tool: observer`, `args: {}`,
-`result: <output>`. The observer's `state_transition`, if any, is ignored. Gates do not apply to
-observers. If the observation fails, the verify fails: `verify`/`<otherwise>`/
+**Governed observation (effect).** With `observer = verify.observe`, args `{}`, checked in order:
+not declared / not `read_only` / not world-channel ⇒ `validate`/`deny`/`capability_missing`;
+input schema rejects `{}` ⇒ `validate`/`deny`/`input_schema_invalid`; unbound (no handler, not in
+transcript mode) ⇒ `validate`/`deny`/`capability_missing` with
+`failure: {kind: "channel_unbound", channel: "world"}`; not permitted ⇒
+`authorize`/`deny`/`capability_missing`; `tool_calls_used ≥ max_tool_calls` ⇒
+`authorize`/`deny`/`limit_exceeded`. Otherwise `tool_calls_used += 1`, invoke (as §6.3 steps 2–3;
+failures as `observe`/`deny`/`tool_execution_failed`, `infra_failure` or `output_schema_invalid`),
+then emit `observe`/`allow` with `tool: observer`, `args: {}`, `result: <output>`. The observer's
+`state_transition`, if any, is ignored. Gates do not apply to observers. If the observation fails
+(other than by infrastructure, §6.4), the verify fails: `verify`/`<otherwise>`/
 `verify_effect_failed` with `failure: {kind: "observation_failed"}`.
 
 **Judge.** The judge is a host function (live only). If the host provides none (always the case
@@ -698,6 +699,8 @@ The safe flow runs when a gate or verify yields `safe_state` (never from inside 
    result inside recovery does not start another safe flow; the terminal tool rule (§6.5.3) does
    not apply. The recovery succeeds iff the action's outcome is *success*.
    - success ⇒ `record`/`allow`/`recovery_succeeded`;
+   - infrastructure failure (*infra*) ⇒ the run ends right there; nothing further is emitted or
+     claimed (no `terminal_failure`, no fallback);
    - otherwise ⇒ `record`/`deny`/`terminal_failure` (the world is **not** claimed safe).
 2. Apply `fallback_state` (shallow merge into `state`, if declared) and emit
    `record`/`safe_state`/`safe_state_entered`. This records **bookkeeping only**; it never
