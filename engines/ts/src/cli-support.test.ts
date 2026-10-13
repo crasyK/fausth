@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { ModelInfraError, ModelRequestError } from "./model/errors.js";
 import {
+  transportErrorReport,
   isPreExecutionPolicyDeny,
   lastExitCode,
   parseArgs,
@@ -100,5 +102,20 @@ describe("host prompts and tool offer (D11, spec-v0.3 §15.3)", () => {
   it("offers exactly the permitted set", () => {
     assert.deepEqual(permittedToolDefs(agent).map((t) => t.id), ["a"]);
     assert.deepEqual(permittedToolDefs({ ...agent, permissions: { tools: [] } }), []);
+  });
+});
+
+describe("model transport errors are classified apart from model behaviour", () => {
+  it("request_rejected (HTTP 400/413/422) is neither infra nor a model failure", () => {
+    const r = transportErrorReport(new ModelRequestError("payload too large", { status: 413, model: "m" }));
+    assert.equal(r?.class, "request");
+    assert.equal(r?.error.kind, "request_rejected");
+    assert.equal(r?.error.status, 413);
+  });
+  it("infra errors keep their kind; anything else is not a transport error", () => {
+    const r = transportErrorReport(new ModelInfraError("timeout", "upstream timed out", { model: "m" }));
+    assert.equal(r?.class, "infra");
+    assert.equal(r?.error.kind, "timeout");
+    assert.equal(transportErrorReport(new Error("boom")), null);
   });
 });

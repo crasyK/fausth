@@ -826,7 +826,7 @@ qualifies the recorded fact.
 | `channel_unbound` | `channel: "world"\|"user"` | `capability_missing` |
 | `transcript` | `code: "mismatch"\|"exhausted"`, `call_seq` | `tool_execution_failed` |
 | `host_error` | — | `tool_execution_failed` |
-| `adapter` | `code` (closed adapter codes, §6.3) | `infra_failure` |
+| `adapter` | `code` (closed adapter codes, §6.3), `detail?` (the adapter's structured cause when it is canonical; strings redacted and bounded as world feedback, §14; dropped otherwise) | `infra_failure` |
 | `observation_failed` | — | `verify_effect_failed` |
 | `judge` | `code: "unavailable"\|"invalid"` | `verify_judge_invalid` |
 | `spawn` | `code: "not_allowed"\|"escalation"\|"malformed"`, `dimension?` | `gate_denied`, `schema_invalid` |
@@ -891,8 +891,12 @@ failure (`infra_failure`, `adapter` `user_channel_unavailable`).
 - Hosts MAY render prose from `failure` objects for the model; such prose never enters the event
   log.
 - A run's success is `record`/`run_complete` — never a bare `execute`/`allow` (D8).
-- Infrastructure failures — model transport errors raised to the host and `infra_failure`
-  events — are reported apart from model outcomes and excluded from model metrics.
+- Model-transport errors raised to the host are classified, never scored as model behaviour:
+  **infrastructure** (`timeout`, `rate_limit`, `server_error`, `network`, `auth`, `bad_request`,
+  `model_unavailable`) and **rejected requests** (`request_rejected`: HTTP 400/413/422 — the
+  endpoint refused the request the host built). Hosts report each in its own field (`fausth run`:
+  `infra_error` / `request_error`, exit codes 2 / 3; `fausth live`: `infra_failures` /
+  `request_rejections`) and exclude both, like `infra_failure` events, from model metrics.
 - Host metrics of "caught unsafe actions" count only pre-execution policy denies (`validate` /
   `authorize` with `gate_denied`, `capability_missing` other than `channel_unbound`,
   `sequence_requirement_failed`, `completion_gate_failed`, `checkpoint_authority_failed`,

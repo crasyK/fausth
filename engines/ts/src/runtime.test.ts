@@ -447,6 +447,31 @@ describe("integrator wiring: unbound handlers and host infrastructure", () => {
     assert.equal(rt.infraFailed, true);
   });
 
+  it("an AdapterError detail travels as canonical, redacted, bounded failure.detail", async () => {
+    const a = agent({ tools: [tool("t")], permissions: { secrets: { values: ["sk-secret-99"] } } });
+    const { events } = await run(a, [call("t")], {
+      t: () => {
+        throw new AdapterError("user_channel_unavailable", "adapter failure: simulator down", {
+          detail: { model_error: { kind: "timeout", message: "key sk-secret-99 rejected", score: 0.5 } },
+        });
+      },
+    });
+    const f = find(events, { reason: "infra_failure" })!;
+    assert.deepEqual(f.failure, { kind: "adapter", code: "user_channel_unavailable" }, "non-canonical detail is dropped");
+    const ok = await run(a, [call("t")], {
+      t: () => {
+        throw new AdapterError("user_channel_unavailable", "adapter failure: simulator down", {
+          detail: { model_error: { kind: "timeout", message: "key sk-secret-99 rejected", status: 504 } },
+        });
+      },
+    });
+    assert.deepEqual(find(ok.events, { reason: "infra_failure" })!.failure, {
+      kind: "adapter",
+      code: "user_channel_unavailable",
+      detail: { model_error: { kind: "timeout", message: "key [redacted] rejected", status: 504 } },
+    });
+  });
+
   it("an observer infra failure ends verification without claiming a verify result", async () => {
     const a = agent({
       state: { x: 0 },
