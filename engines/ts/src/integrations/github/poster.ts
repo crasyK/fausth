@@ -5,6 +5,7 @@
 import { appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import type { ReviewFinding } from "./submission-check.js";
+import { redactSecrets } from "./submission-check.js";
 import type { ReviewReport } from "./review-runtime.js";
 
 export type PosterOptions = {
@@ -42,12 +43,39 @@ export function collectFindings(report: ReviewReport): ReviewFinding[] {
   return [...report.deterministic.deterministic_findings, ...report.ai_findings];
 }
 
+/** Redact first, then collapse whitespace and cut (no partial secret can survive the cut). */
 function truncate(s: string, n: number): string {
-  const t = s.replace(/\s+/g, " ").trim();
+  const t = redactSecrets(String(s ?? "")).replace(/\s+/g, " ").trim();
   return t.length <= n ? t : `${t.slice(0, n - 1)}…`;
 }
 
-/** Short title for optional Check Run / job display. */
+/** 1-based integer line or 1 (NaN / floats / ≤0 never reach GitHub). */
+function safeLine(line: unknown): number {
+  return typeof line === "number" && Number.isInteger(line) && line >= 1 ? line : 1;
+}
+
+/**
+ * GitHub workflow-command message data escaping (`::cmd ...::<data>`):
+ * % → %25, CR → %0D, LF → %0A.
+ */
+export function escapeWorkflowData(s: string): string {
+  return String(s ?? "").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
+/**
+ * GitHub workflow-command property escaping (`file=`, `title=` …): data escaping plus
+ * : → %3A and , → %2C, so untrusted values cannot end the property list or add keys.
+ */
+export function escapeWorkflowProperty(s: string): string {
+  return escapeWorkflowData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
+}
+
+/** Markdown as it may leave the process (step summary, PR comment, check-run summary). */
+export function outboundMarkdown(report: ReviewReport): string {
+  return redactSecrets(report.markdown ?? "");
+}
+
+/** Short title for optional Check Run / job display (redacted). */
 export function checkRunTitle(report: ReviewReport): string {
   const findings = collectFindings(report);
   if (findings.length === 0) {
@@ -58,9 +86,9 @@ export function checkRunTitle(report: ReviewReport): string {
   }
   if (findings.length === 1) {
     const f = findings[0]!;
-    return `${f.category}: ${truncate(f.recommendation, 72)}`;
+    return `${truncate(f.category, 40)}: ${truncate(f.recommendation, 72)}`;
   }
-  const cats = [...new Set(findings.map((f) => f.category))];
+  const cats = [...new Set(findings.map((f) => truncate(f.category, 40)))];
   return `${findings.length} issues — ${cats.slice(0, 4).join(", ")}${cats.length > 4 ? "…" : ""}`;
 }
 
@@ -72,13 +100,13 @@ function annotationLevel(sev: ReviewFinding["severity"]): AnnotationLevel {
 
 export function findingsToAnnotations(findings: ReviewFinding[]): CheckAnnotation[] {
   return findings.slice(0, 50).map((f) => {
-    const line = Math.max(1, f.line_start ?? 1);
+    const line = safeLine(f.line_start);
     return {
-      path: f.path || ".",
+      path: redactSecrets(f.path || "."),
       start_line: line,
       end_line: line,
       annotation_level: annotationLevel(f.severity),
-      title: f.category,
+      title: truncate(f.category, 100),
       message: truncate(f.recommendation, 200),
     };
   });
@@ -88,29 +116,41 @@ export function findingsToAnnotations(findings: ReviewFinding[]): CheckAnnotatio
 export function writeGithubStepSummary(report: ReviewReport): void {
   const path = process.env.GITHUB_STEP_SUMMARY;
   if (!path) return;
-  appendFileSync(path, report.markdown.endsWith("\n") ? report.markdown : `${report.markdown}\n`, "utf8");
+  const md = outboundMarkdown(report);
+  appendFileSync(path, md.endsWith("\n") ? md : `${md}\n`, "utf8");
+}
+
+/**
+ * Workflow-command lines for findings (pure; escaped per GitHub spec and redacted).
+ * Untrusted values (PR filenames, categories, recommendations) cannot inject commands.
+ */
+export function githubActionsCommandLines(report: ReviewReport): string[] {
+  const lines: string[] = [];
+  for (const f of collectFindings(report)) {
+    const level = f.severity === "blocking" ? "error" : f.severity === "warning" ? "warning" : "notice";
+    const file = escapeWorkflowProperty(redactSecrets(f.path || "."));
+    const line = safeLine(f.line_start);
+    const title = escapeWorkflowProperty(truncate(f.category, 100));
+    const msg = escapeWorkflowData(truncate(`${f.category}: ${f.recommendation}`, 200));
+    lines.push(`::${level} file=${file},line=${line},title=${title}::${msg}`);
+  }
+  if (report.conclusion === "infrastructure_error" || report.conclusion === "neutral") {
+    lines.push(
+      `::error title=${escapeWorkflowProperty(report.conclusion)}::${escapeWorkflowData(truncate(checkRunTitle(report), 200))}`,
+    );
+  }
+  return lines;
 }
 
 /** Optional file annotations (can clutter the Checks view — off by default). */
 export function emitGithubActionsAnnotations(report: ReviewReport): void {
-  for (const f of collectFindings(report)) {
-    const level = f.severity === "blocking" ? "error" : f.severity === "warning" ? "warning" : "notice";
-    const file = f.path || ".";
-    const line = Math.max(1, f.line_start ?? 1);
-    const msg = truncate(`${f.category}: ${f.recommendation}`, 200).replace(/%/g, "%25").replace(/\r?\n/g, "%0A");
-    console.log(`::${level} file=${file},line=${line},title=${f.category}::${msg}`);
-  }
-  if (report.conclusion === "infrastructure_error" || report.conclusion === "neutral") {
-    console.log(
-      `::error title=${report.conclusion}::${truncate(checkRunTitle(report), 200)}`,
-    );
-  }
+  for (const line of githubActionsCommandLines(report)) console.log(line);
 }
 
 export function postReviewComment(opts: PosterOptions, report: ReviewReport): void {
   execFileSync(
     "gh",
-    ["pr", "comment", String(opts.pr), "--repo", opts.repo, "--body", report.markdown],
+    ["pr", "comment", String(opts.pr), "--repo", opts.repo, "--body", outboundMarkdown(report)],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
 }
@@ -133,7 +173,7 @@ export function postReviewCheckRun(opts: PosterOptions, report: ReviewReport): v
     conclusion: conclusionForCheck(report.conclusion),
     output: {
       title: checkRunTitle(report),
-      summary: report.markdown.slice(0, 65000),
+      summary: outboundMarkdown(report).slice(0, 65000),
       // empty: summary is the source of truth; avoid duplicate annotation blocks
       annotations: [] as CheckAnnotation[],
     },
