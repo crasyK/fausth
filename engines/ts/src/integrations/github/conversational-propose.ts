@@ -36,7 +36,11 @@ function provenanceOf(proposal: ModelProposal): Pick<ChatMessage, "model" | "pro
 
 /**
  * Multi-turn propose that feeds tool results back into the chat transcript.
- * When tools are offered, empty stop/invalid responses are retried once.
+ * When tools are offered, a plain-text answer (stop) is nudged and retried once; two in a
+ * row become `empty_proposal`. An `invalid` proposal (model-protocol failure: malformed
+ * arguments, several tool calls, …) is never hidden behind a host retry: it is returned with
+ * its protocol reason so the runtime logs it (spec-v0.3 §5.5), and the nudge goes into the
+ * transcript for the model's next turn.
  *
  * Transcript invariants: every assistant `tool_calls` entry is answered by exactly one
  * `tool` message before the next request (only single-call turns are recorded as
@@ -144,10 +148,15 @@ export function createConversationalPropose(opts: {
     let proposal = await proposeOnce();
     eventMark = runtime.events.length;
 
-    if (
-      opts.tools.length > 0 &&
-      (proposal.type === "stop" || proposal.type === "invalid")
-    ) {
+    if (opts.tools.length > 0 && proposal.type === "invalid") {
+      // Protocol failure: return it with its reason (the runtime records invalid_proposal);
+      // the nudge rides along in the transcript for the next turn.
+      recordAssistant(proposal);
+      messages.push({ role: "user", content: nudgeFor(proposal) });
+      return { ...proposal, raw: truncateCodePoints(String(proposal.raw ?? proposal.reason), 500) };
+    }
+
+    if (opts.tools.length > 0 && proposal.type === "stop") {
       recordAssistant(proposal);
       messages.push({ role: "user", content: nudgeFor(proposal) });
       proposal = await proposeOnce();
@@ -162,6 +171,8 @@ export function createConversationalPropose(opts: {
       }
       if (proposal.type === "invalid") {
         // Keep the model-protocol reason (e.g. multiple_tool_calls) — honest logs.
+        recordAssistant(proposal);
+        messages.push({ role: "user", content: nudgeFor(proposal) });
         return {
           ...proposal,
           raw: truncateCodePoints(String(proposal.raw ?? proposal.reason), 500),

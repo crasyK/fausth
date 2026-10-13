@@ -10,8 +10,10 @@ import {
   securityCellChanges,
   selectHarness,
   testHarness,
+  transcriptOutcome,
 } from "./packaging.js";
-import type { AgentIR, HarnessPatch } from "./types.js";
+import { parseRecordedModelLine } from "./adapters/recorded.js";
+import type { AgentIR, Event, HarnessPatch } from "./types.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const harness = join(root, "examples/coding-counterbalance");
@@ -113,5 +115,38 @@ describe("selection gate (PY-20)", () => {
     assert.ok(f.reasons.some((r) => r.startsWith("lost 1× deny|authorize|actuator.fan.set|")), f.reasons.join("; "));
     const same = await evaluateFixtureFitness(dir, baseline, structuredClone(baseline));
     assert.equal(same.candidate_pass, true);
+  });
+
+  it("transcriptOutcome reads the normative signals: run_complete record and transcript failures", () => {
+    const agent = { counterbalance: { completion: { tool: "task.complete" } } } as unknown as AgentIR;
+    const ev = (e: Partial<Event>): Event => ({ seq: 1, ts_logical: 1, state_hash: "h", stage: "record", ...e }) as Event;
+    // A bare execute/allow of the completion tool is not success (D8); run_complete is.
+    const notDone = transcriptOutcome(agent, [ev({ stage: "execute", verdict: "allow", tool: "task.complete" })]);
+    assert.equal(notDone.completed, false);
+    const done = transcriptOutcome(agent, [
+      ev({ stage: "execute", verdict: "allow", tool: "task.complete" }),
+      ev({ stage: "record", verdict: "allow", reason: "run_complete", tool: "task.complete" }),
+    ]);
+    assert.equal(done.completed, true);
+    const diverged = transcriptOutcome(agent, [
+      ev({
+        stage: "execute",
+        verdict: "deny",
+        reason: "tool_execution_failed",
+        tool: "fs.read",
+        failure: { kind: "transcript", code: "mismatch", call_seq: 2 } as unknown as Event["failure"],
+      }),
+    ]);
+    assert.equal(diverged.error, "recorded transcript mismatch at call_seq 2");
+    assert.equal(transcriptOutcome({} as AgentIR, []).completed, null);
+  });
+
+  it("recorded model lines keep invalid proposals (never turned into stop)", () => {
+    assert.deepEqual(parseRecordedModelLine({ type: "invalid", reason: "multiple_tool_calls", message: "x" }), {
+      type: "invalid",
+      reason: "multiple_tool_calls",
+      message: "x",
+    });
+    assert.deepEqual(parseRecordedModelLine({ type: "stop" }), { type: "stop" });
   });
 });

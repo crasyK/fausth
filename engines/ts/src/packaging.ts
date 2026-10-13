@@ -20,15 +20,8 @@ import { validateAgent } from "./validate.js";
 import { AdapterError, bindToolsFromDeployment } from "./adapters/registry.js";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { parseRecordedModelLine } from "./adapters/recorded.js";
-import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
-import type {
-  AgentIR,
-  Deployment,
-  Event,
-  HarnessPatch,
-  ModelProposal,
-  RecordedToolCall,
-} from "./types.js";
+import { replayFixtureDir, runFixture } from "./replay.js";
+import type { AgentIR, Deployment, Event, HarnessPatch, ModelProposal } from "./types.js";
 import { canonicalJson } from "./canonical.js";
 import {
   ConnectorError,
@@ -45,13 +38,6 @@ import {
   BUNDLE_FORMAT_V03,
   BundleError,
 } from "./bundle.js";
-
-// load.ts may not export loadFixtureAgent — inline
-function loadFixtureAgentLocal(dir: string): AgentIR {
-  const json = join(dir, "agent.json");
-  if (existsSync(json)) return JSON.parse(readFileSync(json, "utf8")) as AgentIR;
-  return loadAgentDir(dir).agent;
-}
 
 const DEPLOYMENT_CANDIDATES = [
   "deployment.fixture.yml",
@@ -226,56 +212,6 @@ export function inspectHarness(
   }
 
   return report;
-}
-
-function buildTools(agent: AgentIR) {
-  const files: Record<string, string> = {
-    "src/app.ts": "export {}",
-    "src/app.js": 'export function greet(){ return "hello"; }\n',
-  };
-  const secrets = agent.permissions?.secrets;
-  if (secrets?.paths) {
-    for (const p of secrets.paths) {
-      if (files[p] === undefined) files[p] = "sk-fixture-secret-0001";
-    }
-  }
-  for (const p of agent.permissions?.protected_paths ?? []) {
-    if (files[p] === undefined) {
-      files[p] = 'export function greet(){ return "hello"; }\n';
-    }
-  }
-  return {
-    ...createGreenhouseTools({
-      temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
-      fan_percent: Number(agent.state.fan_percent ?? 0),
-      sensor_healthy: Number(agent.state.sensor_healthy ?? 1),
-    }),
-    ...createCodingTools(codingWorldFromAgent(agent, { files })),
-    ...createSpawnTool(agent.permissions?.tools ?? []),
-  };
-}
-
-async function replayFixtureDir(
-  dir: string,
-): Promise<{ ok: boolean; name: string }> {
-  const name = basename(dir);
-  const agent = loadFixtureAgentLocal(dir);
-  const proposals: ModelProposal[] = readJsonl(join(dir, "model.jsonl")).map(parseRecordedModelLine);
-  const toolsQueue = existsSync(join(dir, "tools.jsonl"))
-    ? (readJsonl(join(dir, "tools.jsonl")) as RecordedToolCall[])
-    : [];
-  let pi = 0;
-  const runtime = new FaustRuntime({
-    agent,
-    propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: buildTools(agent),
-    recordedToolResults: toolsQueue.length ? toolsQueue : undefined,
-    allowJudge: false,
-  });
-  await runtime.runLoop();
-  const actual = eventsToJsonl(runtime.events);
-  const expected = readFileSync(join(dir, "expected.jsonl"), "utf8").replace(/\r\n/g, "\n");
-  return { ok: actual === expected, name };
 }
 
 export type TestHarnessResult = {
@@ -711,63 +647,48 @@ export function securityCellChanges(before: AgentIR, after: AgentIR): string[] {
   return changes;
 }
 
-const TRANSCRIPT_MISMATCH = "Recorded transcript mismatch";
-
-/** Summarise the governed outcome of an event log. */
+/**
+ * Summarise the governed outcome of an event log (spec-v0.3):
+ * - success of the run is the `record`/`allow`/`run_complete` event of the completion tool
+ *   (§6.5, §15.3) — never a bare execute/allow;
+ * - a run that could not follow its recorded transcript carries
+ *   `failure: {kind: "transcript", code, call_seq}` (§6.3) and is not comparable.
+ */
 export function transcriptOutcome(agent: AgentIR, events: Event[]): TranscriptOutcome {
   const denies: Record<string, number> = {};
   let error: string | undefined;
   const completionTool = agent.counterbalance?.completion?.tool;
   let completed: boolean | null = completionTool ? false : null;
-  let pendingTool: string | undefined;
-  let pendingOk = false;
-  const settle = () => {
-    if (pendingTool && pendingOk && completionTool && pendingTool === completionTool) completed = true;
-    pendingTool = undefined;
-    pendingOk = false;
-  };
   for (const e of events) {
-    if (e.stage === "propose" || e.stage === "orient") settle();
     if (e.verdict === "deny" || e.verdict === "safe_state") {
       const key = `${e.verdict}|${e.stage}|${e.tool ?? ""}|${e.reason ?? ""}`;
       denies[key] = (denies[key] ?? 0) + 1;
     }
-    if (!error && typeof e.error === "string" && e.error.startsWith(TRANSCRIPT_MISMATCH)) {
-      error = `recorded transcript diverged at seq ${e.seq}`;
+    const failure = e.failure as { kind?: string; code?: string; call_seq?: number } | undefined;
+    if (!error && failure?.kind === "transcript") {
+      error = `recorded transcript ${failure.code ?? "diverged"} at call_seq ${failure.call_seq ?? "?"}`;
     }
-    if (e.stage === "execute") {
-      settle();
-      if (e.verdict === "allow" && e.tool) {
-        pendingTool = e.tool;
-        pendingOk = true;
-      }
-    } else if (e.stage === "verify" && pendingTool && e.verdict && e.verdict !== "allow") {
-      pendingOk = false;
+    if (
+      completionTool &&
+      e.stage === "record" &&
+      e.verdict === "allow" &&
+      e.reason === "run_complete" &&
+      (e.tool === undefined || e.tool === completionTool)
+    ) {
+      completed = true;
     }
   }
-  settle();
   const sorted = Object.fromEntries(Object.keys(denies).sort().map((k) => [k, denies[k]!]));
   return { ...(error ? { error } : {}), completed, denies: sorted };
 }
 
-async function runAgentOnTranscript(
-  agent: AgentIR,
-  proposals: ModelProposal[],
-  recorded: RecordedToolCall[],
-): Promise<{ events: Event[]; error?: string }> {
-  let pi = 0;
-  const runtime = new FaustRuntime({
-    agent,
-    propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: buildTools(agent),
-    recordedToolResults: recorded.length ? structuredClone(recorded) : undefined,
-    allowJudge: false,
-  });
+/** Run `agent` on a fixture's recorded transcript with the normative replay host (replay.ts). */
+async function runAgentOnFixture(fixtureDir: string, agent: AgentIR): Promise<{ events: Event[]; error?: string }> {
   try {
-    await runtime.runLoop();
+    const runtime = await runFixture(fixtureDir, agent);
     return { events: runtime.events };
   } catch (e) {
-    return { events: runtime.events, error: e instanceof Error ? e.message : String(e) };
+    return { events: [], error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -779,12 +700,8 @@ export async function evaluateFixtureFitness(
 ): Promise<FixtureFitness> {
   const name = basename(fixtureDir);
   const golden = await replayFixtureDir(fixtureDir);
-  const proposals: ModelProposal[] = readJsonl(join(fixtureDir, "model.jsonl")).map(parseRecordedModelLine);
-  const recorded = existsSync(join(fixtureDir, "tools.jsonl"))
-    ? (readJsonl(join(fixtureDir, "tools.jsonl")) as RecordedToolCall[])
-    : [];
-  const baseRun = await runAgentOnTranscript(baselineAgent, proposals, recorded);
-  const candRun = await runAgentOnTranscript(candidateAgent, proposals, recorded);
+  const baseRun = await runAgentOnFixture(fixtureDir, baselineAgent);
+  const candRun = await runAgentOnFixture(fixtureDir, candidateAgent);
   const baseline = transcriptOutcome(baselineAgent, baseRun.events);
   if (baseRun.error) baseline.error = baseRun.error;
   const candidate = transcriptOutcome(candidateAgent, candRun.events);
