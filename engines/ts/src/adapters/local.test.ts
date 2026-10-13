@@ -470,8 +470,14 @@ describe("local adapter worktree", () => {
       () => resolveToolsFromDeployment(agent, deployment),
       (e: unknown) => e instanceof AdapterError,
     );
-    const tools = resolveToolsFromDeployment(agent, deployment, { workspace: worktree });
+    // The deployment binds user tools to recorded answers (D14), which resolve inside the
+    // deployment's directory.
+    const tools = resolveToolsFromDeployment(agent, deployment, {
+      workspace: worktree,
+      deploymentPath: join(root, "examples/coding-counterbalance/deployment.local-fixture.yml"),
+    });
     assert.ok(tools["fs.read"]);
+    assert.equal(typeof tools["user.approve"], "function");
   });
 
   it("rejects mixed local and sim bindings", () => {

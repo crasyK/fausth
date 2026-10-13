@@ -7,13 +7,16 @@ import {
   scoreFindings,
   type ScoredCell,
 } from "./matrix-scoring.js";
-import { ModelInfraError } from "./errors.js";
+import { ModelInfraError, ModelRequestError } from "./errors.js";
 import { toRuntimeProposal } from "./port.js";
 
 describe("model matrix scoring (EDGE-21)", () => {
   it("classifies transport infra failures and setup errors — never as model failures", () => {
     const rl = classifyCellError(new ModelInfraError("rate_limit", "slow down", { status: 429 }));
-    assert.deepEqual(rl, { error_class: "infra", infra_kind: "rate_limit", conclusion: "neutral" });
+    assert.equal(rl.error_class, "infra");
+    assert.equal(rl.infra_kind, "rate_limit");
+    assert.equal(rl.conclusion, "neutral");
+    assert.equal(rl.transport_error?.status, 429, "structured, not just a message");
     const to = classifyCellError(new ModelInfraError("timeout", "timed out"));
     assert.equal(to.error_class, "infra");
     assert.equal(to.conclusion, "infrastructure_error");
@@ -73,5 +76,24 @@ describe("toRuntimeProposal", () => {
       args: { x: 1 },
     });
     assert.deepEqual(toRuntimeProposal({ type: "stop", message: "bye" }), { type: "stop", message: "bye" });
+  });
+});
+
+describe("model matrix: request rejections stay visible", () => {
+  it("a rejected request is its own class with the structured transport error, counted separately", () => {
+    const info = classifyCellError(new ModelRequestError("request rejected: context length exceeded", { status: 400, model: "m", attempts: 1 }));
+    assert.equal(info.error_class, "request_rejected");
+    assert.equal(info.transport_error?.kind, "request_rejected");
+    assert.equal(info.transport_error?.status, 400);
+    assert.equal(info.transport_error?.infra, false);
+    const infra = classifyCellError(new ModelInfraError("server_error", "busy", { status: 503, model: "m", attempts: 4 }));
+    assert.equal(infra.transport_error?.attempts, 4);
+    const [row] = aggregateLeaderboard([
+      { model: "m", ok: false, score: emptyScore(), error_class: "request_rejected" },
+      { model: "m", ok: false, score: emptyScore(), error_class: "infra" },
+    ]);
+    assert.equal(row!.request_rejected, 1);
+    assert.equal(row!.infra_errors, 1);
+    assert.equal(row!.scored_cells, 0);
   });
 });

@@ -115,3 +115,6 @@ permissions:
     - sensor.fan.read_percent
     - actuator.fan.set
     - system.wait
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: actuator.fan.set, sensor.fan.read_percent, sensor.temperature.read, system.wait. Use only listed tools; never invent tools, shell commands, or mode.enter."

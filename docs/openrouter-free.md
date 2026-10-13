@@ -45,10 +45,14 @@ pnpm -C engines/ts exec node --import tsx src/cli.ts provider probe \
 Exit codes for live: `0` pass · `1` catch_rate/infra fail · `2` rate limited (CI should skip).
 
 Infra vs model failures: the transport throws `ModelInfraError` (`kind`: `timeout`,
-`rate_limit`, `server_error`, `network`, `auth`, `bad_request`, `model_unavailable`) when no
-model answer was obtained, and returns `invalid` proposals only for model-protocol problems
-(see [`openai-compatible.md`](openai-compatible.md#errors-infra-vs-model-protocol)). Free-tier
-daily limits (`free-models-per-day`, HTTP 429) stop immediately as `rate_limit` without trying
-the other listed models; transient 429s are retried with backoff (`Retry-After` honoured).
-Scoring code must exclude infra failures from model denominators — `run-model-matrix.ts`
-reports them as `infra_errors` per model instead of false negatives.
+`rate_limit`, `server_error`, `network`, `auth`, `model_unavailable`) when no model answer was
+obtained for reasons outside the harness, throws `ModelRequestError` (`kind: request_rejected`,
+not infra) when the endpoint refused the request the harness built (HTTP 400/413/422 —
+context overflow, invalid schema), and returns `invalid` proposals only for model-protocol
+problems (see [`openai-compatible.md`](openai-compatible.md#errors-infra-vs-request-rejected-vs-model-protocol)).
+Both thrown errors are structured (`kind`, `status`, `model`, `attempts`, `total_attempts`;
+`JSON.stringify` gives the object). Free-tier daily limits (`free-models-per-day`, HTTP 429)
+stop immediately as `rate_limit` without trying the other listed models; transient 429s are
+retried with backoff (`Retry-After` honoured). Scoring code must exclude infra failures from
+model denominators and keep request rejections visible — `run-model-matrix.ts` reports them
+per model as `infra_errors` and `request_rejected` instead of false negatives.

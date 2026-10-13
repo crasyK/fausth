@@ -1,0 +1,2 @@
+{"args":{"percent":40},"call_seq":1,"result":{"output":{"ok":1,"percent":40}},"tool":"actuator.fan.set"}
+{"args":{},"call_seq":2,"result":{"output":{"percent":0}},"tool":"sensor.fan.read_percent"}

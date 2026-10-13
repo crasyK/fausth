@@ -1,0 +1,4 @@
+{"args":{"filesystem":{"write_scopes":["srcx/"]},"tools":["fs.read"]},"seq":1,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"agent.spawn","ts_logical":1}
+{"args":{"filesystem":{"write_scopes":["srcx/"]},"tools":["fs.read"]},"seq":2,"stage":"validate","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"agent.spawn","ts_logical":2,"verdict":"allow"}
+{"args":{"filesystem":{"write_scopes":["srcx/"]},"tools":["fs.read"]},"failure":{"code":"escalation","dimension":"write_scopes","kind":"spawn"},"reason":"gate_denied","seq":3,"stage":"authorize","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"agent.spawn","ts_logical":3,"verdict":"deny"}
+{"seq":4,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":4,"verdict":"allow"}

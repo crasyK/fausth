@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -131,3 +132,40 @@ def test_missing_connector_binding_fails_before_smoke(tmp_path: Path):
     assert result["bindings_ok"] is False
     assert result["smoke_ok"] is None
     assert "system.wait" in "\n".join(result["errors"])
+
+
+def test_manifests_parse_like_ts_yaml12_and_json_d3(tmp_path):
+    """YAML 1.2 core schema (yes/no stay strings) and JSON.parse numbers (1.0 → 1)."""
+    from fausth.connectors import resolve_harness
+
+    (tmp_path / "agent.yml").write_text(
+        "spec: counterbalance-contract/v0.1\nname: y12\nstate: {}\ntools: []\n", encoding="utf-8"
+    )
+    (tmp_path / "connectors").mkdir()
+    (tmp_path / "connectors" / "m.json").write_text(
+        json.dumps(
+            {
+                "format": "fausth-connector-manifest/v0.1",
+                "provides": [{"id": "x.num", "input": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1.0}}}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "connectors.yml").write_text(
+        "format: fausth-connectors/v0.1\n"
+        "connectors:\n"
+        "  - id: inl\n"
+        "    kind: inline\n"
+        "    provides:\n"
+        "      - id: x.enum\n"
+        "        input: {type: object, properties: {answer: {type: string, enum: [yes, no, on, off]}}}\n"
+        "  - id: f\n"
+        "    kind: file\n"
+        "    path: connectors/m.json\n",
+        encoding="utf-8",
+    )
+    resolved = resolve_harness(tmp_path)
+    tools = {t["id"]: t for t in resolved["agent"]["tools"]}
+    assert tools["x.enum"]["input"]["properties"]["answer"]["enum"] == ["yes", "no", "on", "off"]
+    minimum = tools["x.num"]["input"]["properties"]["n"]["minimum"]
+    assert minimum == 1 and isinstance(minimum, int)

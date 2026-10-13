@@ -1,0 +1,1 @@
+{"args":{"disposition":"propose","ops":[{"op":"set_instinct_text","text":"Ask before acting when the request is ambiguous."}]},"call_seq":1,"result":{"disposition":"propose","ok":1,"proposed":1},"tool":"harness.reflect_skills"}

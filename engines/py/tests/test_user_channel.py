@@ -114,3 +114,15 @@ def test_human_set_is_validated(answers_dir):
     )
     with pytest.raises(AdapterError):
         h({"question": "q?"}, {})
+
+
+def test_human_answer_must_match_output_schema(answers_dir):
+    h = create_user_channel_handler(
+        ASK,
+        parse_user_channel_binding("user.ask", {"source": "human"}),
+        base_dir=answers_dir,
+        human_answer=lambda req: {"output": {"answer": 42}},
+    )
+    with pytest.raises(AdapterError) as ei:
+        h({"question": "q?"}, {})
+    assert ei.value.code == "user_channel_unavailable"

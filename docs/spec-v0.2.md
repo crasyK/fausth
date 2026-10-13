@@ -1,11 +1,11 @@
 # Counterbalance Contract — Specification v0.2
 
-**Status:** Normative for Faust Harness `0.2.0-alpha`  
-**Spec id:** `counterbalance-contract/v0.2`
+**Status:** Superseded where conflicting by [`spec-v0.3.md`](spec-v0.3.md), the single normative description of the executable contract for Fausth 0.3.x. §1's authoring shape is **not loadable** (see [`spec-v0.3-draft.md`](spec-v0.3-draft.md) §A).  
+**Spec id:** `counterbalance-contract/v0.2` (accepted by 0.3 engines for the flat executable IR)
 
 This document extends [`spec-v0.1.md`](spec-v0.1.md). Where they conflict on Counterbalance bridge fields, event optional fields, or CB reason codes, **this document wins**. Track A goldens for CB fixtures MUST be hand-derived from this prose. Live model runs MUST NOT rewrite golden expectations automatically.
 
-Companion: [`counterbalance-architecture.md`](counterbalance-architecture.md) · [`glossary.md`](glossary.md) · schema [`../schema/counterbalance-contract.v0.2.json`](../schema/counterbalance-contract.v0.2.json).
+Companion: [`counterbalance-architecture.md`](counterbalance-architecture.md) · [`glossary.md`](glossary.md) · executable IR schema [`../schema/counterbalance-contract.v0.1.json`](../schema/counterbalance-contract.v0.1.json) (the v0.2 authoring-shape schema [`counterbalance-contract.v0.2.json`](../schema/counterbalance-contract.v0.2.json) is a non-loadable draft).
 
 ---
 
@@ -38,7 +38,7 @@ limits: {}
 
 Role multiplexing uses **separate harness YAMLs** (host-loaded subagents), not an in-YAML modes register.
 
-Engines MUST accept v0.1 `agent.yml` and the executable bridge in §2. Full v0.2 authoring shape above is the target; the bridge remains valid IR.
+Engines MUST accept v0.1 `agent.yml` and the executable bridge in §2. The v0.2 authoring shape above is the design target and is **not loadable** in 0.3; the bridge is the executable IR.
 
 ## 2. Executable bridge on v0.1 IR
 

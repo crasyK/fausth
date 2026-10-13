@@ -34,8 +34,9 @@ Node **22+** is required (`package.json` `engines.node`).
 ```
 engines/ts/     TypeScript runtime (primary). CLI: pnpm fausth -- help
 engines/py/     Python replay/pack parity
-schema/         JSON Schema. Engines still validate contract v0.1;
-                v0.2 is normative in docs; v0.3 is draft.
+schema/         JSON Schema. counterbalance-contract.v0.1.json is the one executable IR
+                schema (spec ids v0.1–v0.3); the v0.2 agent/world/exchange schema is a
+                non-loadable draft. Normative text: docs/spec-v0.3.md.
 conformance/    Track A golden event logs (immutable except via generators)
 case-studies/   Bounded empirical studies (coding, SWE, τ, adversarial)
 examples/       Runnable harness library (CI smoke). See examples/README.md
@@ -69,9 +70,10 @@ Claims that mix the two without saying so are invalid. See [`evidence-pack.md`](
 
 | File | Role |
 |------|------|
-| [`spec-v0.1.md`](spec-v0.1.md) | Baseline freeze (immutable goldens) |
-| [`spec-v0.2.md`](spec-v0.2.md) | Current normative contract text |
-| [`spec-v0.3-draft.md`](spec-v0.3-draft.md) | Candidates (output verifies, TTL, audit, budgets, mutable) |
+| [`spec-v0.3.md`](spec-v0.3.md) | **Normative** executable contract (overrides v0.1/v0.2 on conflict); goldens derive from it |
+| [`spec-v0.2.md`](spec-v0.2.md) | Counterbalance bridge history; §1 authoring shape is a non-loadable draft |
+| [`spec-v0.1.md`](spec-v0.1.md) | Baseline (where not overridden) |
+| [`spec-v0.3-draft.md`](spec-v0.3-draft.md) | Open candidates only (authoring-shape translation, host_day budgets) |
 | [`BASELINE-v0.1.md`](BASELINE-v0.1.md) | How the v0.1 pin is maintained |
 
 Release narrative snapshots: [`archive/releases/`](archive/releases/).

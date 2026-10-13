@@ -21,6 +21,7 @@ bindings:
   shell.run_allowlisted:
     native: stub.shell
   user.approve:
-    native: stub.approve
+    user:
+      source: human
   agent.spawn:
     native: stub.spawn

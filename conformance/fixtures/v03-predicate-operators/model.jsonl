@@ -1,0 +1,7 @@
+{"args":{"level":5},"name":"dial.set","type":"tool"}
+{"args":{"level":13},"name":"dial.set","type":"tool"}
+{"args":{"level":13,"mode":"safe"},"name":"dial.set","type":"tool"}
+{"args":{"level":7,"override":1},"name":"dial.set","type":"tool"}
+{"args":{"level":120,"mode":"safe"},"name":"dial.set","type":"tool"}
+{"args":{"confirm":60,"level":60,"mode":"safe"},"name":"dial.set","type":"tool"}
+{"args":{"level":60,"mode":"safe"},"name":"dial.set","type":"tool"}

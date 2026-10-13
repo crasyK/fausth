@@ -1,6 +1,6 @@
 # Counterbalance Architecture
 
-**Status:** Design thesis for Fausth (guides v0.2; v0.3 candidates in [`spec-v0.3-draft.md`](spec-v0.3-draft.md)). Normative behaviour remains [`spec-v0.2.md`](spec-v0.2.md) / [`spec-v0.1.md`](spec-v0.1.md) until fixtures promote new semantics.
+**Status:** Design thesis for Fausth. Normative behaviour: [`spec-v0.3.md`](spec-v0.3.md) (open candidates: [`spec-v0.3-draft.md`](spec-v0.3-draft.md)).
 
 ## Product claim
 
@@ -69,11 +69,11 @@ Memory items need provenance and status (`current` | `stale` | `contradicted` | 
 
 A checkpoint is only as strong as its **independence** from what it checks. Orchestrator todos written by the *same* model are Gates (`open_todos eq 0`), not User-cell authority. Self-reported learning without observed work is a mirror, not a counterweight.
 
-**`require_prior_tools: [user.approve]` is ordering, not human approval.** If the write harness also provisions `user.approve` (and especially `*_auto` bindings), the model can satisfy the sequence itself. Prefer a **plan/impl pipeline** (implementation omits `user.approve`; host starts write phase only after plan-phase approve) — see coding-counterbalance and adversarial CB.
+**`require_prior_tools: [user.approve]` is ordering, not human approval** unless the approval really comes from the user. In 0.3 the User cell is real: `user.approve` is a `channel: user` tool answered by recorded answers, a declared simulator or a human — never by the acting model's arguments — and the decision key (`plan_approved`) is a checkpoint key only `user.approve` may write (spec-v0.3 §8.3, §9). A plan/impl pipeline (implementation omits `user.approve`; the host starts the write phase only after plan-phase approval) remains the stronger design — see coding-counterbalance.
 
-**Secrets** are declared under `permissions.secrets` (`paths` / `values`, `deny_write_contains`). The engine refuses `fs.write_scoped` when content contains a registered secret (`secret_leak: 1`). Path scopes alone cannot protect in-scope exfil.
+**Secrets** are declared under `permissions.secrets` (`paths` / `values`, `deny_write_contains`). The host world adapter refuses writes whose content contains a registered secret and reports `secret_leak: 1`; the harness turns that into a verdict with an absence verify; the engine redacts declared secret values from world feedback (spec-v0.3 §4.3, §14). Path scopes alone cannot protect in-scope exfil.
 
-**Protected paths** (`permissions.protected_paths`) enforce **absence of change**: baseline content is snapshotted at world init; direct writes are denied (`protected_modified: 1`); shell mutations that drift the hash are rolled back and flagged. Prefer this over parsing tool-call text.
+**Protected paths** (`permissions.protected_paths`) enforce **absence of change**: the host world snapshots baseline content at init, refuses direct writes (`protected_modified: 1`) and rolls back + flags shell mutations that drift the hash. Prefer this over parsing tool-call text.
 
 ## Behaviour
 

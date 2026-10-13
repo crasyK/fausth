@@ -38,21 +38,28 @@ Optional Ed25519 signatures (`signature.alg` / `public_key` / `sig`) are opt-in 
 
 ## Agent IR essentials
 
-- **Tools** — each tool has `input` / `output` JSON Schema and optional `verify` (`evidence`, `absence`, `effect`, live-only `judge`). The YAML `tools:` list is the only capability surface the model sees.
+- **Tools** — each tool has `input` / `output` JSON Schema (standard 2020-12 semantics: write `additionalProperties: false` to close a schema) and optional `verify` (`evidence`, `absence`, `effect`, `output`, live-only `judge`). The permitted tools (declared ∩ `permissions.tools`) are the only capability surface the model sees.
+- **User channel** — tools the *user* answers (approve, ask, correct) declare `channel: user`; deployments bind them with `user: {source: recorded|simulator|human}`. User decisions are `counterbalance.checkpoints` keys only their user tool may write.
+- **Declared effects** — say in the harness what a result means for memory: `effects: [{ when: { path: result.exit_code, eq: 0 }, set: { test_evidence_current: 1 } }]`. Hosts never write harness keys by name.
+- **Terminal tool** — `counterbalance.completion.tool` (required when `completion` is present) ends the run with `run_complete`; phase harnesses declare their yield tool here.
+- **Instincts** — `instinct_text` is rendered verbatim as the model's system context on every host.
 - **Gates** — pre-exec predicates on capability, sequences, limits.
-- **Counterbalance bridge** (`counterbalance:`) — `sequences`, `invalidate_after`, `completion`, checkpoints, orientation. Normative contract: [`spec-v0.2.md`](spec-v0.2.md).
+- **Counterbalance bridge** (`counterbalance:`) — `sequences`, `invalidate_after`, `completion`, checkpoints, orientation, output verifies, provenance, budgets. Closed at every level (a typo is a validation error). Normative contract: [`spec-v0.3.md`](spec-v0.3.md).
 - **Permissions** — `tools`, `filesystem.read_scopes` / `write_scopes`. Deployment `world.scopes` may **narrow** but never widen agent scopes.
 - **Roles** — different instincts = different harness dirs (subagents). Host code sequences `run()` calls; do not multiplex roles with in-YAML modes.
 
 ### Structured deny signals (`failure`)
 
-Counterbalance denies (`completion_gate_failed`, `sequence_requirement_failed`, `checkpoint_authority_failed`) carry a machine-checkable `failure` object on the event — not free-text `hint`s.
+Denies carry a machine-checkable `failure` object on the event — never free-text hints. The closed list is in [`spec-v0.3.md`](spec-v0.3.md) §13.3; the most common:
 
 | `failure.kind` | Meaning |
 |----------------|---------|
 | `predicate` | Failing state paths under `completion.require` or sequence `require_state` |
-| `missing_prior_tools` | Sequence prior tools not yet executed |
-| `checkpoint_key` | Checkpoint tool attempted a key outside `allow_set_keys` |
+| `missing_prior_tools` / `missing_prior_any_of` | Sequence prior tools have not *succeeded* (executed and verified) yet |
+| `checkpoint_key` | A checkpoint key was requested or written by a tool that does not own it |
+| `state_key` | A transition wrote an undeclared state key |
+| `channel_unbound` | The host has no binding for the tool (world or user channel) |
+| `spawn` / `harness_patch` | Closed codes for spawn and mutable-cell denials |
 
 When a checkpoint's `allow_set_keys` covers a failing `eq` path, the engine MAY attach `unblock: { tool, set_key, set_value }` so the model can clear the gate. Live hosts MAY render prose from `failure` for tool results; Track A fixtures store structure only.
 
@@ -69,7 +76,7 @@ Map each agent tool to a native:
 
 Do not mix `local.*` with `sim.*`/`stub.*` in one deployment.
 
-Local natives: `local.fs_read`, `local.fs_write`, `local.shell`, `local.user_approve`, `local.user_approve_auto` (test-only), `local.user_correct`, `local.user_correct_auto`, `local.task_complete`, `local.phase_yield`.
+Local natives: `local.fs_read`, `local.fs_write`, `local.shell`, `local.task_complete`, `local.phase_yield`. User-channel tools are never bound to natives: use `user: {source: recorded, answers: user.answers.jsonl}` (Track A / e2e), `simulator` or `human`.
 
 ## Design heuristics (Counterbalance)
 
@@ -120,7 +127,7 @@ pnpm fausth -- run examples/coding-counterbalance \
   --deployment examples/coding-counterbalance/deployment.local-fixture.yml \
   --workspace <linked-worktree> \
   --model conformance/fixtures/cb-coding-happy-path/model.jsonl \
-  --expect-complete true \
+  --expect-complete \
   --report live/reports/run.json
 ```
 
@@ -129,6 +136,6 @@ pnpm fausth -- run examples/coding-counterbalance \
 ## Security limitations (honest alpha)
 
 - Not a sandbox VM. Isolation is **worktree containment + argv allowlist**, not production multi-tenant isolation.
-- Interactive checkpoints need a TTY; automation must use `*_auto` natives explicitly.
+- A `human` user channel needs a TTY (or a host callback); automation uses recorded answers or a declared simulator — never an auto-approving native.
 - Live models are secrets-gated and flaky; Track A never depends on them.
 - Browser, Python live transport, registry, and production-grade isolation remain out of scope for this alpha.
