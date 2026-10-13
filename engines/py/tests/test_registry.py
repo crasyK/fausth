@@ -34,7 +34,7 @@ def test_resolve_returns_toolset_that_runs_cleanup(monkeypatch):
 
     calls = []
 
-    def fake_create(deployment, *, harness_dir, mcp_tool_map):
+    def fake_create(deployment, *, harness_dir, mcp_tool_map, **kw):
         return {"echo.ping": lambda a, c: {"output": {"ok": 1}}}, {"mcp.srv.echo.ping": "echo.ping"}, lambda: calls.append("closed")
 
     monkeypatch.setattr(mcp, "create_mcp_handlers", fake_create)

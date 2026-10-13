@@ -257,11 +257,6 @@ def test_module_connector_round_trip(tmp_path: Path) -> None:
         ref.cleanup()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="fausth-py has no module.* host adapter yet (registry.py is owned by the py twin); "
-    "remove this marker once module natives bind on the Python host",
-)
 def test_module_bundle_smoke_runs_on_python_host(tmp_path: Path) -> None:
     r = pack_harness(str(MODULES), str(tmp_path / "m.fausth.json"))
     ref = resolve_harness_ref(r["out"])
