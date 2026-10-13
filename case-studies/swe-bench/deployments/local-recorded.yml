@@ -1,4 +1,4 @@
-# Recorded plumbing deployment for SWE HRI CI smoke.
+# Recorded plumbing deployment for SWE HRI CI smoke (model traces in ../recorded/<task>/).
 platform: case-study-swe-recorded
 model:
   transport: recorded
@@ -7,15 +7,11 @@ model:
     - recorded-fixture
 
 world:
-  shell_timeout_ms: 60000
+  shell_timeout_ms: 900000
   max_read_bytes: 512000
   max_output_bytes: 128000
   commands:
-    test: ["pytest", "-q"]
-    typecheck: ["pytest", "-q", "--collect-only"]
-  scopes:
-    read: ["."]
-    write: ["."]
+    tests: ["node", "../.fausth-swe/run-tests.mjs"]
 
 bindings:
   fs.read:
@@ -27,9 +23,9 @@ bindings:
   shell.run_allowlisted:
     native: local.shell
   user.approve:
-    native: local.user_approve_auto
-  user.correct:
-    native: local.user_correct_auto
+    user:
+      source: recorded
+      answers: user/approve-once.jsonl
   task.complete:
     native: local.task_complete
   phase.yield:

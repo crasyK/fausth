@@ -16,11 +16,21 @@ harnesses:
   permissive-control:
     kind: single
     path: case-studies/swe-bench/harnesses/permissive-control
+# D14: the only user-channel tool is user.approve (CB plan checkpoint). There is no human
+# reviewer in this study; approvals are a recorded "approve once" script (honest label).
+user_channel:
+  source: recorded
+  answers:
+    user.approve: case-studies/swe-bench/deployments/user/approve-once.jsonl
+# Grading: case-studies/swe-bench/GRADER-VALIDATION.md — only `validated` tasks are graded;
+# grader_unavailable attempts are excluded and reported, never counted as failures.
+# Reps note: the KIT gateway caches kit.glm-5.3-flash responses by request body, so identical
+# requests return identical completions: repetitions are not independent samples.
 deployments:
   kit:
     id: kit
     path: case-studies/swe-bench/deployments/local-kit.yml
-    model_id: kit.gemma4-31b-it
+    model_id: kit.glm-5.3-flash
     api_key_env: KIT_AI_API_KEY
   recorded:
     id: recorded
@@ -36,8 +46,8 @@ matrix:
   live_deployments:
     - kit
   live_kit_models:
-    - kit.gemma4-31b-it
-    - kit.minimax-m2.7-229b
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   recorded_provider_labels:
     - kit
 tasks:
@@ -120,4 +130,4 @@ scoring:
   path: case-studies/swe-bench/expected/scoring.yml
 outputs:
   raw_dir: live/reports/case-studies/swe-bench
-  summary: case-studies/swe-bench/results/summary.json
+  summary: live/reports/case-studies/swe-bench/summary.json

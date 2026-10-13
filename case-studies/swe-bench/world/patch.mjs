@@ -8,14 +8,31 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
-export const SEED_META = ".fausth-swe-seed.json";
+/** Host-side directory next to the agent workspace (never inside it). */
+export const HOST_DIR = ".fausth-swe";
+/** Agent-owned directory inside the workspace (test targets); excluded from diffs. */
 export const FAUSTH_DIR = ".fausth";
+
+/**
+ * Host metadata for a seeded workspace lives OUTSIDE the agent's workspace:
+ * `<parent>/.fausth-swe/<workspace basename>.json` (the disposable-workspace
+ * container), so the agent never sees host paths (mirror, env root).
+ */
+export function seedMetaPath(worktree) {
+  const abs = resolve(worktree);
+  return join(dirname(abs), HOST_DIR, `${basename(abs)}.json`);
+}
+
+/** Launcher run by the deployment command `node ../.fausth-swe/run-tests.mjs`. */
+export function launcherPath(worktree) {
+  return join(dirname(resolve(worktree)), HOST_DIR, "run-tests.mjs");
+}
 
 const EXCLUDES = [
   ":(exclude).fausth-worktree.json",
-  `:(exclude)${SEED_META}`,
+  ":(exclude).fausth-swe-seed.json",
   `:(exclude)${FAUSTH_DIR}`,
   ":(exclude,glob)**/__pycache__/**",
   ":(exclude,glob)**/*.pyc",
@@ -24,7 +41,7 @@ const EXCLUDES = [
 ];
 
 export function readSeedMeta(worktree) {
-  const p = join(worktree, SEED_META);
+  const p = seedMetaPath(worktree);
   if (!existsSync(p)) return null;
   try {
     return JSON.parse(readFileSync(p, "utf8"));

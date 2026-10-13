@@ -8,10 +8,7 @@ model:
 world:
   shell_timeout_ms: 60000
   commands:
-    test: ["pytest", "-q"]
-  scopes:
-    read: ["."]
-    write: ["."]
+    tests: ["node", "../.fausth-swe/run-tests.mjs"]
 
 bindings:
   fs.read:
@@ -23,9 +20,9 @@ bindings:
   shell.run_allowlisted:
     native: local.shell
   user.approve:
-    native: local.user_approve_auto
-  user.correct:
-    native: local.user_correct_auto
+    user:
+      source: recorded
+      answers: approve-once.jsonl
   task.complete:
     native: local.task_complete
   phase.yield:

@@ -55,7 +55,7 @@ try {
   }
 } finally {
   try {
-    execFileSync(process.execPath, [join(root, "scripts/disposable-worktree.mjs"), "cleanup", "--parent", root, "--worktree", worktree], { stdio: "pipe" });
+    execFileSync(process.execPath, [join(root, "scripts/disposable-worktree.mjs"), "cleanup", "--worktree", worktree], { stdio: "pipe" });
   } catch {
     if (existsSync(worktree)) rmSync(worktree, { recursive: true, force: true });
   }

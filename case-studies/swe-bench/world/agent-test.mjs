@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Agent-side test command for SWE tasks (deployment `world.commands.tests`, run
- * via the seeded launcher `.fausth/run-tests.mjs`, cwd = agent worktree).
+ * Agent-side test command for SWE tasks (deployment `world.commands.tests` =
+ * `node ../.fausth-swe/run-tests.mjs`: a host-written launcher next to — never
+ * inside — the agent workspace; cwd = agent worktree).
  *
  * Runs the repo's upstream test command (the same one the grader uses: pytest
  * node ids, Django `tests/runtests.py` dotted labels, SymPy `bin/test` paths,

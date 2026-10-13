@@ -7,7 +7,7 @@ import { describe, it, before, after } from "node:test";
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applySeed,
@@ -115,9 +115,12 @@ describe("case-study-backends SWE helpers", () => {
     try {
       applySeed(wt, flaskTask, repoRoot);
       assert.ok(existsSync(join(wt, "src/flask/blueprints.py")));
-      assert.ok(existsSync(join(wt, ".fausth/run-tests.mjs")), "agent test launcher seeded");
-      const meta = JSON.parse(readFileSync(join(wt, ".fausth-swe-seed.json"), "utf8"));
+      assert.equal(existsSync(join(wt, ".fausth-swe-seed.json")), false, "no host metadata inside the workspace");
+      assert.equal(existsSync(join(wt, ".fausth")), false, "no host launcher inside the workspace");
+      assert.ok(existsSync(join(dirname(wt), ".fausth-swe/run-tests.mjs")), "launcher next to the workspace");
+      const meta = JSON.parse(readFileSync(join(dirname(wt), ".fausth-swe", `${basename(wt)}.json`), "utf8"));
       assert.equal(meta.instance_id, "pallets__flask-4045");
+      mkdirSync(join(wt, ".fausth"), { recursive: true });
       assert.equal(captureSweWorktreeDiff(wt), "", "fresh seed has an empty diff");
       writeFileSync(join(wt, "src/flask/new_module.py"), "X = 1\n");
       writeFileSync(join(wt, ".fausth/tests.txt"), "tests/test_basic.py\n");
@@ -164,13 +167,16 @@ describe("SWE agent test command (deployment cmd=tests)", () => {
     const wt = mkdtempSync(join(tmpdir(), "fausth-swe-agenttest-"));
     try {
       applySeed(wt, flaskTask, repoRoot);
+      // exactly the deployment argv, with an engine-like scrubbed env and private HOME
+      const childEnv = { PATH: process.env.PATH, HOME: mkdtempSync(join(tmpdir(), "fausth-private-home-")) };
       const run = () => {
         try {
-          return { code: 0, out: execFileSync(process.execPath, [".fausth/run-tests.mjs"], { cwd: wt, encoding: "utf8" }) };
+          return { code: 0, out: execFileSync("node", ["../.fausth-swe/run-tests.mjs"], { cwd: wt, encoding: "utf8", env: childEnv }) };
         } catch (e) {
           return { code: e.status, out: String(e.stdout) };
         }
       };
+      mkdirSync(join(wt, ".fausth"), { recursive: true });
       const none = run();
       assert.equal(none.code, 2);
       assert.match(none.out, /no test targets/);

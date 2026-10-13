@@ -139,6 +139,11 @@ const LOCAL_DEVIATIONS = [
     note: "vcs-versioning (2026 split of setuptools_scm, pulled in by today's conda-forge setuptools_scm) is uninstalled: it re-registers version schemes with DeprecationWarnings that the pinned setuptools-scm==7.1.0 era never had",
     postUninstall: ["vcs-versioning"],
   },
+  {
+    match: (t) => t.repo === "matplotlib/matplotlib" && t.version === "3.5",
+    note: "apt ghostscript replaced by conda-forge ghostscript (pdf→png image comparisons)",
+    extraConda: ["ghostscript"],
+  },
 ];
 
 /**
