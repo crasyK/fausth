@@ -202,3 +202,23 @@ def test_output_verify_message_length_counts_code_points():
     rt = run(a, [{"type": "tool", "name": "answer.send", "args": {"message": "\U0001F600\U0001F680\U0001F600"}}])
     v = [e for e in rt.events if e["stage"] == "verify"][0]
     assert v["verdict"] == "allow" and v["observation"]["message"]["length"] == 3
+
+
+def test_run_loop_without_host_cap_enforces_ir_limits():
+    a = agent(["echo.ping"], limits={"max_steps": 2, "continue_after_deny": True})
+    rt = FaustRuntime(a, [{"type": "tool", "name": "echo.ping", "args": {}}] * 5, default_tools(a))
+    rt.run_loop(None)
+    assert rt.events[-1]["reason"] == "limit_exceeded" and rt.steps == 2
+
+
+def test_callable_propose_handles_invalid_proposals_natively():
+    a = agent(["echo.ping"], limits={"continue_after_deny": True})
+    queue = [
+        {"type": "invalid", "reason": "no_tool_call", "message": "thinking…"},
+        {"type": "tool", "name": "echo.ping", "args": {}},
+        {"type": "stop"},
+    ]
+    rt = FaustRuntime(a, lambda: queue.pop(0) if queue else {"type": "stop"}, default_tools(a))
+    rt.run_loop()
+    assert rt.events[0]["reason"] == "empty_proposal" and rt.events[0]["error"] == "thinking…"
+    assert any(e["stage"] == "execute" and e["verdict"] == "allow" for e in rt.events)

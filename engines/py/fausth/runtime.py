@@ -1282,6 +1282,14 @@ class FaustRuntime:
         self.emit(ev)
 
     def run_loop(self, max_iterations: Any = 32) -> list[dict[str, Any]]:
+        """Run proposals until stop, a terminal deny/tool, or the IR limits.
+
+        ``max_iterations`` is the host's safety valve (TS ``runLoop(maxIterations)``);
+        ``None`` means no host cap — ``limits.max_steps`` / ``max_tool_calls`` (default
+        1000) end the run with a ``limit_exceeded`` event, same as TS ``runLoop(Infinity)``.
+        """
+        if max_iterations is None:
+            max_iterations = math.inf
         consecutive_empty = 0
         i = 0
         while js_gt(max_iterations, i):
