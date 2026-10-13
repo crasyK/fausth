@@ -1,0 +1,1418 @@
+{
+  "generated_at": "2026-10-13T18:38:31.880Z",
+  "host_note": "Results are for environments built on this host (no Docker, no root, conda-forge via micromamba). Re-run selftest.mjs on any other host before trusting grades there.",
+  "criteria": {
+    "gold": "gold patch ⇒ RESOLVED_FULL (all FAIL_TO_PASS and PASS_TO_PASS pass)",
+    "empty": "empty patch ⇒ FAIL_TO_PASS criterion fails (≥1 F2P test fails)"
+  },
+  "rows": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "repo": "astropy/astropy",
+      "version": "4.3",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.20",
+        "python_spec": "3.9",
+        "cached_env_yml": "case-studies/swe-bench/world/envs/astropy__astropy-12907/environment.yml",
+        "build_seconds": 90,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 13,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "astropy/modeling/tests/test_separable.py::test_separable[compound_model6-result6]",
+          "astropy/modeling/tests/test_separable.py::test_separable[compound_model9-result9]"
+        ],
+        "parsed_tests": 15,
+        "timed_out": false,
+        "seconds": 71,
+        "log_path": "/home/mark/.cache/fausth/swe-env/astropy__astropy-12907/evals/2026-10-13T16-08-31-834Z-2448578-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 13,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "astropy/modeling/tests/test_separable.py::test_separable[compound_model6-result6]",
+          "astropy/modeling/tests/test_separable.py::test_separable[compound_model9-result9]"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 15,
+        "timed_out": false,
+        "seconds": 65,
+        "log_path": "/home/mark/.cache/fausth/swe-env/astropy__astropy-12907/evals/2026-10-13T16-09-42-880Z-2448578-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "astropy__astropy-14182",
+      "repo": "astropy/astropy",
+      "version": "5.1",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.20",
+        "python_spec": "3.9",
+        "cached_env_yml": "case-studies/swe-bench/world/envs/astropy__astropy-14182/environment.yml",
+        "build_seconds": 79,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 9,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"
+        ],
+        "parsed_tests": 10,
+        "timed_out": false,
+        "seconds": 70,
+        "log_path": "/home/mark/.cache/fausth/swe-env/astropy__astropy-14182/evals/2026-10-13T16-12-07-265Z-2454256-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 9,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 10,
+        "timed_out": false,
+        "seconds": 66,
+        "log_path": "/home/mark/.cache/fausth/swe-env/astropy__astropy-14182/evals/2026-10-13T16-13-17-566Z-2454256-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "django__django-10914",
+      "repo": "django/django",
+      "version": "3.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.6.13",
+        "python_spec": "3.6",
+        "cached_env_yml": "case-studies/swe-bench/world/envs/django__django-10914/environment.yml",
+        "build_seconds": 23,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 98,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_override_file_upload_permissions (test_utils.tests.OverrideSettingsTests)"
+        ],
+        "parsed_tests": 100,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/django__django-10914/evals/2026-10-13T16-03-50-409Z-2431420-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 98,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "test_override_file_upload_permissions (test_utils.tests.OverrideSettingsTests)"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 101,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/django__django-10914/evals/2026-10-13T16-03-52-666Z-2431420-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "django__django-10924",
+      "repo": "django/django",
+      "version": "3.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.6.15",
+        "python_spec": "3.6",
+        "cached_env_yml": null,
+        "build_seconds": 24,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 1,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_callable_path (model_fields.test_filepathfield.FilePathFieldTests)"
+        ],
+        "parsed_tests": 2,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/django__django-10924/evals/2026-10-13T16-04-19-364Z-2433239-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 1,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "test_callable_path (model_fields.test_filepathfield.FilePathFieldTests)"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 3,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/django__django-10924/evals/2026-10-13T16-04-21-480Z-2433239-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-18869",
+      "repo": "matplotlib/matplotlib",
+      "version": "3.3",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.8.20",
+        "python_spec": "3.8",
+        "cached_env_yml": null,
+        "build_seconds": 78,
+        "pip_failures": [],
+        "skipped": [
+          "pre_install: apt-get -y update && apt-get -y upgrade && DEBIAN_FRONTEND=noninteractive apt-get install -y imagemagick ffmpeg libfreetype6-dev pkg-config texlive texlive-latex-extra texlive-fonts-recommended texlive-xetex texlive-luatex cm-super"
+        ]
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 4,
+        "f2p_failure": 0,
+        "p2p_success": 3,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0-version_tuple0]",
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0rc2-version_tuple1]",
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.dev820+g6768ef8c4c-version_tuple2]",
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.post820+g6768ef8c4c-version_tuple3]"
+        ],
+        "parsed_tests": 8,
+        "timed_out": false,
+        "seconds": 6,
+        "log_path": "/home/mark/.cache/fausth/swe-env/matplotlib__matplotlib-18869/evals/2026-10-13T16-23-51-940Z-2470488-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 4,
+        "p2p_success": 3,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0-version_tuple0]",
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0rc2-version_tuple1]",
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.dev820+g6768ef8c4c-version_tuple2]",
+          "lib/matplotlib/tests/test_matplotlib.py::test_parse_to_version_info[3.5.0.post820+g6768ef8c4c-version_tuple3]"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 8,
+        "timed_out": false,
+        "seconds": 5,
+        "log_path": "/home/mark/.cache/fausth/swe-env/matplotlib__matplotlib-18869/evals/2026-10-13T16-23-58-177Z-2470488-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-22711",
+      "repo": "matplotlib/matplotlib",
+      "version": "3.5",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.11.17",
+        "python_spec": "3.11",
+        "cached_env_yml": null,
+        "build_seconds": 215,
+        "pip_failures": [
+          {
+            "step": "conda environment.yml",
+            "package": "nbconvert[execute]!=6.0.0,!=6.0.1"
+          }
+        ],
+        "skipped": [
+          "pre_install: apt-get -y update && apt-get -y upgrade && DEBIAN_FRONTEND=noninteractive apt-get install -y imagemagick ffmpeg texlive texlive-latex-extra texlive-fonts-recommended texlive-xetex texlive-luatex cm-super dvipng"
+        ]
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 91,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "lib/matplotlib/tests/test_widgets.py::test_range_slider[horizontal]",
+          "lib/matplotlib/tests/test_widgets.py::test_range_slider[vertical]"
+        ],
+        "parsed_tests": 95,
+        "timed_out": false,
+        "seconds": 65,
+        "log_path": "/home/mark/.cache/fausth/swe-env/matplotlib__matplotlib-22711/evals/2026-10-13T18-34-03-223Z-2655965-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 91,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "lib/matplotlib/tests/test_widgets.py::test_range_slider[horizontal]",
+          "lib/matplotlib/tests/test_widgets.py::test_range_slider[vertical]"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 95,
+        "timed_out": false,
+        "seconds": 74,
+        "log_path": "/home/mark/.cache/fausth/swe-env/matplotlib__matplotlib-22711/evals/2026-10-13T18-35-08-312Z-2655965-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "mwaskom__seaborn-2848",
+      "repo": "mwaskom/seaborn",
+      "version": "0.12",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 18,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 50,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/test_relational.py::TestScatterPlotter::test_hue_order"
+        ],
+        "parsed_tests": 73,
+        "timed_out": false,
+        "seconds": 26,
+        "log_path": "/home/mark/.cache/fausth/swe-env/mwaskom__seaborn-2848/evals/2026-10-13T16-04-41-660Z-2434735-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 50,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/test_relational.py::TestScatterPlotter::test_hue_order"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 73,
+        "timed_out": false,
+        "seconds": 28,
+        "log_path": "/home/mark/.cache/fausth/swe-env/mwaskom__seaborn-2848/evals/2026-10-13T16-05-07-218Z-2434735-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "mwaskom__seaborn-3010",
+      "repo": "mwaskom/seaborn",
+      "version": "0.12",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 43,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 2,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/_stats/test_regression.py::TestPolyFit::test_missing_data"
+        ],
+        "parsed_tests": 3,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/mwaskom__seaborn-3010/evals/2026-10-13T16-06-19-709Z-2439338-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 2,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/_stats/test_regression.py::TestPolyFit::test_missing_data"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 3,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/mwaskom__seaborn-3010/evals/2026-10-13T16-06-22-859Z-2439338-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pallets__flask-4045",
+      "repo": "pallets/flask",
+      "version": "2.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 18,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 50,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/test_blueprints.py::test_dotted_name_not_allowed",
+          "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots"
+        ],
+        "parsed_tests": 179,
+        "timed_out": false,
+        "seconds": 10,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pallets__flask-4045/evals/2026-10-13T16-00-59-320Z-2417742-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 50,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/test_blueprints.py::test_dotted_name_not_allowed",
+          "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 179,
+        "timed_out": false,
+        "seconds": 9,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pallets__flask-4045/evals/2026-10-13T16-01-09-430Z-2417742-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pallets__flask-4992",
+      "repo": "pallets/flask",
+      "version": "2.3",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.11.17",
+        "python_spec": "3.11",
+        "cached_env_yml": null,
+        "build_seconds": 17,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 18,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/test_config.py::test_config_from_file_toml"
+        ],
+        "parsed_tests": 19,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pallets__flask-4992/evals/2026-10-13T16-00-58-367Z-2417743-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 18,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/test_config.py::test_config_from_file_toml"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 19,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pallets__flask-4992/evals/2026-10-13T16-01-01-613Z-2417743-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pallets__flask-5063",
+      "repo": "pallets/flask",
+      "version": "2.3",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.11.17",
+        "python_spec": "3.11",
+        "cached_env_yml": null,
+        "build_seconds": 13,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 54,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/test_cli.py::TestRoutes::test_subdomain",
+          "tests/test_cli.py::TestRoutes::test_host"
+        ],
+        "parsed_tests": 56,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pallets__flask-5063/evals/2026-10-13T16-01-17-998Z-2419739-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 54,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/test_cli.py::TestRoutes::test_subdomain",
+          "tests/test_cli.py::TestRoutes::test_host"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 56,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pallets__flask-5063/evals/2026-10-13T16-01-20-987Z-2419739-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "psf__requests-1963",
+      "repo": "psf/requests",
+      "version": "2.3",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 4,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 7,
+        "f2p_failure": 0,
+        "p2p_success": 112,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+          "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+          "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+          "test_requests.py::RequestsTestCase::test_DIGEST_HTTP_200_OK_GET",
+          "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+          "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+          "test_requests.py::TestRedirects::test_requests_are_updated_each_time"
+        ],
+        "parsed_tests": 121,
+        "timed_out": false,
+        "seconds": 33,
+        "log_path": "/home/mark/.cache/fausth/swe-env/psf__requests-1963/evals/2026-10-13T16-01-22-916Z-2420868-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_PARTIAL",
+        "f2p_success": 6,
+        "f2p_failure": 1,
+        "p2p_success": 112,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "test_requests.py::TestRedirects::test_requests_are_updated_each_time"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+          "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+          "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+          "test_requests.py::RequestsTestCase::test_DIGEST_HTTP_200_OK_GET",
+          "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+          "test_requests.py::RequestsTestCase::test_param_cookiejar_works"
+        ],
+        "parsed_tests": 121,
+        "timed_out": false,
+        "seconds": 34,
+        "log_path": "/home/mark/.cache/fausth/swe-env/psf__requests-1963/evals/2026-10-13T16-01-56-193Z-2420868-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "psf__requests-2148",
+      "repo": "psf/requests",
+      "version": "2.3",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 5,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 10,
+        "f2p_failure": 0,
+        "p2p_success": 118,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+          "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_ALTERNATIVE",
+          "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+          "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+          "test_requests.py::RequestsTestCase::test_auth_is_stripped_on_redirect_off_host",
+          "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+          "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+          "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+          "test_requests.py::RequestsTestCase::test_iter_content_handles_socket_error",
+          "test_requests.py::RequestsTestCase::test_unicode_multipart_post"
+        ],
+        "parsed_tests": 133,
+        "timed_out": false,
+        "seconds": 37,
+        "log_path": "/home/mark/.cache/fausth/swe-env/psf__requests-2148/evals/2026-10-13T16-01-29-347Z-2421279-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_PARTIAL",
+        "f2p_success": 9,
+        "f2p_failure": 1,
+        "p2p_success": 118,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "test_requests.py::RequestsTestCase::test_iter_content_handles_socket_error"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+          "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_ALTERNATIVE",
+          "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+          "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+          "test_requests.py::RequestsTestCase::test_auth_is_stripped_on_redirect_off_host",
+          "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+          "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+          "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+          "test_requests.py::RequestsTestCase::test_unicode_multipart_post"
+        ],
+        "parsed_tests": 133,
+        "timed_out": false,
+        "seconds": 35,
+        "log_path": "/home/mark/.cache/fausth/swe-env/psf__requests-2148/evals/2026-10-13T16-02-05-924Z-2421279-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pydata__xarray-3364",
+      "repo": "pydata/xarray",
+      "version": "0.12",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.10.22",
+        "python_spec": "3.10",
+        "cached_env_yml": null,
+        "build_seconds": 84,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 110,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "xarray/tests/test_combine.py::TestAutoCombineOldAPI::test_auto_combine_with_new_variables",
+          "xarray/tests/test_concat.py::TestConcatDataset::test_concat_merge_variables_present_in_some_datasets"
+        ],
+        "parsed_tests": 113,
+        "timed_out": false,
+        "seconds": 8,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pydata__xarray-3364/evals/2026-10-13T16-31-02-983Z-2486583-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 110,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "xarray/tests/test_combine.py::TestAutoCombineOldAPI::test_auto_combine_with_new_variables",
+          "xarray/tests/test_concat.py::TestConcatDataset::test_concat_merge_variables_present_in_some_datasets"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 113,
+        "timed_out": false,
+        "seconds": 5,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pydata__xarray-3364/evals/2026-10-13T16-31-10-974Z-2486583-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pydata__xarray-4094",
+      "repo": "pydata/xarray",
+      "version": "0.12",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.10.15",
+        "python_spec": "3.10",
+        "cached_env_yml": "case-studies/swe-bench/world/envs/pydata__xarray-4094/environment.yml",
+        "build_seconds": 148,
+        "pip_failures": [
+          {
+            "step": "environment.yml pip",
+            "package": "antlr-python-runtime==4.11.1"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "backports.zoneinfo==0.2.1"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "cdat_info==8.2.1"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "cdms2==3.1.5"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "cdtime==3.1.4"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "distarray==2.12.2"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "esmpy==8.6.1"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "iris==3.10.0"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "libcf==1.0.3"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "pyarrow-core==17.0.0"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "python-eccodes==2.37.0"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "python-fastjsonschema==2.20.0"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "python-tzdata==2024.2"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "python-xxhash==3.5.0"
+          },
+          {
+            "step": "environment.yml pip",
+            "package": "seaborn-base==0.13.2"
+          }
+        ],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 862,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "xarray/tests/test_dataset.py::TestDataset::test_to_stacked_array_to_unstacked_dataset"
+        ],
+        "parsed_tests": 873,
+        "timed_out": false,
+        "seconds": 17,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pydata__xarray-4094/evals/2026-10-13T18-17-58-918Z-2608782-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 862,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "xarray/tests/test_dataset.py::TestDataset::test_to_stacked_array_to_unstacked_dataset"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 873,
+        "timed_out": false,
+        "seconds": 15,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pydata__xarray-4094/evals/2026-10-13T18-18-15-767Z-2608782-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pylint-dev__pylint-5859",
+      "repo": "pylint-dev/pylint",
+      "version": "2.13",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 14,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 10,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/checkers/unittest_misc.py::TestFixme::test_non_alphanumeric_codetag"
+        ],
+        "parsed_tests": 11,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pylint-dev__pylint-5859/evals/2026-10-13T16-03-03-763Z-2428355-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 10,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/checkers/unittest_misc.py::TestFixme::test_non_alphanumeric_codetag"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 11,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pylint-dev__pylint-5859/evals/2026-10-13T16-03-05-914Z-2428355-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pylint-dev__pylint-6506",
+      "repo": "pylint-dev/pylint",
+      "version": "2.14",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 15,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 6,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/config/test_config.py::test_unknown_option_name",
+          "tests/config/test_config.py::test_unknown_short_option_name"
+        ],
+        "parsed_tests": 8,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pylint-dev__pylint-6506/evals/2026-10-13T16-03-20-068Z-2429324-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 6,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/config/test_config.py::test_unknown_option_name",
+          "tests/config/test_config.py::test_unknown_short_option_name"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 8,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pylint-dev__pylint-6506/evals/2026-10-13T16-03-23-324Z-2429324-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pytest-dev__pytest-11143",
+      "repo": "pytest-dev/pytest",
+      "version": "8.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 6,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 114,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "testing/test_assertrewrite.py::TestIssue11140::test_constant_not_picked_as_module_docstring"
+        ],
+        "parsed_tests": 139,
+        "timed_out": false,
+        "seconds": 7,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pytest-dev__pytest-11143/evals/2026-10-13T16-02-35-919Z-2426717-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 114,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "testing/test_assertrewrite.py::TestIssue11140::test_constant_not_picked_as_module_docstring"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 140,
+        "timed_out": false,
+        "seconds": 6,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pytest-dev__pytest-11143/evals/2026-10-13T16-02-42-938Z-2426717-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "pytest-dev__pytest-11148",
+      "repo": "pytest-dev/pytest",
+      "version": "8.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 5,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 129,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "testing/test_pathlib.py::TestImportPath::test_remembers_previous_imports",
+          "testing/acceptance_test.py::test_doctest_and_normal_imports_with_importlib"
+        ],
+        "parsed_tests": 152,
+        "timed_out": false,
+        "seconds": 10,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pytest-dev__pytest-11148/evals/2026-10-13T16-02-47-016Z-2427747-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 129,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "testing/test_pathlib.py::TestImportPath::test_remembers_previous_imports",
+          "testing/acceptance_test.py::test_doctest_and_normal_imports_with_importlib"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 153,
+        "timed_out": false,
+        "seconds": 8,
+        "log_path": "/home/mark/.cache/fausth/swe-env/pytest-dev__pytest-11148/evals/2026-10-13T16-02-56-729Z-2427747-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-10297",
+      "repo": "scikit-learn/scikit-learn",
+      "version": "0.20",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.6.13",
+        "python_spec": "3.6",
+        "cached_env_yml": "case-studies/swe-bench/world/envs/scikit-learn__scikit-learn-10297/environment.yml",
+        "build_seconds": 235,
+        "pip_failures": [
+          {
+            "step": "environment.yml pip",
+            "package": "numpy-base==1.19.2"
+          }
+        ],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 28,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "sklearn/linear_model/tests/test_ridge.py::test_ridge_classifier_cv_store_cv_values"
+        ],
+        "parsed_tests": 30,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/scikit-learn__scikit-learn-10297/evals/2026-10-13T16-18-18-261Z-2459738-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 28,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "sklearn/linear_model/tests/test_ridge.py::test_ridge_classifier_cv_store_cv_values"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 30,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/scikit-learn__scikit-learn-10297/evals/2026-10-13T16-18-21-039Z-2459738-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-10508",
+      "repo": "scikit-learn/scikit-learn",
+      "version": "0.20",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.6.15",
+        "python_spec": "3.6",
+        "cached_env_yml": null,
+        "build_seconds": 246,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 18,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "sklearn/preprocessing/tests/test_label.py::test_label_encoder_errors",
+          "sklearn/preprocessing/tests/test_label.py::test_label_encoder_empty_array"
+        ],
+        "parsed_tests": 23,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/scikit-learn__scikit-learn-10508/evals/2026-10-13T16-22-29-309Z-2465316-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 18,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "sklearn/preprocessing/tests/test_label.py::test_label_encoder_errors",
+          "sklearn/preprocessing/tests/test_label.py::test_label_encoder_empty_array"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 23,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/scikit-learn__scikit-learn-10508/evals/2026-10-13T16-22-31-712Z-2465316-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-10325",
+      "repo": "sphinx-doc/sphinx",
+      "version": "5.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 11,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 5,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/test_ext_autodoc_automodule.py::test_automodule_inherited_members"
+        ],
+        "parsed_tests": 6,
+        "timed_out": false,
+        "seconds": 3,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sphinx-doc__sphinx-10325/evals/2026-10-13T16-06-37-623Z-2447067-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 5,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/test_ext_autodoc_automodule.py::test_automodule_inherited_members"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 6,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sphinx-doc__sphinx-10325/evals/2026-10-13T16-06-40-389Z-2447067-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-10451",
+      "repo": "sphinx-doc/sphinx",
+      "version": "5.1",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 11,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 80,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "tests/test_ext_napoleon_docstring.py::test_napoleon_and_autodoc_typehints_description_all",
+          "tests/test_ext_napoleon_docstring.py::test_napoleon_and_autodoc_typehints_description_documented_params"
+        ],
+        "parsed_tests": 82,
+        "timed_out": false,
+        "seconds": 4,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sphinx-doc__sphinx-10451/evals/2026-10-13T16-06-53-848Z-2447791-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 80,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "tests/test_ext_napoleon_docstring.py::test_napoleon_and_autodoc_typehints_description_all",
+          "tests/test_ext_napoleon_docstring.py::test_napoleon_and_autodoc_typehints_description_documented_params"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 82,
+        "timed_out": false,
+        "seconds": 4,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sphinx-doc__sphinx-10451/evals/2026-10-13T16-06-58-165Z-2447791-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-11400",
+      "repo": "sympy/sympy",
+      "version": "1.0",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 4,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 2,
+        "f2p_failure": 0,
+        "p2p_success": 29,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_ccode_Relational",
+          "test_ccode_sinc"
+        ],
+        "parsed_tests": 31,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sympy__sympy-11400/evals/2026-10-13T16-03-12-280Z-2429601-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 2,
+        "p2p_success": 29,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "test_ccode_Relational",
+          "test_ccode_sinc"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 33,
+        "timed_out": false,
+        "seconds": 2,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sympy__sympy-11400/evals/2026-10-13T16-03-14-529Z-2429601-selftest-empty.log"
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-11870",
+      "repo": "sympy/sympy",
+      "version": "1.1",
+      "verdict": "validated",
+      "reason": null,
+      "env": {
+        "python": "3.9.23",
+        "python_spec": "3.9",
+        "cached_env_yml": null,
+        "build_seconds": 6,
+        "pip_failures": [],
+        "skipped": []
+      },
+      "gold": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_FULL",
+        "f2p_success": 1,
+        "f2p_failure": 0,
+        "p2p_success": 58,
+        "p2p_failure": 0,
+        "f2p_failures": [],
+        "p2p_failures": [],
+        "f2p_passes": [
+          "test_sinc"
+        ],
+        "parsed_tests": 59,
+        "timed_out": false,
+        "seconds": 816,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sympy__sympy-11870/evals/2026-10-13T16-03-22-299Z-2430190-selftest-gold.log"
+      },
+      "empty": {
+        "status": "graded",
+        "patch_applied": true,
+        "resolution": "RESOLVED_NO",
+        "f2p_success": 0,
+        "f2p_failure": 1,
+        "p2p_success": 58,
+        "p2p_failure": 0,
+        "f2p_failures": [
+          "test_sinc"
+        ],
+        "p2p_failures": [],
+        "f2p_passes": [],
+        "parsed_tests": 61,
+        "timed_out": false,
+        "seconds": 759,
+        "log_path": "/home/mark/.cache/fausth/swe-env/sympy__sympy-11870/evals/2026-10-13T16-16-58-130Z-2430190-selftest-empty.log"
+      }
+    }
+  ]
+}
