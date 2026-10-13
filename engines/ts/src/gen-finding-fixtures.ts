@@ -2,13 +2,10 @@
  * Generate Track A finding.submit evidence/absence/schema fixtures.
  * Hand-review expected.jsonl before treating as normative.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FaustRuntime, eventsToJsonl } from "./runtime.js";
-import { toCanonicalIrJson } from "./load.js";
+import { materializeFixture } from "./replay.js";
 import type { AgentIR, ModelProposal, RecordedToolCall } from "./types.js";
-import type { ToolHandler } from "./runtime.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -101,41 +98,20 @@ const goodArgs = {
   recommendation: "Add a Demo section",
 };
 
+/** Inputs written here; expected.jsonl derived by the normative replay host. */
 async function writeFixture(
   name: string,
   agent: AgentIR,
   proposals: ModelProposal[],
   toolsQueue?: RecordedToolCall[],
 ) {
-  const dir = join(root, "conformance/fixtures", name);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "agent.json"), toCanonicalIrJson(agent));
-  writeFileSync(
-    join(dir, "model.jsonl"),
-    proposals.map((p) => JSON.stringify(p)).join("\n") + "\n",
-  );
-  if (toolsQueue) {
-    writeFileSync(
-      join(dir, "tools.jsonl"),
-      toolsQueue.map((t) => JSON.stringify(t)).join("\n") + "\n",
-    );
-  }
-  const stub: Record<string, ToolHandler> = {
-    "finding.submit": () => {
-      throw new Error("finding.submit must use recorded results in Track A");
-    },
-  };
-  let pi = 0;
-  const runtime = new FaustRuntime({
+  const n = await materializeFixture(join(root, "conformance/fixtures"), name, {
     agent,
-    propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: stub,
-    recordedToolResults: toolsQueue,
-    allowJudge: false,
+    proposals,
+    transcript: toolsQueue,
+    lineStyle: "json",
   });
-  await runtime.runLoop();
-  writeFileSync(join(dir, "expected.jsonl"), eventsToJsonl(runtime.events));
-  console.log("wrote", name, runtime.events.length, "events");
+  console.log("wrote", name, n, "events");
 }
 
 async function main() {
