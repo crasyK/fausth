@@ -602,7 +602,6 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
         conclusion: packet.conclusion,
         deterministic: packet,
         ai_findings: [],
-        markdown: "",
       }),
     };
     if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
@@ -686,7 +685,6 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
           deterministic: packet,
           ai_findings: [],
           model: adapter.lastModelUsed,
-          markdown: "",
         }) + "\n_Rate limited — neutral, not pass._\n",
       };
       if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
@@ -722,7 +720,6 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
       dropped_findings: dropped,
       model: adapter.lastModelUsed,
       provider: String(deployment.model.profile ?? "openai-compatible"),
-      markdown: "",
     }),
   };
   if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
