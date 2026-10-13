@@ -5,7 +5,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "bin": {
-    "fausth": "./dist/cli.js"
+    "fausth": "./bin/fausth.mjs"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
