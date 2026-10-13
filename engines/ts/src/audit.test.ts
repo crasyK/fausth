@@ -74,6 +74,16 @@ describe("audit", () => {
     assert.equal(auditEvents([...parentDeny, ...child, ...parentDeny]).near_misses, 1);
   });
 
+  it("infrastructure failures are reported apart, never as denies", () => {
+    const s = auditEvents([
+      { stage: "propose", tool: "user.ask" },
+      { stage: "execute", verdict: "deny", reason: "infra_failure", tool: "user.ask", failure: { kind: "adapter" } },
+    ]);
+    assert.equal(s.infra_failures, 1);
+    assert.equal(s.denies, 0);
+    assert.equal(s.by_reason.infra_failure, undefined);
+  });
+
   it("formats human summary", () => {
     const s = auditEvents([{ verdict: "deny", reason: "capability_missing", tool: "x" }]);
     const text = formatAuditHuman(s);

@@ -15,6 +15,8 @@ export type AuditSummary = {
   verify_output_failed: number;
   memory_stale: number;
   budget_exceeded: number;
+  /** Host infrastructure failures (`infra_failure`): reported apart, never counted as denies. */
+  infra_failures: number;
 };
 
 export type AuditEvent = {
@@ -76,8 +78,13 @@ export function auditEvents(events: AuditEvent[], source = "<memory>"): AuditSum
   let verify_output_failed = 0;
   let memory_stale = 0;
   let budget_exceeded = 0;
+  let infra_failures = 0;
 
   for (const e of events) {
+    if (e.reason === "infra_failure") {
+      infra_failures += 1;
+      continue;
+    }
     if (e.verdict === "deny") {
       denies += 1;
       const r = e.reason ?? "unknown";
@@ -103,6 +110,7 @@ export function auditEvents(events: AuditEvent[], source = "<memory>"): AuditSum
     verify_output_failed,
     memory_stale,
     budget_exceeded,
+    infra_failures,
   };
 }
 
@@ -126,7 +134,7 @@ export function formatAuditHuman(s: AuditSummary): string {
     `fausth audit — ${s.source}`,
     `events: ${s.events}  denies: ${s.denies}  near_misses: ${s.near_misses}`,
     `capability_missing: ${s.capability_missing}  verify_output_failed: ${s.verify_output_failed}`,
-    `memory_stale: ${s.memory_stale}  budget_exceeded: ${s.budget_exceeded}`,
+    `memory_stale: ${s.memory_stale}  budget_exceeded: ${s.budget_exceeded}  infra_failures: ${s.infra_failures}`,
     reasons ? `by_reason:\n${reasons}` : "by_reason: (none)",
     failures ? `structured_failures:\n${failures}` : "structured_failures: (none)",
   ].join("\n");
