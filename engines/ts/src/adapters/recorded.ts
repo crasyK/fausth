@@ -1,4 +1,5 @@
 import type { ModelProposal } from "../types.js";
+import { parseRecordedProposal } from "../load.js";
 
 export interface LLMPort {
   propose(input: {
@@ -19,17 +20,11 @@ export class RecordedAdapter implements LLMPort {
   }
 }
 
+/**
+ * One recorded `model.jsonl` line → runtime proposal. Same parser as the replay host
+ * (`load.ts` parseRecordedProposal): `tool`, `stop` and `invalid` lines (spec-v0.3 §5.5 —
+ * an invalid line keeps its protocol reason and is never turned into a stop).
+ */
 export function parseRecordedModelLine(line: unknown): ModelProposal {
-  const o = line as Record<string, unknown>;
-  if (o.type === "stop") {
-    return { type: "stop", message: o.message as string | undefined };
-  }
-  if (o.type === "tool" || o.name) {
-    return {
-      type: "tool",
-      name: String(o.name ?? o.tool),
-      args: (o.args as Record<string, unknown>) ?? {},
-    };
-  }
-  throw new Error(`Invalid model.jsonl entry: ${JSON.stringify(line)}`);
+  return parseRecordedProposal(line);
 }
