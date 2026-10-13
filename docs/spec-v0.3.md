@@ -240,15 +240,15 @@ orientation advertises (§8.5).
 ### 4.2 Filesystem scopes (D7)
 
 `permissions.filesystem.write_scopes` / `read_scopes` are path scopes. Normalization of a scope
-string `s`:
+string `s` (after replacing `\` by `/` and trimming surrounding blanks):
 
 1. `s` ∈ {`.`, `./`, `*`, `**`} ⇒ the **root scope** (explicit root grant). These are the only
    root forms.
-2. Reject: empty string, a leading `/` (absolute), a drive prefix `X:`, any `\` or NUL, any `*`
-   outside the root forms.
-3. Split on `/`; drop empty segments (`//`, trailing `/`) and `.` segments; resolve `..` against
-   the preceding segment. A `..` with nothing to pop is an **escape** ⇒ reject. If the result is
-   empty (e.g. `src/..`) ⇒ reject (root only by explicit grant).
+2. Reject: empty string, NUL, a leading `/` (absolute), a drive prefix `X:`, any `.git`
+   component, and (authoring rule) any `*` outside the root forms — scopes are paths, not globs.
+3. POSIX-normalize: drop empty segments (`//`, trailing `/`) and `.` segments; resolve `..`
+   against the preceding segment. A `..` with nothing to pop is an **escape** ⇒ reject. If the
+   result is empty (e.g. `src/..`) ⇒ reject (root only by explicit grant).
 4. The normal form is the segments joined by `/` (`src`, `src/`, `./src`, `src//` all ⇒ `src`).
 
 **Containment:** scope `P` covers scope `C` iff `P` is root, or `C` is not root and `P`'s
@@ -256,7 +256,9 @@ segments are a segment-wise prefix of `C`'s segments (`src` covers `src/a`, not 
 covered only by root.
 
 Hosts enforcing scopes on tool paths (world adapters) MUST use the same normalization and
-containment (the TS engine exports them from `engines/ts/src/scopes.ts`).
+containment; a tool **path** is normalized the same way except that any `..` component is
+rejected outright. In the TS engine both the engine (`scopes.ts`) and the world adapters use
+`adapters/sandbox-path.ts`.
 
 ### 4.3 Secrets and protected paths (host obligations)
 
