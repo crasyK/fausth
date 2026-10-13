@@ -11,15 +11,33 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { DEFAULT_KIT_MODEL, assertLiveKitModels } from "./lib/kit-models.mjs";
+import { repoActivation, shellQuote } from "./lib/shell.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** Run-id prefix / version tag: letters, digits, dot, dash, underscore only (SCR-17). */
+export function validateRunPrefix(prefix) {
+  const p = String(prefix ?? "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p)) {
+    throw new Error(`run prefix must match [A-Za-z0-9._-]+ (got ${JSON.stringify(p)})`);
+  }
+  return p;
+}
 
 // Run-id prefix: --run-prefix <v> or OPT_ARMS_RUN_PREFIX env, default v2.
 const RUN_PREFIX = (() => {
   const i = process.argv.indexOf("--run-prefix");
   if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
   return process.env.OPT_ARMS_RUN_PREFIX || "v2";
+})();
+
+// KIT model for every arm (D15): --kit-model <id> or OPT_ARMS_KIT_MODEL, default glm.
+const KIT_MODEL = (() => {
+  const i = process.argv.indexOf("--kit-model");
+  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
+  return process.env.OPT_ARMS_KIT_MODEL || DEFAULT_KIT_MODEL;
 })();
 
 const ARMS = [
@@ -123,37 +141,45 @@ function tmuxExists(session) {
 }
 
 function shellActivate() {
-  return [
-    `cd ${JSON.stringify(root)}`,
-    `export NVM_DIR="$HOME/.nvm"`,
-    `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
-    `nvm use >/dev/null 2>&1 || true`,
-    `export PATH="$NVM_DIR/versions/node/$(nvm version 2>/dev/null)/bin:$PATH"`,
-    `[ -f .venv/bin/activate ] && . .venv/bin/activate`,
-    `set -a; [ -f .env ] && . ./.env; set +a`,
-  ].join(" && ");
+  return repoActivation(root, { mkdirs: ["live/reports/kit-probe"] });
 }
 
-function buildCommand(arm) {
-  const logDir = join(root, "live/reports/kit-probe");
-  mkdirSync(logDir, { recursive: true });
-  const logFile = join(logDir, `${arm.runId}.log`);
-  const nodeCmd = [
-    "node scripts/case-study-coding.mjs",
-    "--mode live",
-    `--manifest ${arm.manifest}`,
-    `--conditions ${arm.condition}`,
-    "--kit-models kit.gemma4-31b-it",
-    "--reps 1",
-    `--run-id ${arm.runId}`,
+/**
+ * `bash -lc` command for one arm: every value quoted; pipefail so EXIT: is the
+ * runner's status (SCR-17).
+ * @param {{ manifest: string, condition: string, runId: string, extra: string[] }} arm
+ * @param {{ model?: string, activate?: string, logDir?: string }} [opts]
+ */
+export function buildCommand(arm, opts = {}) {
+  const logDir = opts.logDir ?? join(root, "live/reports/kit-probe");
+  const logFile = shellQuote(join(logDir, `${arm.runId}.log`));
+  const argv = [
+    "node",
+    "scripts/case-study-coding.mjs",
+    "--mode",
+    "live",
+    "--manifest",
+    arm.manifest,
+    "--conditions",
+    arm.condition,
+    "--kit-models",
+    opts.model ?? KIT_MODEL,
+    "--reps",
+    "1",
+    "--run-id",
+    arm.runId,
     "--resume",
     "--skip-conformance",
     ...arm.extra,
-  ].join(" ");
-  return `${shellActivate()} && set -o pipefail && (${nodeCmd}) 2>&1 | tee ${JSON.stringify(logFile)}; echo EXIT:$? | tee -a ${JSON.stringify(logFile)}`;
+  ];
+  const activate = opts.activate ?? shellActivate();
+  return `set -o pipefail; ${activate}; ${argv.map(shellQuote).join(" ")} 2>&1 | tee ${logFile}; echo "EXIT:$?" | tee -a ${logFile}`;
 }
 
 function launch({ dryRun, track, arm }) {
+  validateRunPrefix(RUN_PREFIX);
+  assertLiveKitModels([KIT_MODEL], "opt-arms-tmux");
+  mkdirSync(join(root, "live/reports/kit-probe"), { recursive: true });
   const arms = selectArms({ track, arm });
   const shardMap = arms.map((arm) => ({
     session: arm.session,
@@ -216,10 +242,17 @@ function main() {
   else if (args.cmd === "status") status(args);
   else {
     console.log(`Usage:
-  node scripts/opt-arms-tmux.mjs launch [--dry-run] [--run-prefix v2] [--track swe|tau] [--arm baseline|budget|mutable|optimize]
+  node scripts/opt-arms-tmux.mjs launch [--dry-run] [--run-prefix v2] [--kit-model ${DEFAULT_KIT_MODEL}] [--track swe|tau] [--arm baseline|budget|mutable|optimize]
   node scripts/opt-arms-tmux.mjs status [--track swe|tau] [--arm NAME]`);
     process.exit(args.cmd === "help" ? 0 : 1);
   }
 }
 
-main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  try {
+    main();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+}
