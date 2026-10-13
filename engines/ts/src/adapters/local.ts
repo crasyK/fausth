@@ -251,6 +251,7 @@ export function createLocalWorld(opts: LocalWorldOptions): LocalWorld {
     for (const k of ext.claimedCommands ?? []) claimedCommands.add(k);
   }
   const privateHome = mkdtempSync(join(tmpdir(), "fausth-world-home-"));
+  trackPrivateHome(privateHome);
   return {
     root,
     gitCommonDir,
@@ -283,8 +284,23 @@ export function createLocalWorld(opts: LocalWorldOptions): LocalWorld {
   };
 }
 
+const privateHomes = new Set<string>();
+let homeExitHook = false;
+
+function trackPrivateHome(dir: string): void {
+  privateHomes.add(dir);
+  if (!homeExitHook) {
+    homeExitHook = true;
+    // Fallback for callers that never run the binding cleanup.
+    process.once("exit", () => {
+      for (const d of privateHomes) rmSync(d, { recursive: true, force: true });
+    });
+  }
+}
+
 /** Remove the world's private HOME (call when the run ends). */
 export function disposeLocalWorld(world: LocalWorld): void {
+  privateHomes.delete(world.privateHome);
   rmSync(world.privateHome, { recursive: true, force: true });
 }
 
@@ -494,7 +510,7 @@ export async function runWorldCommand(
 
 type WriteDecision =
   | { kind: "deny"; envelope: ToolResultEnvelope }
-  | { kind: "write"; abs: string; rel: string; offPlan: boolean };
+  | { kind: "write"; abs: string; rel: string; realRel: string; offPlan: boolean };
 
 export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHandler> {
   const readScopes = world.readScopes;
@@ -664,9 +680,9 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
           },
         };
       }
-      return { kind: "write", abs: access.abs, rel: access.rel, offPlan: true };
+      return { kind: "write", abs: access.abs, rel: access.rel, realRel: access.realRel, offPlan: true };
     }
-    return { kind: "write", abs: access.abs, rel: access.rel, offPlan: false };
+    return { kind: "write", abs: access.abs, rel: access.rel, realRel: access.realRel, offPlan: false };
   };
 
   const fsWrite: ToolHandler = (args, ctx) => {
@@ -680,7 +696,7 @@ export function createLocalCodingTools(world: LocalWorld): Record<string, ToolHa
     renameSync(tmp, decision.abs);
     const set: Record<string, unknown> = {};
     for (const eff of world.writeEffects) {
-      if (eff.path === decision.rel) Object.assign(set, eff.set);
+      if (eff.path === decision.rel || eff.path === decision.realRel) Object.assign(set, eff.set);
     }
     if (decision.offPlan) {
       set.off_plan_writes = Number(ctx.state.off_plan_writes ?? 0) + 1;
