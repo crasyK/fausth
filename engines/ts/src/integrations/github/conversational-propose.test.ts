@@ -217,8 +217,13 @@ describe("createConversationalPropose one-tool-per-step + provider fields (EDGE-
       user: "go",
       getRuntime: () => runtime as unknown as FaustRuntime,
     });
+    // The protocol failure reaches the runtime with its reason (never hidden by a retry).
     const first = await propose();
-    assert.equal(first.type, "tool");
+    assert.equal(first.type, "invalid");
+    if (first.type === "invalid") assert.equal(first.reason, "multiple_tool_calls");
+    assert.equal(adapter.requests.length, 1);
+    const second = await propose();
+    assert.equal(second.type, "tool");
     const retryReq = adapter.requests[1]!;
     const nudge = retryReq[retryReq.length - 1]!;
     assert.equal(nudge.role, "user");
@@ -239,8 +244,8 @@ describe("createConversationalPropose one-tool-per-step + provider fields (EDGE-
     for (const req of adapter.requests) assertTranscriptValid(req);
   });
 
-  it("keeps the protocol reason when the retry also fails (not collapsed to empty_proposal)", async () => {
-    const adapter = scriptedAdapter([multi, multi]);
+  it("keeps a protocol reason that follows a nudged plain-text answer (not collapsed to empty_proposal)", async () => {
+    const adapter = scriptedAdapter([{ type: "stop", message: "let me think", model: "m" }, multi]);
     const propose = createConversationalPropose({
       adapter,
       tools: [{ id: "fs.read", input: { type: "object" } }],
@@ -300,5 +305,24 @@ describe("createConversationalPropose one-tool-per-step + provider fields (EDGE-
       getRuntime: mockRuntime,
     });
     await assert.rejects(propose(), (e: unknown) => e instanceof ModelInfraError && e.kind === "timeout");
+  });
+
+  it("never drops a protocol reason behind a host retry (invalid then tool → the invalid is returned)", async () => {
+    const bad: ModelProposal = { type: "invalid", reason: "invalid_tool_arguments_json", raw: "{not json", model: "m" };
+    const adapter = scriptedAdapter([
+      bad,
+      { type: "tool", name: "fs.read", args: { path: "a" }, tool_call_id: "c1", transport_name: "faust_tool_0001", model: "m" },
+    ]);
+    const propose = createConversationalPropose({
+      adapter,
+      tools: [{ id: "fs.read", input: { type: "object" } }],
+      system: "sys",
+      user: "go",
+      getRuntime: mockRuntime,
+    });
+    const out = await propose();
+    assert.equal(out.type, "invalid");
+    if (out.type === "invalid") assert.equal(out.reason, "invalid_tool_arguments_json");
+    assert.equal(adapter.requests.length, 1, "no hidden second request in the same step");
   });
 });
