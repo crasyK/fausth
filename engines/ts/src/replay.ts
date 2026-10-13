@@ -9,10 +9,12 @@
  *   use the deployment adapter's recorded user channel (same format as `user: {source: recorded}`);
  * - iteration cap 32, no judge.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { FaustRuntime, eventsToJsonl, type ToolHandler } from "./runtime.js";
 import { loadAgentDir, parseRecordedProposal, readJsonl } from "./load.js";
+import { canonicalJson } from "./canonical.js";
+import { validateAgent } from "./validate.js";
 import {
   createCodingTools,
   createGreenhouseTools,
@@ -110,4 +112,38 @@ export async function replayFixtureDir(dir: string, agentOverride?: AgentIR): Pr
   const actual = eventsToJsonl(runtime.events);
   const expected = readFileSync(join(dir, "expected.jsonl"), "utf8").replace(/\r\n/g, "\n");
   return { ok: actual === expected, actual, expected, name };
+}
+
+/** Inputs of one conformance fixture (spec-v0.3 §15.4). */
+export type FixtureSpec = {
+  agent: AgentIR;
+  /** Recorded model lines (`model.jsonl`). */
+  proposals: unknown[];
+  /** Recorded transcript (`tools.jsonl`); omit for none, [] for an empty transcript. */
+  transcript?: RecordedToolCall[];
+  /** Recorded user answers (`user.jsonl`). */
+  user?: unknown[];
+  /** Line serialization: canonical JSON (default) or insertion-order JSON. */
+  lineStyle?: "canonical" | "json";
+};
+
+/**
+ * Write a fixture's inputs and derive `expected.jsonl` with the normative replay host
+ * (never with a generator-private world). The agent must validate. Returns the event count.
+ */
+export async function materializeFixture(fixturesRoot: string, name: string, spec: FixtureSpec): Promise<number> {
+  const v = validateAgent(spec.agent);
+  if (!v.ok) throw new Error(`fixture ${name}: agent does not validate:\n${v.errors.join("\n")}`);
+  const dir = join(fixturesRoot, name);
+  mkdirSync(dir, { recursive: true });
+  for (const f of ["tools.jsonl", "user.jsonl"]) rmSync(join(dir, f), { force: true });
+  const line = (x: unknown) => (spec.lineStyle === "json" ? JSON.stringify(x) : canonicalJson(x));
+  const lines = (xs: unknown[]) => xs.map(line).join("\n") + (xs.length ? "\n" : "");
+  writeFileSync(join(dir, "agent.json"), canonicalJson(spec.agent) + "\n");
+  writeFileSync(join(dir, "model.jsonl"), lines(spec.proposals));
+  if (spec.transcript !== undefined) writeFileSync(join(dir, "tools.jsonl"), lines(spec.transcript));
+  if (spec.user !== undefined) writeFileSync(join(dir, "user.jsonl"), lines(spec.user));
+  const runtime = await runFixture(dir);
+  writeFileSync(join(dir, "expected.jsonl"), eventsToJsonl(runtime.events));
+  return runtime.events.length;
 }

@@ -76,6 +76,7 @@ tools:
         otherwise: deny
   - id: user.approve
     description: Ask user for approval
+    channel: user
     input:
       type: object
       additionalProperties: true
