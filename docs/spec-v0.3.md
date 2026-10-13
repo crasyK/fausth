@@ -878,6 +878,8 @@ failure (`infra_failure`, `adapter` `user_channel_unavailable`).
 
 ### 15.3 Host conduct
 
+- Hosts MUST validate the harness they run (§2.6, the resolved IR with connector tools linked)
+  and refuse an invalid one.
 - Hosts offer the model exactly the permitted set (§4.1), each tool as `{id, description,
   input}` from the IR (after applied skills patches).
 - **System context (instincts).** Hosts MUST build the model's system message only from

@@ -271,7 +271,12 @@ async function cmdLive(args: {
     for (const f of files) {
       const scen = loadYamlFile(join(scenarioDir, f)) as Record<string, unknown>;
       const agentDir = resolve(repoRoot(), String(scen.agent));
-      const agent = loadAgentDir(agentDir).agent;
+      const agent = resolveHarness(agentDir).agent;
+      const valid = validateAgent(agent);
+      if (!valid.ok) {
+        console.error(`invalid harness (${String(scen.agent)}):\n${valid.errors.join("\n")}`);
+        return 1;
+      }
       const prompt = String(scen.prompt ?? "");
       const expectCatch = Boolean(scen.expect_unsafe_caught);
       const expectComplete = Boolean(scen.expect_complete);
@@ -480,6 +485,13 @@ async function cmdRun(
       console.error(e instanceof Error ? e.message : e);
       return 2;
     }
+  }
+
+  // Hosts refuse invalid harnesses (spec-v0.3 §15.3): a typo must never silently drop a rule.
+  const valid = validateAgent(agent);
+  if (!valid.ok) {
+    console.error(`invalid harness (${basename(dir)}):\n${valid.errors.join("\n")}`);
+    return 1;
   }
 
   let tools: Record<string, ToolHandler>;
