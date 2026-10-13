@@ -44,11 +44,18 @@ type ProposalProvenance = {
   model?: string;
   /** Preserved provider fields from the response message (see ChatMessage.provider_fields). */
   provider_fields?: Record<string, unknown>;
+  /** Transport call record `seq` of the response this proposal came from (host log only). */
+  call_seq?: number;
+  /** Provider completion id (`id` of the response) — spots cached/duplicated responses. */
+  completion_id?: string;
+  /** Set when an earlier call of the same adapter returned this completion id (cache hit). */
+  repeat_of_call?: number;
 };
 
 /**
- * Transport-level proposal. Infra failures are never proposals — transports throw
- * `ModelInfraError` (see errors.ts); `invalid` is reserved for model-protocol failures.
+ * Transport-level proposal. Transport failures are never proposals — transports throw
+ * `ModelInfraError` (infra) or `ModelRequestError` (request rejected; see errors.ts);
+ * `invalid` is reserved for model-protocol failures.
  */
 export type ModelProposal =
   | ({

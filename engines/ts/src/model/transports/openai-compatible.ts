@@ -1,7 +1,14 @@
 import type { ChatMessage, ModelPort, ModelProposeRequest, ModelProposal } from "../port.js";
 import type { ProviderCapabilities } from "../capabilities.js";
 import type { ProviderProfile } from "../profiles/index.js";
-import { boundProviderText, ModelInfraError } from "../errors.js";
+import {
+  boundProviderText,
+  ModelInfraError,
+  ModelRequestError,
+  type ModelInfraErrorKind,
+  type ModelRequestErrorKind,
+  type ModelTransportError,
+} from "../errors.js";
 
 /** Default per-request timeout (connect + full body). */
 export const DEFAULT_MODEL_TIMEOUT_MS = 120_000;
@@ -33,7 +40,37 @@ export type OpenAICompatConfig = {
   maxAttempts?: number;
   /** Base for exponential backoff between retries in ms; default 500. */
   retryBaseMs?: number;
+  /** Called after every HTTP request with its per-call record (see {@link ModelCallRecord}). */
+  onCall?: (record: ModelCallRecord) => void;
 };
+
+/**
+ * One HTTP request made by the transport (host-side log, not the canonical event log).
+ * `completion_id` is the provider response `id`; `repeat_of` marks a response whose id was
+ * already returned by an earlier call of this adapter — e.g. a gateway cache hit.
+ */
+export type ModelCallRecord = {
+  /** 1-based sequence number of the request within this adapter instance. */
+  seq: number;
+  model: string;
+  /** 1-based request number for `model` within the propose() call. */
+  attempt: number;
+  /** HTTP status; null when no response arrived (network failure, timeout). */
+  status: number | null;
+  outcome: "ok" | "http_error" | "provider_error" | "malformed" | "timeout" | "network";
+  completion_id?: string;
+  created?: number;
+  system_fingerprint?: string;
+  /** `seq` of the earlier call that returned the same completion id. */
+  repeat_of?: number;
+  /** Error class of a failed request. */
+  error_kind?: ModelInfraErrorKind | ModelRequestErrorKind;
+  latency_ms: number;
+};
+
+/** Transient gateway errors some endpoints report as 4xx (KIT: "400 ServiceUnavailable" on overload). */
+const TRANSIENT_4XX_RE =
+  /service\s*unavailable|serviceunavailable|overloaded|temporarily unavailable|try again later|upstream (?:connect|request|error)|bad gateway|gateway time-?out/i;
 
 type ChatToolCall = {
   id?: string;
@@ -53,13 +90,30 @@ type ChatResponse = {
   [k: string]: unknown;
 };
 
-type Provenance = { model: string; provider_fields?: Record<string, unknown> };
+type Provenance = {
+  model: string;
+  provider_fields?: Record<string, unknown>;
+  call_seq?: number;
+  completion_id?: string;
+  repeat_of_call?: number;
+};
+
+/** Provider response identity fields used to spot cached / duplicated responses. */
+function completionMeta(data: ChatResponse): Pick<ModelCallRecord, "completion_id" | "created" | "system_fingerprint"> {
+  const out: Pick<ModelCallRecord, "completion_id" | "created" | "system_fingerprint"> = {};
+  if (typeof data?.id === "string" && data.id) out.completion_id = data.id;
+  if (typeof data?.created === "number" && Number.isSafeInteger(data.created)) out.created = data.created;
+  if (typeof data?.system_fingerprint === "string" && data.system_fingerprint) {
+    out.system_fingerprint = data.system_fingerprint;
+  }
+  return out;
+}
 
 type ModelOutcome =
   | { ok: true; proposal: ModelProposal }
-  | { ok: false; error: ModelInfraError; fallback: boolean };
+  | { ok: false; error: ModelTransportError; fallback: boolean };
 
-type HttpFailure = { error: ModelInfraError; retry: boolean; fallback: boolean; waitMs?: number };
+type HttpFailure = { error: ModelTransportError; retry: boolean; fallback: boolean; waitMs?: number };
 
 /** A fully-read HTTP reply (body read under the same timeout as the request). */
 type HttpReply = { status: number; ok: boolean; headers: Headers; text: string };
@@ -127,8 +181,14 @@ export function wireMessages(messages: ChatMessage[], model: string): Record<str
  */
 export class OpenAICompatibleAdapter implements ModelPort {
   lastModelUsed = "";
+  /** Per-request log of this adapter instance (see {@link ModelCallRecord}). */
+  readonly callLog: ModelCallRecord[] = [];
   /** Models whose endpoint rejected the `parallel_tool_calls` flag (do not resend). */
   private parallelFlagRejected = new Set<string>();
+  private callSeq = 0;
+  private seenCompletionIds = new Map<string, number>();
+  /** Requests sent during the current propose() call (all models). */
+  private proposeRequests = 0;
 
   constructor(private cfg: OpenAICompatConfig) {}
 
@@ -157,14 +217,34 @@ export class OpenAICompatibleAdapter implements ModelPort {
       };
     });
 
-    let lastErr: ModelInfraError | undefined;
+    this.proposeRequests = 0;
+    let lastErr: ModelTransportError | undefined;
     for (const model of this.cfg.models) {
       const out = await this.proposeWithModel(model, input, tools, idMap);
       if (out.ok) return out.proposal;
       lastErr = out.error;
+      lastErr.total_attempts = this.proposeRequests;
       if (!out.fallback) throw out.error;
     }
-    throw lastErr ?? new ModelInfraError("model_unavailable", "no models configured");
+    throw lastErr ?? new ModelInfraError("model_unavailable", "no models configured", { total_attempts: 0 });
+  }
+
+  /** Remove and return the call records collected so far. */
+  drainCallLog(): ModelCallRecord[] {
+    return this.callLog.splice(0);
+  }
+
+  private record(rec: Omit<ModelCallRecord, "seq" | "repeat_of">): ModelCallRecord {
+    const seq = ++this.callSeq;
+    const out: ModelCallRecord = { seq, ...rec };
+    if (rec.completion_id) {
+      const prior = this.seenCompletionIds.get(rec.completion_id);
+      if (prior !== undefined) out.repeat_of = prior;
+      else this.seenCompletionIds.set(rec.completion_id, seq);
+    }
+    this.callLog.push(out);
+    this.cfg.onCall?.(out);
+    return out;
   }
 
   private async proposeWithModel(
@@ -180,8 +260,14 @@ export class OpenAICompatibleAdapter implements ModelPort {
     let toolChoice: "auto" | "required" = input.tool_choice === "required" ? "required" : "auto";
     let triedAutoAfterReject = false;
     let triedAutoAfterEmpty = false;
-    let lastErr: ModelInfraError | undefined;
+    let lastErr: ModelTransportError | undefined;
     let attempt = 0;
+    /** Requests sent to this model (adjustment re-sends included). */
+    let requests = 0;
+    const fail = (error: ModelTransportError, fallback: boolean): ModelOutcome => {
+      error.attempts = requests;
+      return { ok: false, error, fallback };
+    };
 
     const backoff = async (waitMs?: number) => {
       attempt += 1;
@@ -206,16 +292,35 @@ export class OpenAICompatibleAdapter implements ModelPort {
       }
 
       let res: HttpReply;
+      requests += 1;
+      this.proposeRequests += 1;
+      const started = Date.now();
       try {
         res = await this.postRead(body);
       } catch (e) {
         lastErr = this.classifyThrown(e, model);
+        this.record({
+          model,
+          attempt: requests,
+          status: null,
+          outcome: lastErr.kind === "timeout" ? "timeout" : "network",
+          error_kind: lastErr.kind,
+          latency_ms: Date.now() - started,
+        });
         await backoff();
         continue;
       }
+      const latency = Date.now() - started;
 
       if (!res.ok) {
         const text = res.text;
+        const httpRecord = this.record({
+          model,
+          attempt: requests,
+          status: res.status,
+          outcome: "http_error",
+          latency_ms: latency,
+        });
         const requestFixable =
           res.status >= 400 &&
           res.status < 500 &&
@@ -237,12 +342,13 @@ export class OpenAICompatibleAdapter implements ModelPort {
           continue;
         }
         const failure = this.classifyHttpFailure(res, text, model);
+        httpRecord.error_kind = failure.error.kind;
         if (failure.retry) {
           lastErr = failure.error;
           await backoff(failure.waitMs);
           continue;
         }
-        return { ok: false, error: failure.error, fallback: failure.fallback };
+        return fail(failure.error, failure.fallback);
       }
 
       let data: ChatResponse;
@@ -254,6 +360,14 @@ export class OpenAICompatibleAdapter implements ModelPort {
           model,
           cause: e,
         });
+        this.record({
+          model,
+          attempt: requests,
+          status: res.status,
+          outcome: "malformed",
+          error_kind: lastErr.kind,
+          latency_ms: latency,
+        });
         await backoff();
         continue;
       }
@@ -261,20 +375,53 @@ export class OpenAICompatibleAdapter implements ModelPort {
       if (data && typeof data === "object" && data.error && !Array.isArray(data.choices)) {
         // Some gateways report provider failures in a 2xx body.
         const code = Number(data.error.code);
-        const detail = boundProviderText(String(data.error.message ?? JSON.stringify(data.error)));
+        const raw = String(data.error.message ?? JSON.stringify(data.error));
+        const detail = boundProviderText(raw);
+        const bodyRecord = this.record({
+          model,
+          attempt: requests,
+          status: res.status,
+          outcome: "provider_error",
+          ...completionMeta(data),
+          latency_ms: latency,
+        });
         if (code === 429) {
           const err = new ModelInfraError("rate_limit", `${model}: ${detail}`, { status: 429, model });
-          if (QUOTA_RE.test(detail)) return { ok: false, error: err, fallback: false };
+          bodyRecord.error_kind = err.kind;
+          if (QUOTA_RE.test(raw)) return fail(err, false);
           lastErr = err;
+        } else if (code >= 400 && code < 500 && !TRANSIENT_4XX_RE.test(raw)) {
+          // The provider refused the request the harness built — not an outage.
+          const err = new ModelRequestError(`${model}: provider rejected the request (${code}): ${detail}`, {
+            status: code,
+            model,
+          });
+          bodyRecord.error_kind = err.kind;
+          return fail(err, true);
         } else {
           lastErr = new ModelInfraError("server_error", `${model}: provider error in 2xx body: ${detail}`, {
             status: Number.isFinite(code) ? code : res.status,
             model,
           });
+          bodyRecord.error_kind = lastErr.kind;
         }
         await backoff();
         continue;
       }
+
+      const okRecord = this.record({
+        model,
+        attempt: requests,
+        status: res.status,
+        outcome: "ok",
+        ...completionMeta(data),
+        latency_ms: latency,
+      });
+      const callMeta = {
+        call_seq: okRecord.seq,
+        ...(okRecord.completion_id ? { completion_id: okRecord.completion_id } : {}),
+        ...(okRecord.repeat_of !== undefined ? { repeat_of_call: okRecord.repeat_of } : {}),
+      };
 
       this.lastModelUsed = model;
       this.cfg.onModelUsed?.(model);
@@ -283,10 +430,16 @@ export class OpenAICompatibleAdapter implements ModelPort {
       if (!msg || typeof msg !== "object") {
         return {
           ok: true,
-          proposal: { type: "invalid", reason: "empty_choices", raw: capCodePoints(JSON.stringify(data)), model },
+          proposal: {
+            type: "invalid",
+            reason: "empty_choices",
+            raw: capCodePoints(JSON.stringify(data)),
+            model,
+            ...callMeta,
+          },
         };
       }
-      const prov: Provenance = { model };
+      const prov: Provenance = { model, ...callMeta };
       const preserved = this.capturePreserved(msg, data);
       if (preserved) prov.provider_fields = preserved;
 
@@ -322,12 +475,10 @@ export class OpenAICompatibleAdapter implements ModelPort {
         proposal: { type: "stop", message: typeof msg.content === "string" ? msg.content : "", ...prov },
       };
     }
-    return {
-      ok: false,
-      error:
-        lastErr ?? new ModelInfraError("server_error", `no usable response from ${model}`, { model }),
-      fallback: true,
-    };
+    return fail(
+      lastErr ?? new ModelInfraError("server_error", `no usable response from ${model}`, { model }),
+      true,
+    );
   }
 
   /**
@@ -376,6 +527,7 @@ export class OpenAICompatibleAdapter implements ModelPort {
   }
 
   private classifyHttpFailure(res: HttpReply, text: string, model: string): HttpFailure {
+    // Classification reads the provider text; only the bounded, redacted form is kept.
     const status = res.status;
     const detail = `${model} HTTP ${status}: ${boundProviderText(text)}`;
     if (status === 429) {
@@ -402,11 +554,22 @@ export class OpenAICompatibleAdapter implements ModelPort {
     if (status >= 500) {
       return { error: new ModelInfraError("server_error", detail, { status, model }), retry: true, fallback: true };
     }
+    if (TRANSIENT_4XX_RE.test(text)) {
+      // Known transient gateway errors reported as 4xx (KIT: "400 ServiceUnavailable" when
+      // overloaded) are outages: retry, then fall back.
+      return { error: new ModelInfraError("server_error", detail, { status, model }), retry: true, fallback: true };
+    }
     if (QUOTA_OR_LIMIT_RE.test(text)) {
       // Legacy: some gateways report quota exhaustion as a non-429 4xx.
       return { error: new ModelInfraError("rate_limit", detail, { status, model }), retry: false, fallback: false };
     }
-    return { error: new ModelInfraError("bad_request", detail, { status, model }), retry: false, fallback: true };
+    // 400/413/422…: the endpoint rejected the request the harness built (context overflow,
+    // invalid schema, …). Not infra — results must show it. Another model may still accept it.
+    return {
+      error: new ModelRequestError(`request rejected: ${detail}`, { status, model }),
+      retry: false,
+      fallback: true,
+    };
   }
 
   private capturePreserved(

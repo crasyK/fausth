@@ -26,10 +26,17 @@ export const ADAPTER_ERROR_CODES: readonly AdapterErrorCode[] = [
 
 export class AdapterError extends Error {
   readonly code: AdapterErrorCode;
-  constructor(code: AdapterErrorCode, message: string) {
+  /** Structured cause for reports/events (e.g. `{ model_error: ModelTransportErrorJson }`). */
+  readonly detail?: Record<string, unknown>;
+  constructor(code: AdapterErrorCode, message: string, opts: { detail?: Record<string, unknown> } = {}) {
     super(message);
     this.name = "AdapterError";
     this.code = code;
+    if (opts.detail) this.detail = opts.detail;
+  }
+
+  toJSON(): { name: "AdapterError"; code: AdapterErrorCode; message: string; detail?: Record<string, unknown> } {
+    return { name: "AdapterError", code: this.code, message: this.message, ...(this.detail ? { detail: this.detail } : {}) };
   }
 }
 
