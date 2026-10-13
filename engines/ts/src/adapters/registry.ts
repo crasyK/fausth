@@ -1,12 +1,19 @@
 /**
  * Resolve deployment.bindings → tool handlers.
  * Missing / unknown natives fail as adapter errors (not harness authorize denies).
+ *
+ * Binding forms:
+ *   <tool>: { native: "<host native id>" }        host implementation
+ *   <tool>: { user: { source: recorded|simulator|human, ... } }   the User cell (D14)
+ * A tool whose IR declares `channel: "user"` may only be bound through `user:`; when it is
+ * not bound at all it stays without a handler (the runtime denies it: capability missing).
  */
+import { dirname } from "node:path";
 import type { ToolHandler } from "../runtime.js";
-import type { AgentIR, Deployment } from "../types.js";
+import type { AgentIR, Deployment, ToolDef } from "../types.js";
 import { createGreenhouseTools } from "../tools/world.js";
 import { createSpawnTool } from "../tools/world.js";
-import { createSimulationCodingAdapter } from "./simulation.js";
+import { createSimulationWorldForAgent } from "./simulation.js";
 import { AdapterError } from "./error.js";
 import {
   createMcpHandlers,
@@ -24,13 +31,30 @@ import {
   createLocalCodingTools,
   createLocalWorld,
   deploymentUsesLocal,
+  disposeLocalWorld,
   pickLocalHandler,
+  type LocalWorldExtension,
 } from "./local.js";
+import {
+  createTauWorldTools,
+  deploymentUsesTauWorld,
+  TAU_NATIVES,
+  TAU_WORLD_EXTENSION,
+} from "./worlds/tau.js";
+import { bundleProvenanceFor } from "./provenance.js";
+import { spawnPolicyFromEnv, type SpawnPolicy } from "./stdio-session.js";
+import {
+  createUserChannelHandler,
+  isUserChannelBinding,
+  parseUserChannelBinding,
+  type UserChannelOptions,
+} from "./user-channel.js";
 import type { ResolvedHarnessIR } from "../types.js";
 
 export { AdapterError } from "./error.js";
 export type { AdapterErrorCode } from "./error.js";
 export { deploymentUsesModule, parseModuleNative } from "./module.js";
+export { closeAllHostSessions } from "./stdio-session.js";
 
 /** Map deployment `native:` id → harness tool id. */
 export const NATIVE_TO_TOOL: Record<string, string> = {
@@ -50,19 +74,11 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "sim.shell": "shell.run_allowlisted",
   "local.shell": "shell.run_allowlisted",
   "shell.run_allowlisted": "shell.run_allowlisted",
-  "local.tau_invoke": "tau.invoke",
-  "tau.invoke": "tau.invoke",
-  "local.todo_complete": "todo.complete",
-  "todo.complete": "todo.complete",
   "stub.approve": "user.approve",
   "sim.approve": "user.approve",
   "local.user_approve": "user.approve",
   "local.user_approve_auto": "user.approve",
   "user.approve": "user.approve",
-  "stub.ask": "user.ask",
-  "user.ask": "user.ask",
-  "local.user_ask": "user.ask",
-  "local.user_ask_auto": "user.ask",
   "stub.user_correct": "user.correct",
   "sim.user_correct": "user.correct",
   "local.user_correct": "user.correct",
@@ -110,6 +126,12 @@ export const NATIVE_TO_TOOL: Record<string, string> = {
   "system.wait": "system.wait",
 };
 
+/**
+ * Natives removed because they answered the user cell from the acting model's own args
+ * (D14). Kept as a closed list only to produce an actionable error.
+ */
+const REMOVED_USER_NATIVES = new Set(["stub.ask", "user.ask", "local.user_ask", "local.user_ask_auto"]);
+
 export type ResolveToolsOptions = {
   testExit?: number;
   sensorHealthy?: number;
@@ -124,10 +146,16 @@ export type ResolveToolsOptions = {
   resolved?: ResolvedHarnessIR;
   /**
    * Path of the deployment file the bindings came from. Used for provenance checks
-   * (a deployment shipped inside a bundle may not spawn host commands on its own).
-   * When omitted, `harnessDir` provenance is used (fail closed for bundle dirs).
+   * (a deployment shipped inside a bundle may not spawn host commands on its own) and as
+   * the base directory for user-channel files. When omitted, `harnessDir` is used.
    */
   deploymentPath?: string;
+  /** Operator allow for bundle-declared commands (default: FAUSTH_ALLOW_COMMANDS env). */
+  spawnPolicy?: Omit<SpawnPolicy, "provenance">;
+  /** User channel host hooks (transcript sink, human callback, simulator transport). */
+  userChannel?: Pick<UserChannelOptions, "transcript" | "humanAnswer" | "simulatorPort">;
+  /** Host-approved plan write paths for local worlds. */
+  approvedWritePaths?: string[];
 };
 
 /** Bound handlers plus a cleanup that terminates any host sessions (stdio children). */
@@ -136,25 +164,15 @@ export type BoundTools = {
   cleanup: () => void;
 };
 
+function hasOwn(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
 function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Record<string, ToolHandler> {
-  const writeScopes = agent.permissions?.filesystem?.write_scopes ?? ["src/"];
-  const { tools: coding } = createSimulationCodingAdapter({
+  const { tools: coding } = createSimulationWorldForAgent(agent, {
     files: opts.files,
-    write_scopes: writeScopes,
-    exit_codes:
-      opts.testExit !== undefined
-        ? { test: opts.testExit, typecheck: opts.testExit }
-        : undefined,
+    testExit: opts.testExit,
   });
-  if (opts.testExit !== undefined) {
-    coding["shell.run_allowlisted"] = (args) => {
-      const cmd = String(args.cmd);
-      if (cmd === "test" || cmd === "typecheck") {
-        return { output: { exit_code: opts.testExit!, cmd } };
-      }
-      return { output: { exit_code: 1, cmd, error: "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore" } };
-    };
-  }
   const greenhouse = createGreenhouseTools({
     temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
     fan_percent: Number(agent.state.fan_percent ?? 0),
@@ -162,6 +180,20 @@ function buildHandlerPool(agent: AgentIR, opts: ResolveToolsOptions = {}): Recor
   });
   const spawn = createSpawnTool(agent.permissions?.tools ?? []);
   return { ...greenhouse, ...coding, ...spawn };
+}
+
+/** IR channel declaration (types.ts gains `channel` via the contract WP; read it loosely). */
+function toolChannel(tool: ToolDef): string | undefined {
+  const ch = (tool as ToolDef & { channel?: unknown }).channel;
+  return typeof ch === "string" ? ch : undefined;
+}
+
+function allowSetKeysFor(agent: AgentIR, toolId: string): string[] {
+  const keys = new Set<string>();
+  for (const cp of agent.counterbalance?.checkpoints ?? []) {
+    if (cp.tool === toolId) for (const k of cp.allow_set_keys ?? []) keys.add(k);
+  }
+  return [...keys].sort();
 }
 
 /**
@@ -178,7 +210,8 @@ export function resolveToolsFromDeployment(
 
 /**
  * Bind deployment natives to handlers and return a cleanup that closes any host
- * sessions (MCP/module stdio children). Callers must invoke cleanup when the run ends.
+ * sessions (MCP/module stdio children, local world temp dirs). Callers must invoke
+ * cleanup when the run ends (process exit also reaps stdio children).
  */
 export function bindToolsFromDeployment(
   agent: AgentIR,
@@ -210,36 +243,51 @@ function bindToolsInner(
   cleanups: Array<() => void>,
 ): Record<string, ToolHandler> {
   assertBindingFamilyConsistency(deployment);
-  if (deploymentUsesLocal(deployment) && deploymentUsesMcp(deployment)) {
+  const usesLocal = deploymentUsesLocal(deployment);
+  if (usesLocal && deploymentUsesMcp(deployment)) {
     throw new AdapterError(
       "adapter_unresolved",
       "deployment mixes local.* bindings with mcp.* — use a single binding family",
     );
   }
-  if (deploymentUsesLocal(deployment) && deploymentUsesModule(deployment)) {
+  if (usesLocal && deploymentUsesModule(deployment)) {
     throw new AdapterError(
       "adapter_unresolved",
       "deployment mixes local.* bindings with module.* — use a single binding family",
     );
   }
 
+  const provenance = bundleProvenanceFor(opts.deploymentPath ?? opts.harnessDir ?? "");
+  const spawnPolicy: SpawnPolicy = { ...(opts.spawnPolicy ?? spawnPolicyFromEnv()), provenance };
+
   let pool: Record<string, ToolHandler>;
+  let localNatives: Record<string, ToolHandler> = {};
   let mcpNativeToTool: Record<string, string> = {};
   let moduleNativeToTool: Record<string, string> = {};
-  if (deploymentUsesLocal(deployment)) {
+  const nativeToTool: Record<string, string> = { ...NATIVE_TO_TOOL };
+  if (usesLocal) {
     if (!opts.workspace) {
       throw new AdapterError(
         "adapter_unresolved",
         "adapter failure: local.* bindings require --workspace (linked disposable worktree)",
       );
     }
+    const tau = deploymentUsesTauWorld(deployment);
+    const extensions: LocalWorldExtension[] = tau ? [TAU_WORLD_EXTENSION] : [];
     const world = createLocalWorld({
       workspace: opts.workspace,
       agent,
       deployment,
       interactive: opts.interactive,
+      approvedWritePaths: opts.approvedWritePaths,
+      extensions,
     });
+    cleanups.push(() => disposeLocalWorld(world));
     const localTools = createLocalCodingTools(world);
+    if (tau) {
+      localNatives = createTauWorldTools(world);
+      Object.assign(nativeToTool, TAU_NATIVES);
+    }
     const greenhouse = createGreenhouseTools({
       temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
       fan_percent: Number(agent.state.fan_percent ?? 0),
@@ -259,6 +307,7 @@ function bindToolsInner(
       const mcp = createMcpHandlers(deployment, {
         harnessDir: opts.harnessDir,
         mcpToolMap: mcpToolMapFromResolved(opts.resolved),
+        spawnPolicy,
       });
       cleanups.push(mcp.cleanup);
       pool = { ...pool, ...mcp.handlers };
@@ -271,27 +320,75 @@ function bindToolsInner(
           "adapter failure: module.* bindings require harness directory context",
         );
       }
-      const mod = createModuleHandlers(deployment, { harnessDir: opts.harnessDir });
+      const mod = createModuleHandlers(deployment, { harnessDir: opts.harnessDir, spawnPolicy });
       cleanups.push(mod.cleanup);
       pool = { ...pool, ...mod.handlers };
       moduleNativeToTool = mod.nativeToTool;
     }
   }
 
-  const bindings = deployment.bindings ?? {};
+  const bindings = (deployment.bindings ?? {}) as Record<string, unknown>;
   const out: Record<string, ToolHandler> = {};
+  const userBaseDir = opts.deploymentPath ? dirname(opts.deploymentPath) : opts.harnessDir;
 
   for (const tool of agent.tools) {
     const id = tool.id;
-    const binding = bindings[id];
-    if (!binding || typeof binding.native !== "string" || !binding.native) {
+    const binding = hasOwn(bindings, id) ? bindings[id] : undefined;
+    const channel = toolChannel(tool);
+
+    if (isUserChannelBinding(binding)) {
+      if (typeof (binding as Record<string, unknown>).native === "string") {
+        throw new AdapterError(
+          "adapter_unresolved",
+          `adapter failure: binding for '${id}' declares both native and user (adapter_unresolved)`,
+        );
+      }
+      const parsed = parseUserChannelBinding(id, binding.user);
+      if (parsed.source !== "human" && !userBaseDir) {
+        throw new AdapterError(
+          "adapter_unresolved",
+          `adapter failure: user channel for '${id}' needs a deployment path or harness directory`,
+        );
+      }
+      out[id] = createUserChannelHandler(tool, parsed, {
+        baseDir: userBaseDir ?? process.cwd(),
+        deployment,
+        allowSetKeys: allowSetKeysFor(agent, id),
+        ...(opts.userChannel ?? {}),
+      });
+      continue;
+    }
+
+    if (channel === "user") {
+      if (binding !== undefined) {
+        throw new AdapterError(
+          "adapter_unresolved",
+          `adapter failure: tool '${id}' declares channel user; bind it with user: {source: recorded|simulator|human}`,
+        );
+      }
+      continue; // unbound user channel → no handler → runtime denies (capability missing)
+    }
+
+    const native =
+      binding && typeof binding === "object" && typeof (binding as { native?: unknown }).native === "string"
+        ? ((binding as { native: string }).native)
+        : "";
+    if (!native) {
       throw new AdapterError(
         "binding_missing",
         `adapter failure: no deployment binding for tool '${id}' (binding_missing)`,
       );
     }
-    const native = binding.native;
-    let mapped = NATIVE_TO_TOOL[native] ?? mcpNativeToTool[native] ?? moduleNativeToTool[native];
+    if (REMOVED_USER_NATIVES.has(native)) {
+      throw new AdapterError(
+        "adapter_unresolved",
+        `adapter failure: native '${native}' was removed — it answered the user from the model's own args (D14); bind '${id}' with user: {source: recorded|simulator|human} (adapter_unresolved)`,
+      );
+    }
+    let mapped =
+      (hasOwn(nativeToTool, native) ? nativeToTool[native] : undefined) ??
+      (hasOwn(mcpNativeToTool, native) ? mcpNativeToTool[native] : undefined) ??
+      (hasOwn(moduleNativeToTool, native) ? moduleNativeToTool[native] : undefined);
     if (!mapped && native.startsWith("mcp.")) {
       const parsed = parseMcpNative(native);
       if (parsed && parsed.toolId === id) mapped = id;
@@ -312,10 +409,13 @@ function bindToolsInner(
         `adapter failure: native '${native}' maps to '${mapped}', not '${id}' (adapter_unresolved)`,
       );
     }
-    const handler =
-      deploymentUsesLocal(deployment)
+    const handler = hasOwn(localNatives, native)
+      ? localNatives[native]
+      : usesLocal
         ? pickLocalHandler(pool, id, native)
-        : pool[id];
+        : hasOwn(pool, id)
+          ? pool[id]
+          : undefined;
     if (!handler) {
       throw new AdapterError(
         "adapter_unresolved",
