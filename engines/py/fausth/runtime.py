@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import math
+import re
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -16,6 +17,7 @@ from .canonical import (
     UNDEFINED,
     canonical_json,
     deep_eq,
+    is_canonical,
     is_js_integer,
     is_nullish,
     jget,
@@ -200,14 +202,132 @@ def normalize_envelope(raw: Any) -> dict[str, Any]:
     return {"output": raw}
 
 
-def scope_covered(child: str, parents: list[str]) -> bool:
-    for p in parents:
-        if p in (".", "./", "*", "**"):
+# --------------------------------------------------------------------------
+# D7 — filesystem paths and scopes (TS adapters/sandbox-path.ts, lexical part)
+# --------------------------------------------------------------------------
+
+#: Canonical root marker used for explicit whole-worktree grants.
+ROOT_SCOPE = "."
+_EXPLICIT_ROOT_SPELLINGS = frozenset({".", "./", "*", "**"})
+_DRIVE = re.compile(r"[a-zA-Z]:")
+
+
+class SandboxPathError(ValueError):
+    """A path or scope outside the portable D7 rules (closed ``code`` set)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def normalize_tool_path(rel: Any) -> str:
+    """Normalize a tool-supplied relative path. ``"."`` is the root.
+
+    Rejects empty paths, NUL, absolute / drive paths, any ``..`` component and
+    ``.git`` components.
+    """
+    if not isinstance(rel, str) or len(rel) == 0:
+        raise SandboxPathError("path_invalid", "path must be a non-empty relative string")
+    if "\0" in rel:
+        raise SandboxPathError("path_invalid", "path contains NUL")
+    unified = rel.replace("\\", "/")
+    if unified.startswith("/") or _DRIVE.match(unified):
+        raise SandboxPathError("path_escape", "absolute paths are forbidden")
+    parts: list[str] = []
+    for part in unified.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            raise SandboxPathError("path_escape", "path traversal ('..') is forbidden")
+        if part.lower() == ".git":
+            raise SandboxPathError("path_escape", ".git paths are forbidden")
+        parts.append(part)
+    return "/".join(parts) if parts else ROOT_SCOPE
+
+
+def _posix_normalize_relative(p: str) -> str:
+    """Node ``path.posix.normalize`` for a non-empty relative path."""
+    trailing = p.endswith("/")
+    res: list[str] = []
+    for seg in p.split("/"):
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            if res and res[-1] != "..":
+                res.pop()
+            else:
+                res.append("..")
+            continue
+        res.append(seg)
+    out = "/".join(res)
+    if not out:
+        return "./" if trailing else "."
+    return out + "/" if trailing else out
+
+
+def normalize_scope(raw: Any) -> str:
+    """Normalize a declared scope. ``.``/``./``/``*``/``**`` are explicit root grants;
+    any other spelling of the root (``src/..``, ``""``), absolute scopes and ``..``
+    escapes are rejected. ``src`` ≡ ``src/`` ≡ ``./src//``."""
+    if not isinstance(raw, str):
+        raise SandboxPathError("path_invalid", "scope must be a string")
+    unified = js_trim(raw.replace("\\", "/"))
+    if unified in _EXPLICIT_ROOT_SPELLINGS:
+        return ROOT_SCOPE
+    if not unified or "\0" in unified:
+        raise SandboxPathError("path_invalid", f"invalid scope '{raw}'")
+    if unified.startswith("/") or _DRIVE.match(unified):
+        raise SandboxPathError("path_escape", f"absolute scope '{raw}' is forbidden")
+    norm = _posix_normalize_relative(unified).rstrip("/")
+    if norm in ("", "."):
+        raise SandboxPathError(
+            "path_invalid", f"scope '{raw}' resolves to the worktree root; grant root explicitly as '.'"
+        )
+    if norm == ".." or norm.startswith("../"):
+        raise SandboxPathError("path_escape", f"scope '{raw}' escapes the worktree")
+    if any(part.lower() == ".git" for part in norm.split("/")):
+        raise SandboxPathError("path_escape", f"scope '{raw}' targets .git")
+    return norm
+
+
+def normalize_scopes(raw: Iterable[Any]) -> list[str]:
+    """Normalize and de-duplicate (order kept); raises on the first invalid scope."""
+    out: list[str] = []
+    for r in raw:
+        n = normalize_scope(r)
+        if n not in out:
+            out.append(n)
+    return out
+
+
+def scope_covered(child: Any, scopes: Iterable[Any]) -> bool:
+    """Segment-wise containment (D7): ``child`` is covered when some scope is the root
+    grant, equals the child, or is a whole-segment prefix of it."""
+    try:
+        c = normalize_tool_path(child)
+    except SandboxPathError:
+        return False
+    for raw in scopes:
+        try:
+            s = normalize_scope(raw)
+        except SandboxPathError:
+            continue
+        if s == ROOT_SCOPE:
             return True
-        if child == p:
+        if c == ROOT_SCOPE:
+            continue
+        if c == s or c.startswith(s + "/"):
             return True
-        prefix = p if p.endswith("/") else p + "/"
-        if child.startswith(prefix) or child == (p[:-1] if p.endswith("/") else p):
+    return False
+
+
+def path_listed(rel: str, entries: Iterable[str]) -> bool:
+    """``rel`` equals an entry or lies under a directory entry ending in ``/``."""
+    for e in entries:
+        if e.endswith("/"):
+            if rel == e[:-1] or rel.startswith(e):
+                return True
+        elif rel == e:
             return True
     return False
 
@@ -251,6 +371,18 @@ def _is_stale_value(v: Any) -> bool:
 # --------------------------------------------------------------------------
 
 
+class _Pending:
+    """A call's state transition, applied provisionally until its verifies pass (D8)."""
+
+    __slots__ = ("state", "provenance", "stale", "keys")
+
+    def __init__(self, state: dict[str, Any], provenance: Any, stale: set[str], keys: list[str]) -> None:
+        self.state = state
+        self.provenance = provenance
+        self.stale = stale
+        self.keys = keys
+
+
 class FaustRuntime:
     def __init__(
         self,
@@ -262,6 +394,7 @@ class FaustRuntime:
         depth: int = 0,
         spawn_id: str | None = None,
         parse_proposals: bool = True,
+        user_tools: Iterable[str] | None = None,
     ) -> None:
         self.agent = copy.deepcopy(agent)
         if js_truthy(self.agent.get("safe_state")) and not js_truthy(self.agent.get("fallback_state")):
@@ -282,6 +415,9 @@ class FaustRuntime:
 
             self._propose = _next
         self.tools = tools
+        #: Tools whose handler is a host user channel (D14). Defaults to what the
+        #: registry bound (``ToolSet.user_tools``); world handlers never answer them.
+        self.user_tools = set(user_tools if user_tools is not None else getattr(tools, "user_tools", ()) or ())
         self.recorded = recorded_tool_results or []
         self.ri = 0
         self.events: list[dict[str, Any]] = []
@@ -294,6 +430,11 @@ class FaustRuntime:
         self.skills_propose_attempts = 0
         self.skills_decline_attempts = 0
         self.skills_reflect_attempts = 0
+        #: D8: tool ids that executed AND passed every verify, in order.
+        self.succeeded: list[str] = []
+        #: PY-7: memory keys currently stale (memory_stale fires once per transition).
+        self.stale_keys: set[str] = set()
+        self._pending: _Pending | None = None
 
     # -- IR accessors (``this.agent.x?.y`` chains) -------------------------
 
@@ -375,11 +516,8 @@ class FaustRuntime:
         return True, None, None
 
     def successful_executes(self) -> set[str]:
-        done: set[str] = set()
-        for e in self.events:
-            if e.get("stage") == "execute" and e.get("verdict") == "allow" and js_truthy(e.get("tool")):
-                done.add(e["tool"])
-        return done
+        """D8: tools that executed AND passed all verifies (this reaction only)."""
+        return set(self.succeeded)
 
     def collect_completion_paths(self, p: Any, out: list[str] | None = None) -> list[str]:
         if out is None:
@@ -405,21 +543,18 @@ class FaustRuntime:
     # -- orientation ----------------------------------------------------------
 
     def build_orientation_frame(self) -> dict[str, Any]:
+        """Deterministic orientation snapshot. D11: only IR-declared semantics — no
+        engine knowledge of plan_approved / user.approve / phase.yield / task.complete."""
         cb = nn(self.cb, {})
         # Can-only: advertise tools this harness actually declares — never blocked_tools / modes.
         permitted = js_sorted_strings([jget(t, "id") for t in self.agent.get("tools") or []])
         done = self.successful_executes()
-        plan_approved = js_number(nn(self.state.get("plan_approved", UNDEFINED), 0)) == 1
-        if plan_approved:
-            permitted = [t for t in permitted if t != "user.approve"]
         sequence_blockers: list[dict[str, Any]] = []
         for s in js_array(nn(jget(cb, "sequences"), []), "sequences"):
             if not js_truthy(jprop(s, "action")):
                 continue
             priors = jget(s, "require_prior_tools")
             options_raw = jget(s, "require_prior_any_of")
-            if not js_truthy(jget(s, "action")):
-                continue
             if not (js_gt(nn(jget(priors, "length"), 0), 0) or js_gt(nn(jget(options_raw, "length"), 0), 0)):
                 continue
             missing = js_sorted_strings(
@@ -443,38 +578,20 @@ class FaustRuntime:
         for rule in js_iter(nn(jget(cb, "invalidate_after"), []), "invalidate_after"):
             for key in js_iter(nn(jget(rule, "memory_keys"), []), "memory_keys"):
                 freshness[js_string(key)] = js_number(nn(self.state.get(js_string(key), UNDEFINED), 0))
-        completion = jget(cb, "completion")
-        require = jget(completion, "require")
-        completion_paths = (
-            sorted(set(self.collect_completion_paths(require))) if js_truthy(require) else []
-        )
-        ctool = jget(completion, "tool")
-        ready = (
-            self.check_completion(ctool)[0]
-            if js_truthy(completion) and js_truthy(ctool)
-            else True
-        )
         frame: dict[str, Any] = {
             "permitted_tools": permitted,
             "tools": permitted,
             "sequence_blockers": sequence_blockers,
             "freshness": freshness,
-            "completion": {
-                "tool": nn(ctool, "task.complete"),
-                "require_paths": completion_paths,
-                "ready": 1 if ready else 0,
-            },
         }
-        if "plan_approved" in self.state:
-            frame["plan"] = (
-                {
-                    "approved": 1,
-                    "next_tool": "phase.yield",
-                    "note": "Plan already approved — call phase.yield next. Do not call user.approve again.",
-                }
-                if plan_approved
-                else {"approved": 0}
-            )
+        ctool = self.completion_tool_id()
+        if ctool is not None:
+            require = jget(jget(cb, "completion"), "require")
+            frame["completion"] = {
+                "tool": ctool,
+                "require_paths": sorted(set(self.collect_completion_paths(require))) if js_truthy(require) else [],
+                "ready": 1 if self.check_completion(ctool)[0] else 0,
+            }
         return frame
 
     # -- authorize checks -----------------------------------------------------
@@ -536,25 +653,36 @@ class FaustRuntime:
             return False, "reflect_skills already attempted this phase"
         return True, None
 
-    # -- memory / provenance --------------------------------------------------
+    # -- memory / provenance (PY-7: memory_stale once per staleness transition) --
+
+    def _invalidate(self, keys: list[Any]) -> bool:
+        """Mark keys stale (state 0). Keys already stale are left alone; True if any changed."""
+        touched = False
+        next_state = dict(self.state)
+        for key in keys:
+            k = js_string(key)
+            if k in self.stale_keys:
+                continue
+            next_state[k] = 0
+            self.stale_keys.add(k)
+            self.touch_provenance_stale(k)
+            touched = True
+        if touched:
+            self.agent["state"] = next_state
+        return touched
 
     def apply_invalidate_after(self, action_name: str) -> None:
         rules = self.cb_get("invalidate_after")
         if not js_truthy(rules):
             return
-        touched = False
-        next_state = dict(self.state)
+        keys: list[Any] = []
         for rule in js_iter(rules, "invalidate_after"):
             ra = jget(rule, "action")
             if not js_truthy(ra) or not js_strict_eq(ra, action_name):
                 continue
-            for key in js_iter(jprop(rule, "memory_keys"), "rule.memory_keys"):
-                next_state[js_string(key)] = 0
-                touched = True
-                self.touch_provenance_stale(key)
-        if not touched:
+            keys.extend(js_iter(jprop(rule, "memory_keys"), "rule.memory_keys"))
+        if not self._invalidate(keys):
             return
-        self.agent["state"] = next_state
         self.emit(
             {
                 "stage": "record",
@@ -566,6 +694,7 @@ class FaustRuntime:
         )
 
     def touch_provenance_stale(self, key: Any) -> None:
+        """Update an existing provenance entry; never creates one (TS semantics)."""
         mp = self.cb_get("memory_provenance")
         if not isinstance(mp, dict):
             return
@@ -594,26 +723,19 @@ class FaustRuntime:
         if not js_truthy(rules):
             return
         mp = nn(self.cb_get("memory_provenance"), {})
-        touched = False
-        next_state = dict(self.state)
+        expired: list[Any] = []
         for rule in js_iter(rules, "invalidate_after"):
             ttl = jget(rule, "ttl_steps")
             if js_truthy(jget(rule, "action")) or not js_truthy(ttl) or js_lt(ttl, 1):
                 continue
             for key in js_iter(jprop(rule, "memory_keys"), "rule.memory_keys"):
-                k = js_string(key)
-                meta = jget(mp, k)
+                meta = jget(mp, js_string(key))
                 updated = nn(jget(meta, "updated_at_step"), 0)
                 if js_number(self.steps - js_number(updated)) < js_number(ttl):
                     continue
-                if js_number(nn(next_state.get(k, UNDEFINED), 0)) == 0 and jget(meta, "status") == "stale":
-                    continue
-                next_state[k] = 0
-                self.touch_provenance_stale(key)
-                touched = True
-        if not touched:
+                expired.append(key)
+        if not self._invalidate(expired):
             return
-        self.agent["state"] = next_state
         self.emit(
             {
                 "stage": "record",
@@ -648,20 +770,21 @@ class FaustRuntime:
                 }
             )
 
-    # -- completion / checkpoints -----------------------------------------------
+    # -- completion / checkpoints / user cell -----------------------------------
 
-    def completion_tool_id(self) -> Any:
-        return nn(jget(self.cb_get("completion"), "tool"), "task.complete")
+    def completion_tool_id(self) -> str | None:
+        """D11: the run's terminal tool is only what the IR declares (no default)."""
+        tool = jget(self.cb_get("completion"), "tool")
+        return tool if isinstance(tool, str) and tool else None
 
     def is_terminal_success_tool(self, name: Any) -> bool:
-        return js_strict_eq(name, self.completion_tool_id()) or name == "phase.yield"
+        ctool = self.completion_tool_id()
+        return ctool is not None and name == ctool
 
     def check_completion(self, action_name: Any) -> tuple[bool, str | None, dict[str, Any] | None]:
         completion = self.cb_get("completion")
-        if not js_truthy(completion):
-            return True, None, None
         tool = self.completion_tool_id()
-        if not js_strict_eq(action_name, tool):
+        if tool is None or not js_strict_eq(action_name, tool):
             return True, None, None
         req = jget(completion, "require")
         if not js_truthy(req):
@@ -672,33 +795,81 @@ class FaustRuntime:
             return False, "completion_gate_failed", build_predicate_failure(req, snap, checkpoints)
         return True, None, None
 
-    def check_checkpoint_authority(
-        self, action: dict[str, Any], transition: Any
-    ) -> tuple[bool, str | None, str | None, dict[str, Any] | None]:
+    def _checkpoint_policy(self, name: Any) -> Any:
         policies = nn(self.cb_get("checkpoints"), [])
-        policy = next((p for p in js_iter(policies, "checkpoints") if js_strict_eq(jget(p, "tool"), action["name"])), None)
+        return next((p for p in js_iter(policies, "checkpoints") if js_strict_eq(jget(p, "tool"), name)), None)
+
+    def is_user_channel_tool(self, tool: Any) -> bool:
+        """D14: the IR declares the tool's output comes from the user."""
+        return jget(tool, "channel") == "user"
+
+    def user_decision_keys(self) -> set[str]:
+        """D14: state keys owned by user-channel checkpoints (writable only by user tools)."""
+        user_ids = {jget(t, "id") for t in self.agent.get("tools") or [] if self.is_user_channel_tool(t)}
+        keys: set[str] = set()
+        for cp in js_iter(nn(self.cb_get("checkpoints"), []), "checkpoints"):
+            if jget(cp, "tool") in user_ids:
+                for k in nn(jget(cp, "allow_set_keys"), []):
+                    keys.add(js_string(k))
+        return keys
+
+    def user_channel_bound(self, name: Any) -> bool:
+        """A recorded answer (Track A transcript) or a host user-channel handler is available."""
+        return len(self.recorded) > self.ri or name in self.user_tools
+
+    def check_checkpoint_args(
+        self, action: dict[str, Any], tool: Any
+    ) -> tuple[bool, str | None, str | None, dict[str, Any] | None]:
+        """D9: checkpoint authority on the *requested* keys, before execution."""
+        policy = self._checkpoint_policy(action["name"])
         if policy is None:
             return True, None, None, None
         allowed = jget(policy, "allow_set_keys")
         allowed_set = set(js_iter(allowed, "allow_set_keys")) if not is_nullish(allowed) else set()
+        protected = set() if self.is_user_channel_tool(tool) else self.user_decision_keys()
         requested = nn(jget(jprop_args(action), "set"), {})
         for key in js_object_keys(requested):
-            if key not in allowed_set:
+            if key not in allowed_set or key in protected:
                 return (
                     False,
                     "checkpoint_authority_failed",
                     f"checkpoint args attempted protected key '{key}'",
                     build_checkpoint_key_failure(key),
                 )
-        actual_set = nn(jget(transition, "set"), {})
-        for key in js_object_keys(actual_set):
-            if key not in allowed_set:
-                return (
-                    False,
-                    "checkpoint_authority_failed",
-                    f"checkpoint transition attempted protected key '{key}'",
-                    build_checkpoint_key_failure(key),
-                )
+        return True, None, None, None
+
+    def check_transition_authority(
+        self, action: dict[str, Any], tool: Any, transition: Any
+    ) -> tuple[bool, str | None, str | None, dict[str, Any] | None]:
+        """Keys a tool's state transition may write: checkpoint allow_set_keys, and
+        user-decision keys only from user-channel tools (D14)."""
+        set_keys = js_object_keys(nn(jget(transition, "set"), {}))
+        policy = self._checkpoint_policy(action["name"])
+        if policy is not None:
+            allowed = jget(policy, "allow_set_keys")
+            allowed_set = set(js_iter(allowed, "allow_set_keys")) if not is_nullish(allowed) else set()
+            for key in set_keys:
+                if key not in allowed_set:
+                    return (
+                        False,
+                        "checkpoint_authority_failed",
+                        f"checkpoint transition attempted protected key '{key}'",
+                        build_checkpoint_key_failure(key),
+                    )
+        if not self.is_user_channel_tool(tool):
+            protected = self.user_decision_keys()
+            if protected:
+                removed = [js_string(k) for k in nn(jget(transition, "remove"), [])] if isinstance(
+                    jget(transition, "remove"), list
+                ) else []
+                for key in list(set_keys) + removed:
+                    if key in protected:
+                        return (
+                            False,
+                            "checkpoint_authority_failed",
+                            f"checkpoint transition attempted protected key '{key}'",
+                            build_checkpoint_key_failure(key),
+                        )
         return True, None, None, None
 
     def apply_state_transition(self, transition: Any) -> None:
@@ -711,12 +882,51 @@ class FaustRuntime:
                 next_state[k] = v
                 # Fresh write: reset TTL clock when value is truthy / non-zero.
                 if not _is_stale_value(v):
+                    self.stale_keys.discard(k)
                     self.touch_provenance_fresh(k)
         tremove = jget(transition, "remove")
         if js_truthy(tremove):
             for k in js_iter(tremove, "transition.remove"):
                 next_state.pop(js_string(k), None)
         self.agent["state"] = next_state
+
+    # -- D8: provisional transitions --------------------------------------------------
+
+    def _apply_provisional(self, transition: Any) -> None:
+        cb = self.cb
+        provenance = copy.deepcopy(cb.get("memory_provenance", UNDEFINED)) if isinstance(cb, dict) else UNDEFINED
+        keys: set[str] = set(js_object_keys(nn(jget(transition, "set"), {}))) if js_truthy(transition) else set()
+        remove = jget(transition, "remove")
+        if isinstance(remove, list):
+            keys.update(js_string(k) for k in remove)
+        self._pending = _Pending(dict(self.state), provenance, set(self.stale_keys), sorted(keys))
+        self.apply_state_transition(transition)
+
+    def _commit_pending(self) -> None:
+        self._pending = None
+
+    def _discard_pending(self) -> dict[str, Any] | None:
+        """Undo the provisional transition; returns the failure marker (if any keys)."""
+        p = self._pending
+        if p is None:
+            return None
+        self._pending = None
+        self.agent["state"] = p.state
+        self.stale_keys = p.stale
+        cb = self.cb
+        if isinstance(cb, dict):
+            if p.provenance is UNDEFINED:
+                cb.pop("memory_provenance", None)
+            else:
+                cb["memory_provenance"] = p.provenance
+        return {"kind": "transition_discarded", "keys": p.keys} if p.keys else None
+
+    def _emit_verify_failure(self, partial: dict[str, Any]) -> dict[str, Any]:
+        """First failure while verifying a call: discard its transition (D8) and say so."""
+        marker = self._discard_pending()
+        if marker is not None:
+            partial = {**partial, "failure": marker}
+        return self.emit(partial)
 
     # -- native invocation ----------------------------------------------------------
 
@@ -737,6 +947,9 @@ class FaustRuntime:
             self.ri += 1
             return normalize_envelope(jget(entry, "result"))
         handler = self.tools.get(name) if isinstance(name, str) else None
+        tool = self.tool_by_id(name)
+        if tool is not None and self.is_user_channel_tool(tool) and name not in self.user_tools:
+            handler = None  # D14: world handlers never answer the user cell
         if handler is None:
             raise RuntimeError(f"No native handler for {js_string(name)}")
         raw = handler(args, {"state": self.state})
@@ -748,14 +961,20 @@ class FaustRuntime:
             self.agent["state"] = {**self.state, **js_spread(fb)}
         self.emit({"stage": "record", "verdict": "safe_state", "reason": "safe_state_entered"})
 
-    # -- spawn ------------------------------------------------------------------
+    # -- spawn (D6, D7) -----------------------------------------------------------------
+
+    def _remaining(self) -> tuple[Any, Any]:
+        max_steps = js_number(nn(self.limits_get("max_steps"), 1000))
+        max_tools = js_number(nn(self.limits_get("max_tool_calls"), 1000))
+        return max_steps - self.steps, max_tools - self.tool_calls
 
     def compare_child_envelope(self, args: Any) -> tuple[bool, str, Any]:
+        """Tighten-only child envelope. D6: spawning requires ``spawn.allow`` to be exactly
+        ``true``; D7: scopes compare after normalization, segment-wise."""
         spawn = self.agent.get("spawn", UNDEFINED)
-        if jget(spawn, "allow") is False:
-            return False, "gate_denied", "spawn.allow is false"
-        if js_truthy(spawn) and jget(spawn, "allow") is not True and jget(spawn, "allow") is not UNDEFINED:
-            return False, "gate_denied", UNDEFINED
+        allow = jget(spawn, "allow")
+        if allow is not True:
+            return False, "gate_denied", "spawn.allow is false" if allow is False else UNDEFINED
         child_tools = nn(jget(args, "tools"), [])
         parent_tools = self.parent_tools()
         if not isinstance(child_tools, list):
@@ -772,10 +991,7 @@ class FaustRuntime:
             if any(not scope_covered(s, parent_fs["read_scopes"]) for s in child_fs["read_scopes"]):
                 return False, "gate_denied", "read_scopes escalation"
         child_limits = jget(args, "limits")
-        max_steps = nn(self.limits_get("max_steps"), 1000)
-        max_tools = nn(self.limits_get("max_tool_calls"), 1000)
-        remaining_steps = js_number(max_steps) - self.steps
-        remaining_calls = js_number(max_tools) - self.tool_calls
+        remaining_steps, remaining_calls = self._remaining()
         cms = jget(child_limits, "max_steps")
         if cms is not UNDEFINED and js_gt(cms, remaining_steps):
             return False, "gate_denied", "max_steps escalation"
@@ -789,10 +1005,10 @@ class FaustRuntime:
 
     def build_child_agent(self, args: Any) -> dict[str, Any]:
         child_tool_ids = nn(jget(args, "tools"), [])
-        max_steps = js_number(nn(self.limits_get("max_steps"), 1000))
-        max_tools = js_number(nn(self.limits_get("max_tool_calls"), 1000))
-        remaining_steps = js_max(1, max_steps - self.steps)
-        remaining_calls = js_max(1, max_tools - self.tool_calls)
+        remaining_steps, remaining_calls = self._remaining()
+        # D6: the child can never get more budget than the parent has left.
+        remaining_steps = js_max(0, remaining_steps)
+        remaining_calls = js_max(0, remaining_calls)
         child_limits = jget(args, "limits")
         child_fs = jget(args, "filesystem")
         a = self.agent
@@ -838,8 +1054,12 @@ class FaustRuntime:
             depth=self.depth + 1,
             spawn_id=spawn_id,
             parse_proposals=False,
+            user_tools=self.user_tools & set(child_tools),
         )
         child.run_loop(nn(jget(child_agent.get("limits"), "max_steps"), 32))
+        # D6: the child's consumption is charged to the parent's budgets.
+        self.steps += child.steps
+        self.tool_calls += child.tool_calls
         for cev in child.events:
             self.seq += 1
             merged = dict(cev)
@@ -855,7 +1075,7 @@ class FaustRuntime:
     def run_observation(self, observer_id: Any) -> tuple[bool, Any]:
         observer = self.tool_by_id(observer_id)
         if not observer or jget(observer, "read_only") is not True:
-            self.emit(
+            self._emit_verify_failure(
                 {
                     "stage": "validate",
                     "verdict": "deny",
@@ -867,19 +1087,21 @@ class FaustRuntime:
             return False, None
         allowed = self.perms_get("tools")
         if js_truthy(allowed) and not js_includes(allowed, observer_id):
-            self.emit(
+            self._emit_verify_failure(
                 {"stage": "authorize", "verdict": "deny", "reason": "capability_missing", "tool": observer_id}
             )
             return False, None
         max_tools = nn(self.limits_get("max_tool_calls"), 1000)
         if js_ge(self.tool_calls, max_tools):
-            self.emit({"stage": "authorize", "verdict": "deny", "reason": "limit_exceeded", "tool": observer_id})
+            self._emit_verify_failure(
+                {"stage": "authorize", "verdict": "deny", "reason": "limit_exceeded", "tool": observer_id}
+            )
             return False, None
         self.tool_calls += 1
         try:
             envelope = self.invoke_native(observer_id, {})
         except Exception as e:
-            self.emit(
+            self._emit_verify_failure(
                 {
                     "stage": "observe",
                     "verdict": "deny",
@@ -890,8 +1112,8 @@ class FaustRuntime:
             )
             return False, None
         ok, _ = validate_against_schema(jget(observer, "output"), envelope["output"])
-        if not ok:
-            self.emit(
+        if not ok or not is_canonical(envelope["output"]):
+            self._emit_verify_failure(
                 {
                     "stage": "observe",
                     "verdict": "deny",
@@ -906,7 +1128,12 @@ class FaustRuntime:
         )
         return True, envelope["output"]
 
+    def enter_safe_flow(self, trigger_reason: str) -> None:
+        self.run_recovery(trigger_reason)
+
     def run_recovery(self, trigger_reason: str) -> None:
+        """D10: recovery runs through the normal validate → authorize (permissions,
+        gates, checkpoint authority, limits) → execute → verify path."""
         recovery = self.agent.get("recovery", UNDEFINED)
         if not js_truthy(recovery) or self.recovering:
             self.apply_fallback_state()
@@ -919,93 +1146,16 @@ class FaustRuntime:
         execute = jprop(recovery, "execute")
         action = {"name": jprop(execute, "tool"), "args": nn(jget(execute, "args"), {})}
         self.emit({"stage": "propose", "tool": action["name"], "args": action["args"]})
-        tool = self.tool_by_id(action["name"])
-        if not tool:
-            self.emit(
-                {
-                    "stage": "validate",
-                    "verdict": "deny",
-                    "reason": "capability_missing",
-                    "tool": action["name"],
-                    "args": action["args"],
-                }
-            )
-            self._recovery_failed()
-            return
-        ok, _ = validate_against_schema(jget(tool, "input"), action["args"])
-        if not ok:
-            self.emit(
-                {
-                    "stage": "validate",
-                    "verdict": "deny",
-                    "reason": "input_schema_invalid",
-                    "tool": action["name"],
-                    "args": action["args"],
-                    "error": "input schema validation failed",
-                }
-            )
-            self._recovery_failed()
-            return
-        self.emit({"stage": "validate", "verdict": "allow", "tool": action["name"], "args": action["args"]})
-        self.emit({"stage": "authorize", "verdict": "allow", "tool": action["name"], "args": action["args"]})
-        self.tool_calls += 1
-        try:
-            envelope = self.invoke_native(action["name"], action["args"])
-        except Exception as e:
-            self.emit(
-                {
-                    "stage": "execute",
-                    "verdict": "deny",
-                    "reason": "tool_execution_failed",
-                    "tool": action["name"],
-                    "args": action["args"],
-                    "error": str(e),
-                }
-            )
-            self._recovery_failed()
-            return
-        ok, _ = validate_against_schema(jget(tool, "output"), envelope["output"])
-        if not ok:
-            self.emit(
-                {
-                    "stage": "execute",
-                    "verdict": "deny",
-                    "reason": "output_schema_invalid",
-                    "tool": action["name"],
-                    "args": action["args"],
-                    "error": "output schema validation failed",
-                }
-            )
-            self._recovery_failed()
-            return
-        self.apply_state_transition(envelope.get("state_transition", UNDEFINED))
-        self.emit(
-            {
-                "stage": "execute",
-                "verdict": "allow",
-                "tool": action["name"],
-                "args": action["args"],
-                "result": envelope["output"],
-            }
-        )
-        verified = self.run_one_verify(jprop(recovery, "verify"), action, envelope["output"])
-        if verified:
+        outcome = self._governed_call(action, verifies=[jprop(recovery, "verify")], recovery=True)
+        if outcome == "ok":
             self.emit({"stage": "record", "verdict": "allow", "reason": "recovery_succeeded"})
         else:
             self.emit({"stage": "record", "verdict": "deny", "reason": "terminal_failure"})
         self.apply_fallback_state()
         self.recovering = False
 
-    def _recovery_failed(self) -> None:
-        self.emit({"stage": "record", "verdict": "deny", "reason": "terminal_failure"})
-        self.apply_fallback_state()
-        self.recovering = False
-
-    def enter_safe_flow(self, trigger_reason: str) -> None:
-        self.run_recovery(trigger_reason)
-
-    def run_verifies(self, tool: dict[str, Any], action: dict[str, Any], result: Any) -> bool:
-        verifies = nn(jget(tool, "verify"), [])
+    def run_verifies(self, verifies: Any, action: dict[str, Any], result: Any) -> bool:
+        verifies = nn(verifies, [])
         for v in js_iter(verifies, "verify"):
             if not self.run_one_verify(v, action, result):
                 return False
@@ -1024,7 +1174,7 @@ class FaustRuntime:
             snapshot = {"action": action, "state": self.state, "result": result, "observation": observation}
             if not eval_predicate(jprop(v, "require"), snapshot):
                 verdict = nn(jget(v, "otherwise"), "safe_state")
-                self.emit(
+                self._emit_verify_failure(
                     {
                         "stage": "verify",
                         "verdict": verdict,
@@ -1045,37 +1195,17 @@ class FaustRuntime:
         snapshot = {"action": action, "state": self.state, "result": result}
         if not eval_predicate(jprop(v, "require"), snapshot):
             verdict = nn(jget(v, "otherwise"), "safe_state")
-            observation: dict[str, Any] = {}
-            if kind == "evidence" and action["name"] == "shell.run_allowlisted":
-                stdout = jprop(result, "stdout")
-                stderr = jprop(result, "stderr")
-                stdout = stdout if isinstance(stdout, str) else ""
-                stderr = stderr if isinstance(stderr, str) else ""
-                exit_code = jprop(result, "exit_code")
-                if stdout:
-                    observation["stdout"] = stdout[:8000]
-                if stderr:
-                    observation["stderr"] = stderr[:8000]
-                if exit_code is not UNDEFINED:
-                    observation["exit_code"] = exit_code
-                err = jget(result, "error")
-                if isinstance(err, str) and err:
-                    observation["error"] = err
-                observation["hint"] = (
-                    "cmd=test failed verify_evidence. Read stdout/stderr above, "
-                    "fix the approved source file, then re-run cmd=test."
-                )
-            payload: dict[str, Any] = {
-                "stage": "verify",
-                "verdict": verdict,
-                "reason": reason,
-                "tool": action["name"],
-                "args": action["args"],
-                "result": result,
-            }
-            if observation:
-                payload["observation"] = observation
-            self.emit(payload)
+            # D11: no tool-specific observation (the full result is already in the event).
+            self._emit_verify_failure(
+                {
+                    "stage": "verify",
+                    "verdict": verdict,
+                    "reason": reason,
+                    "tool": action["name"],
+                    "args": action["args"],
+                    "result": result,
+                }
+            )
             if verdict == "safe_state" and not self.recovering:
                 self.enter_safe_flow(reason)
             return False
@@ -1106,7 +1236,7 @@ class FaustRuntime:
         snapshot = {"action": action, "state": self.state, "result": result, "message": message}
         if not eval_predicate(jprop(v, "require"), snapshot):
             verdict = nn(jget(v, "otherwise"), "deny")
-            self.emit(
+            self._emit_verify_failure(
                 {
                     "stage": "verify",
                     "verdict": verdict,
@@ -1177,19 +1307,25 @@ class FaustRuntime:
                     stop_ev["observation"] = {"stop_message": stop_message[:500]}
                 self.emit(stop_ev)
                 break
+            invalid_reason: Any = UNDEFINED
+            invalid_message: Any = UNDEFINED
             if ptype == "invalid":
+                invalid_reason = proposal.get("reason", UNDEFINED)
+                invalid_message = proposal.get("message", UNDEFINED)
+            elif not (is_canonical(jget(proposal, "args")) or jget(proposal, "args") is UNDEFINED):
+                # D3: non-canonical numbers are rejected where they enter — here, the proposal.
+                invalid_reason = "non_canonical_args"
+            if invalid_reason is not UNDEFINED or ptype == "invalid":
                 consecutive_empty += 1
-                pmsg = proposal.get("message", UNDEFINED)
-                preason = proposal.get("reason", UNDEFINED)
                 self.emit(
                     {
                         "stage": "propose",
                         "verdict": "deny",
                         "reason": "empty_proposal",
-                        "error": nn(pmsg, preason),
+                        "error": nn(invalid_message, invalid_reason),
                         "observation": {
-                            "invalid_reason": preason,
-                            "stop_message": js_string(pmsg)[:500] if js_truthy(pmsg) else None,
+                            "invalid_reason": invalid_reason,
+                            "stop_message": js_string(invalid_message)[:500] if js_truthy(invalid_message) else None,
                         },
                     }
                 )
@@ -1200,52 +1336,76 @@ class FaustRuntime:
             consecutive_empty = 0
 
             action = {"name": jget(proposal, "name"), "args": jget(proposal, "args")}
-            if not self._step(action):
+            self.emit({"stage": "propose", "tool": action["name"], "args": action["args"]})
+            tool = self.tool_by_id(action["name"])
+            outcome = self._governed_call(action, verifies=jget(tool, "verify") if tool else UNDEFINED)
+            if outcome == "stop":
+                break
+            if outcome != "ok":
+                if self.deny_is_terminal():
+                    break
+                continue
+            name = action["name"]
+            self.apply_invalidate_after(name)
+            # First successful terminal tool ends the run (avoid complete/yield spam).
+            if self.is_terminal_success_tool(name):
+                self.emit({"stage": "record", "verdict": "allow", "reason": "run_complete", "tool": name})
                 break
         return self.events
 
-    def _step(self, action: dict[str, Any]) -> bool:
-        """One governed tool step. Returns False when the loop must stop."""
+    def _governed_call(self, action: dict[str, Any], *, verifies: Any, recovery: bool = False) -> str:
+        """validate → authorize → execute → verify for one tool call.
+
+        Returns ``"ok"`` (executed and verified; transition committed), ``"denied"``
+        (denied / failed — transition, if any, not committed) or ``"stop"`` (a gate
+        sent the run to its safe state).
+        """
         name = action["name"]
-        self.emit({"stage": "propose", "tool": name, "args": action["args"]})
         tool = self.tool_by_id(name)
+        # -- validate ------------------------------------------------------------
         if not tool:
             self._deny("validate", "capability_missing", action)
-            return not self.deny_is_terminal()
+            return "denied"
         allowed = self.perms_get("tools")
-        if js_truthy(allowed) and not js_includes(allowed, name) and name != "agent.spawn":
+        # D5/D6: permissions.tools [] permits nothing; agent.spawn is not exempt.
+        if js_truthy(allowed) and not js_includes(allowed, name):
             self._deny("validate", "capability_missing", action)
-            return not self.deny_is_terminal()
+            return "denied"
+        if self.is_user_channel_tool(tool) and not self.user_channel_bound(name):
+            # D14: an unbound user cell is a missing capability — never a model-authored answer.
+            self._deny("validate", "capability_missing", action)
+            return "denied"
         ok, _ = validate_against_schema(jget(tool, "input"), action["args"])
         if not ok:
             if name in SKILLS_REFLECTION_TOOLS:
                 self.note_reflection_attempt(name)
             self._deny("validate", "input_schema_invalid", action, error="input schema validation failed")
-            return not self.deny_is_terminal()
+            return "denied"
         self.emit({"stage": "validate", "verdict": "allow", "tool": name, "args": action["args"]})
 
+        # -- authorize -------------------------------------------------------------
         gok, verdict, reason = self.eval_gates({"action": action, "state": self.state})
         if not gok:
             self.emit(
                 {"stage": "authorize", "verdict": verdict, "reason": reason, "tool": name, "args": action["args"]}
             )
-            if verdict == "safe_state":
+            if verdict == "safe_state" and not recovery:
                 self.enter_safe_flow("gate_denied")
-                return False
-            return not self.deny_is_terminal()
+                return "stop"
+            return "denied"
 
         if name == "agent.spawn":
             cok, creason, cerr = self.compare_child_envelope(action["args"])
             if not cok:
                 self._deny("authorize", creason, action, error=cerr)
-                return not self.deny_is_terminal()
+                return "denied"
 
         if name in SKILLS_REFLECTION_TOOLS:
             rok, rerr = self.reflection_gate(name)
             if not rok:
                 self.note_reflection_attempt(name)
                 self._deny("authorize", "harness_patch_invalid", action, error=rerr)
-                return not self.deny_is_terminal()
+                return "denied"
 
         from .harness_patch import (
             parse_harness_patch,
@@ -1261,12 +1421,12 @@ class FaustRuntime:
                 self._deny(
                     "authorize", "harness_patch_invalid", action, error="patch requires exactly one op in ops array"
                 )
-                return not self.deny_is_terminal()
+                return "denied"
             pok, preason, perr = validate_patch_security(self.agent, patch)
             if not pok:
                 self.note_reflection_attempt(name)
                 self._deny("authorize", preason, action, error=perr)
-                return not self.deny_is_terminal()
+                return "denied"
 
         if name == "harness.decline_skills_patch":
             if not parse_skills_patch_decline(action["args"]):
@@ -1277,7 +1437,7 @@ class FaustRuntime:
                     action,
                     error="decline requires reason in {no_new_heuristic,insufficient_evidence,would_overfit_task,skills_already_adequate}",
                 )
-                return not self.deny_is_terminal()
+                return "denied"
 
         if name == "harness.reflect_skills":
             reflect = parse_skills_reflect(action["args"])
@@ -1289,47 +1449,65 @@ class FaustRuntime:
                     action,
                     error="reflect_skills requires disposition decline|propose; decline needs reason; propose needs exactly one op",
                 )
-                return not self.deny_is_terminal()
+                return "denied"
             if reflect["disposition"] == "propose":
                 pok, preason, perr = validate_patch_security(self.agent, reflect["patch"])
                 if not pok:
                     self.note_reflection_attempt(name)
                     self._deny("authorize", preason, action, error=perr)
-                    return not self.deny_is_terminal()
+                    return "denied"
 
         sok, sreason, sfail = self.check_sequences(action)
         if not sok:
             self._deny("authorize", sreason, action, failure=sfail)
-            return not self.deny_is_terminal()
+            return "denied"
 
         cok2, creason2, cfail2 = self.check_completion(name)
         if not cok2:
             self._deny("authorize", creason2, action, failure=cfail2)
-            return not self.deny_is_terminal()
+            return "denied"
+
+        # D9: checkpoint authority on requested keys before anything executes.
+        kok, kreason, kerr, kfail = self.check_checkpoint_args(action, tool)
+        if not kok:
+            self._deny("authorize", kreason, action, error=kerr, failure=kfail)
+            return "denied"
+
+        if recovery:
+            # D10: the recovery call is a tool call like any other (limits apply).
+            max_tools = nn(self.limits_get("max_tool_calls"), 1000)
+            if js_ge(self.tool_calls, max_tools):
+                self._deny("authorize", "limit_exceeded", action)
+                return "denied"
 
         self.emit({"stage": "authorize", "verdict": "allow", "tool": name, "args": action["args"]})
         self.tool_calls += 1
+
+        # -- execute -------------------------------------------------------------
         try:
             envelope = self.invoke_native(name, action["args"])
         except Exception as e:
             self._deny("execute", "tool_execution_failed", action, error=str(e))
-            return not self.deny_is_terminal()
-
-        ok, _ = validate_against_schema(jget(tool, "output"), envelope["output"])
-        if not ok:
-            self._deny("execute", "output_schema_invalid", action, error="output schema validation failed")
-            return not self.deny_is_terminal()
+            return "denied"
 
         transition = envelope.get("state_transition", UNDEFINED)
-        cok3, creason3, cerr3, cfail3 = self.check_checkpoint_authority(action, transition)
-        if not cok3:
-            self._deny("execute", creason3, action, error=cerr3, failure=cfail3)
-            return not self.deny_is_terminal()
+        ok, _ = validate_against_schema(jget(tool, "output"), envelope["output"])
+        # D3: non-integral / non-finite numbers are rejected where they enter.
+        if (
+            not ok
+            or not is_canonical(envelope["output"])
+            or (transition is not UNDEFINED and not is_canonical(transition))
+        ):
+            self._deny("execute", "output_schema_invalid", action, error="output schema validation failed")
+            return "denied"
 
-        self.apply_state_transition(transition)
-        self.emit(
-            {"stage": "execute", "verdict": "allow", "tool": name, "args": action["args"], "result": envelope["output"]}
-        )
+        tok, treason, terr, tfail = self.check_transition_authority(action, tool, transition)
+        if not tok:
+            self._deny("execute", treason, action, error=terr, failure=tfail)
+            return "denied"
+
+        self._apply_provisional(transition)
+        self.emit({"stage": "execute", "verdict": "allow", "tool": name, "args": action["args"], "result": envelope["output"]})
 
         if name == "agent.spawn":
             spawn_id = f"spawn-{self.seq}"
@@ -1341,24 +1519,13 @@ class FaustRuntime:
 
         self._after_execute_harness_cells(name, action)
 
-        if not self.run_verifies(tool, action, envelope["output"]):
-            # CB: deliver the failed observation and let the model recover when
-            # continue_after_deny is set — same as authorize denies.
-            return not self.deny_is_terminal()
-
-        self.apply_invalidate_after(name)
-        # First successful terminal tool ends the run (avoid complete/yield spam).
-        if self.is_terminal_success_tool(name):
-            self.emit(
-                {
-                    "stage": "record",
-                    "verdict": "allow",
-                    "reason": "phase_yielded" if name == "phase.yield" else "run_complete",
-                    "tool": name,
-                }
-            )
-            return False
-        return True
+        # -- verify (D8: success = executed AND verified) -------------------------------
+        if not self.run_verifies(verifies, action, envelope["output"]):
+            self._discard_pending()
+            return "denied"
+        self._commit_pending()
+        self.succeeded.append(name)
+        return "ok"
 
     def _after_execute_harness_cells(self, name: Any, action: dict[str, Any]) -> None:
         from .harness_patch import (
