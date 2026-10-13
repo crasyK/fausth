@@ -1,17 +1,22 @@
 /**
  * MCP host adapters: recorded (Track A) and stdio (live) transports.
  * Resolve stays offline; these run only at bind/execute time.
+ * Session plumbing (env allowlist, stderr drain, timeouts, cleanup, spawn policy) lives in
+ * stdio-session.ts and is shared with module connectors.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
-import { canonicalJson } from "../canonical.js";
+import { join } from "node:path";
 import type { ToolHandler } from "../runtime.js";
 import type { Deployment, DeploymentMcpServer, ResolvedHarnessIR } from "../types.js";
 import { AdapterError } from "./error.js";
-
-const SECRET_KEY_RE = /(api[_-]?key|secret|password|token|credential|authorization)/i;
+import { assertNoSecretEnvNames, ChildEnvError } from "./child-process.js";
+import {
+  assertSpawnAllowed,
+  loadRecordedEntries,
+  matchRecordedExact,
+  McpStdioSession,
+  type RecordedEntry,
+  type SpawnPolicy,
+} from "./stdio-session.js";
 
 export function parseMcpNative(
   native: string,
@@ -41,231 +46,39 @@ export function mcpToolMapFromResolved(resolved?: ResolvedHarnessIR): Record<str
   return out;
 }
 
-type RecordedEntry = {
-  tool: string;
-  args?: Record<string, unknown>;
-  result: Record<string, unknown>;
-};
+/** Server config (shared type, incl. env_passthrough). */
+type McpServerConfig = DeploymentMcpServer;
 
-function loadRecordedMap(harnessDir: string, relPath: string): RecordedEntry[] {
-  const abs = resolve(harnessDir, relPath);
-  if (!existsSync(abs)) {
+function validateServerEnv(serverId: string, server: McpServerConfig): void {
+  if (server.env !== undefined) {
+    if (!server.env || typeof server.env !== "object" || Array.isArray(server.env)) {
+      throw new AdapterError("adapter_unresolved", `adapter failure: mcp server '${serverId}' env must be an object`);
+    }
+  }
+  if (server.env_passthrough !== undefined && !Array.isArray(server.env_passthrough)) {
     throw new AdapterError(
       "adapter_unresolved",
-      `adapter failure: mcp recorded file not found: ${relPath}`,
+      `adapter failure: mcp server '${serverId}' env_passthrough must be a list of names`,
     );
   }
-  const lines = readFileSync(abs, "utf8")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const entries: RecordedEntry[] = [];
-  for (const line of lines) {
-    const row = JSON.parse(line) as RecordedEntry;
-    if (!row || typeof row.tool !== "string" || !row.result || typeof row.result !== "object") {
-      throw new AdapterError(
-        "adapter_unresolved",
-        `adapter failure: invalid mcp recorded line in ${relPath}`,
-      );
-    }
-    entries.push(row);
-  }
-  return entries;
-}
-
-function matchRecorded(
-  entries: RecordedEntry[],
-  tool: string,
-  args: Record<string, unknown>,
-  used: Set<number>,
-): Record<string, unknown> {
-  const argsCanon = canonicalJson(args ?? {});
-  for (let i = 0; i < entries.length; i++) {
-    if (used.has(i)) continue;
-    const e = entries[i]!;
-    if (e.tool !== tool) continue;
-    const eArgs = canonicalJson(e.args ?? {});
-    if (eArgs !== argsCanon) continue;
-    used.add(i);
-    return e.result;
-  }
-  // Fallback: match by tool only (first unused)
-  for (let i = 0; i < entries.length; i++) {
-    if (used.has(i)) continue;
-    const e = entries[i]!;
-    if (e.tool !== tool) continue;
-    used.add(i);
-    return e.result;
-  }
-  throw new AdapterError(
-    "adapter_unresolved",
-    `adapter failure: no recorded mcp response for tool '${tool}'`,
-  );
-}
-
-function assertNoSecretEnv(env: Record<string, string> | undefined): void {
-  if (!env) return;
-  for (const k of Object.keys(env)) {
-    if (SECRET_KEY_RE.test(k)) {
-      throw new AdapterError(
-        "adapter_unresolved",
-        `adapter failure: forbidden secret-like mcp env key '${k}'`,
-      );
-    }
-  }
-}
-
-type JsonRpcRequest = {
-  jsonrpc: "2.0";
-  id: number;
-  method: string;
-  params?: unknown;
-};
-
-type JsonRpcResponse = {
-  jsonrpc: "2.0";
-  id?: number;
-  result?: unknown;
-  error?: { code: number; message: string };
-};
-
-class StdioMcpSession {
-  private proc;
-  private rl;
-  private nextId = 1;
-  private pending = new Map<
-    number,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
-  >();
-  private bufferReady: Promise<void>;
-  private closed = false;
-
-  constructor(
-    command: string,
-    args: string[],
-    env: Record<string, string> | undefined,
-    private timeoutMs: number,
-    cwd?: string,
-  ) {
-    this.proc = spawn(command, args, {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...env },
-      cwd,
-      windowsHide: true,
-    });
-    this.rl = createInterface({ input: this.proc.stdout! });
-    this.bufferReady = new Promise((resolveReady) => {
-      this.rl.on("line", (line) => {
-        let msg: JsonRpcResponse;
-        try {
-          msg = JSON.parse(line) as JsonRpcResponse;
-        } catch {
-          return;
-        }
-        if (typeof msg.id === "number" && this.pending.has(msg.id)) {
-          const p = this.pending.get(msg.id)!;
-          this.pending.delete(msg.id);
-          if (msg.error) {
-            p.reject(new Error(msg.error.message));
-          } else {
-            p.resolve(msg.result);
-          }
-        }
-      });
-      this.proc.on("error", (err) => {
-        for (const p of this.pending.values()) p.reject(err);
-        this.pending.clear();
-      });
-      this.proc.on("exit", () => {
-        this.closed = true;
-        for (const p of this.pending.values()) {
-          p.reject(new Error("mcp stdio process exited"));
-        }
-        this.pending.clear();
-      });
-      resolveReady();
-    });
-  }
-
-  private async request(method: string, params?: unknown): Promise<unknown> {
-    await this.bufferReady;
-    if (this.closed) {
-      throw new Error("mcp stdio session closed");
-    }
-    const id = this.nextId++;
-    const payload: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
-    return new Promise((resolvePromise, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`mcp stdio timeout after ${this.timeoutMs}ms (${method})`));
-      }, this.timeoutMs);
-      this.pending.set(id, {
-        resolve: (v) => {
-          clearTimeout(timer);
-          resolvePromise(v);
-        },
-        reject: (e) => {
-          clearTimeout(timer);
-          reject(e);
-        },
-      });
-      this.proc.stdin!.write(JSON.stringify(payload) + "\n");
-    });
-  }
-
-  async initialize(): Promise<void> {
-    await this.request("initialize", {
-      protocolVersion: "2024-11-05",
-      capabilities: {},
-      clientInfo: { name: "fausth", version: "0.2.0-alpha" },
-    });
-    // notifications/initialized (no id)
-    this.proc.stdin!.write(
-      JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n",
-    );
-  }
-
-  async callTool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const result = (await this.request("tools/call", {
-      name,
-      arguments: args,
-    })) as { content?: Array<{ type: string; text?: string }>; structuredContent?: unknown };
-    if (result?.structuredContent && typeof result.structuredContent === "object") {
-      return result.structuredContent as Record<string, unknown>;
-    }
-    const text = result?.content?.find((c) => c.type === "text")?.text;
-    if (text) {
-      try {
-        const parsed = JSON.parse(text) as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return parsed as Record<string, unknown>;
-        }
-      } catch {
-        return { text };
-      }
-    }
-    throw new Error(`mcp tools/call '${name}' returned no structured result`);
-  }
-
-  close(): void {
-    try {
-      this.rl.close();
-      this.proc.kill();
-    } catch {
-      /* ignore */
-    }
-    this.closed = true;
+  try {
+    assertNoSecretEnvNames([...Object.keys(server.env ?? {}), ...(server.env_passthrough ?? [])], "mcp");
+  } catch (e) {
+    if (e instanceof ChildEnvError) throw new AdapterError("adapter_unresolved", `adapter failure: ${e.message}`);
+    throw e;
   }
 }
 
 /**
- * Build handlers for mcp.* natives. Sessions are created lazily per server.
+ * Build handlers for mcp.* natives. Sessions are created lazily per server; `cleanup`
+ * terminates them (callers must invoke it; process exit also reaps them).
  */
 export function createMcpHandlers(
   deployment: Deployment,
   opts: {
     harnessDir: string;
     mcpToolMap?: Record<string, string>;
+    spawnPolicy?: SpawnPolicy;
   },
 ): {
   handlers: Record<string, ToolHandler>;
@@ -274,7 +87,7 @@ export function createMcpHandlers(
 } {
   const handlers: Record<string, ToolHandler> = {};
   const nativeToTool: Record<string, string> = {};
-  const sessions = new Map<string, StdioMcpSession>();
+  const sessions = new Map<string, McpStdioSession>();
   const recordedUsed = new Map<string, Set<number>>();
   const recordedCache = new Map<string, RecordedEntry[]>();
   const mcpCfg = deployment.mcp ?? {};
@@ -296,7 +109,9 @@ export function createMcpHandlers(
         `adapter failure: native '${native}' maps to '${parsed.toolId}', not '${toolId}'`,
       );
     }
-    const server = mcpCfg[parsed.serverId];
+    const server = Object.prototype.hasOwnProperty.call(mcpCfg, parsed.serverId)
+      ? (mcpCfg[parsed.serverId] as McpServerConfig)
+      : undefined;
     if (!server) {
       throw new AdapterError(
         "adapter_unresolved",
@@ -316,16 +131,12 @@ export function createMcpHandlers(
       const recordedPath = server.recorded;
       handlers[toolId] = (args) => {
         if (!recordedCache.has(parsed.serverId)) {
-          recordedCache.set(
-            parsed.serverId,
-            loadRecordedMap(opts.harnessDir, recordedPath),
-          );
+          recordedCache.set(parsed.serverId, loadRecordedEntries(opts.harnessDir, recordedPath, "mcp"));
           recordedUsed.set(parsed.serverId, new Set());
         }
         const entries = recordedCache.get(parsed.serverId)!;
         const used = recordedUsed.get(parsed.serverId)!;
-        const result = matchRecorded(entries, remoteName, args as Record<string, unknown>, used);
-        return { output: result };
+        return { output: matchRecordedExact(entries, remoteName, args, used, "mcp") };
       };
       continue;
     }
@@ -337,20 +148,34 @@ export function createMcpHandlers(
           `adapter failure: mcp server '${parsed.serverId}' stdio transport requires command`,
         );
       }
-      assertNoSecretEnv(server.env);
+      validateServerEnv(parsed.serverId, server);
       const timeout = server.timeout_ms ?? 15_000;
       const command = server.command;
       const args = server.args ?? [];
       handlers[toolId] = async (callArgs) => {
         let session = sessions.get(parsed.serverId);
+        if (session?.closed) {
+          sessions.delete(parsed.serverId);
+          session = undefined;
+        }
         if (!session) {
-          session = new StdioMcpSession(
-            command,
-            args,
-            server.env,
-            timeout,
-            opts.harnessDir,
-          );
+          assertSpawnAllowed(command, opts.spawnPolicy, "mcp stdio");
+          try {
+            session = new McpStdioSession(
+              {
+                command,
+                args,
+                env: server.env,
+                envPassthrough: server.env_passthrough,
+                cwd: opts.harnessDir,
+                label: `mcp server '${parsed.serverId}'`,
+              },
+              timeout,
+            );
+          } catch (e) {
+            if (e instanceof ChildEnvError) throw new AdapterError("adapter_unresolved", `adapter failure: ${e.message}`);
+            throw new AdapterError("host_session_failed", `adapter failure: mcp stdio spawn failed: ${e instanceof Error ? e.message : e}`);
+          }
           sessions.set(parsed.serverId, session);
           try {
             await session.initialize();
@@ -358,20 +183,16 @@ export function createMcpHandlers(
             session.close();
             sessions.delete(parsed.serverId);
             throw new AdapterError(
-              "adapter_unresolved",
+              "host_session_failed",
               `adapter failure: mcp stdio initialize failed: ${e instanceof Error ? e.message : e}`,
             );
           }
         }
         try {
-          const result = await session.callTool(
-            remoteName,
-            callArgs as Record<string, unknown>,
-          );
-          return { output: result };
+          return { output: await session.callTool(remoteName, callArgs as Record<string, unknown>) };
         } catch (e) {
           throw new AdapterError(
-            "adapter_unresolved",
+            "host_session_failed",
             `adapter failure: mcp tools/call failed: ${e instanceof Error ? e.message : e}`,
           );
         }

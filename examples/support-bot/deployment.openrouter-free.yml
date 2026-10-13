@@ -18,6 +18,7 @@ bindings:
   human.handoff:
     native: stub.human_handoff
   user.correct:
-    native: stub.user_correct
+    user:
+      source: human
   refund.request:
     native: stub.refund_request

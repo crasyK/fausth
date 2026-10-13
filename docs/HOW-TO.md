@@ -1,6 +1,6 @@
 # How-to recipes
 
-Practical commands for v0.2.0-alpha. Normative rules stay in the [spec](spec-v0.2.md) (v0.1 baseline: [spec-v0.1.md](spec-v0.1.md)); authoring layout is in [authoring.md](authoring.md).
+Practical commands for 0.3.x. Normative rules: [`spec-v0.3.md`](spec-v0.3.md) (it overrides [`spec-v0.2.md`](spec-v0.2.md) and [`spec-v0.1.md`](spec-v0.1.md) where they conflict); authoring layout is in [authoring.md](authoring.md).
 
 ## Install
 
@@ -49,7 +49,7 @@ Format is chosen automatically:
 | Connectors, no MCP | `v0.2` |
 | Any `kind: mcp` | `v0.3` |
 
-Coding `v0.1` packs stay **byte-identical** when unsigned (17022 bytes).
+Coding `v0.1` packs stay **byte-identical** when unsigned (the size is pinned in `engines/ts/src/bundle.test.ts`).
 
 ## Sign and verify
 
@@ -62,6 +62,11 @@ pnpm fausth -- verify live/reports/c.fausth.json
 ```
 
 Or set `FAUSTH_SIGN_KEY=seed.hex`. Missing signature remains allowed; present signature is checked before unpack writes.
+
+`fausth verify` prints one line and exits `0` (accepted), `1` (invalid / tampered), `2` (bad trust
+store) or `3` (intact but rejected by trust policy). Trust and spawn policy flags work on every
+command: `--trusted-keys <file>` (`FAUSTH_TRUSTED_KEYS`), `--require-trusted`
+(`FAUSTH_REQUIRE_TRUSTED_BUNDLES=1`), `--allow-command <cmd>` (repeatable; `FAUSTH_ALLOW_COMMANDS`).
 
 ## Resolve connectors
 
@@ -142,7 +147,7 @@ pnpm fausth -- audit conformance/fixtures/cb-chat-solution-absence-denied/expect
 pnpm fausth -- audit live/reports/run.jsonl --json
 ```
 
-Human summary counts denies, near-misses (deny→retry→deny), `verify_output_failed`, `memory_stale`, and `budget_exceeded`.
+Human summary counts denies, near-misses (a denied attempt of a tool immediately re-attempted and denied again in the same reaction), `verify_output_failed`, `memory_stale`, and `budget_exceeded`. Live `catch_rate` counts only pre-execution policy denies (spec-v0.3 §15.3).
 
 ## Intervention host (budget demo)
 

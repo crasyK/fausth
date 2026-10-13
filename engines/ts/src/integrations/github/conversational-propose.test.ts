@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createConversationalPropose } from "./conversational-propose.js";
 import type { Event } from "../../types.js";
-import type { ModelPort, ModelProposal } from "../../model/port.js";
+import type { ChatMessage, ModelPort, ModelProposal } from "../../model/port.js";
+import { ModelInfraError } from "../../model/errors.js";
 import type { FaustRuntime } from "../../runtime.js";
 
 function mockAdapter(queue: ModelProposal[]): ModelPort & { calls: number } {
@@ -156,5 +157,148 @@ describe("createConversationalPropose", () => {
     assert.equal(parsed.failure?.kind, "predicate");
     assert.equal(parsed.failure?.failed?.[0]?.unblock?.tool, "user.correct");
     assert.match(parsed.hint ?? "", /user\.correct/);
+  });
+});
+
+/** Every assistant tool_call id must be answered by a tool message before the next request. */
+function assertTranscriptValid(messages: ChatMessage[]): void {
+  const open = new Set<string>();
+  for (const m of messages) {
+    if (m.role === "assistant" && m.tool_calls) {
+      assert.equal(open.size, 0, "assistant turn while a tool call is unanswered");
+      for (const tc of m.tool_calls) open.add(tc.id);
+    } else if (m.role === "tool") {
+      assert.ok(m.tool_call_id && open.has(m.tool_call_id), "tool message without a matching call");
+      open.delete(m.tool_call_id!);
+    } else {
+      assert.equal(open.size, 0, `${m.role} message while a tool call is unanswered`);
+    }
+  }
+  assert.equal(open.size, 0, "request sent with a dangling tool_call id");
+}
+
+describe("createConversationalPropose one-tool-per-step + provider fields (EDGE-13)", () => {
+  function scriptedAdapter(queue: ModelProposal[]): ModelPort & { requests: ChatMessage[][] } {
+    let i = 0;
+    const requests: ChatMessage[][] = [];
+    return {
+      lastModelUsed: "m",
+      requests,
+      async propose(req) {
+        requests.push(structuredClone(req.messages));
+        const next = queue[Math.min(i, queue.length - 1)]!;
+        i += 1;
+        return next;
+      },
+    };
+  }
+
+  const multi: ModelProposal = {
+    type: "invalid",
+    reason: "multiple_tool_calls",
+    raw: '[{"name":"fs.read"},{"name":"fs.list"}]',
+    model: "m",
+  };
+
+  it("nudges for a single call after multiple_tool_calls and keeps the transcript valid", async () => {
+    const adapter = scriptedAdapter([
+      multi,
+      { type: "tool", name: "fs.read", args: { path: "a" }, tool_call_id: "c1", transport_name: "faust_tool_0001", model: "m" },
+      { type: "stop", message: "done", model: "m" },
+    ]);
+    const runtime = { events: [] as Event[] };
+    const propose = createConversationalPropose({
+      adapter,
+      tools: [
+        { id: "fs.read", input: { type: "object" } },
+        { id: "fs.list", input: { type: "object" } },
+      ],
+      system: "sys",
+      user: "go",
+      getRuntime: () => runtime as unknown as FaustRuntime,
+    });
+    const first = await propose();
+    assert.equal(first.type, "tool");
+    const retryReq = adapter.requests[1]!;
+    const nudge = retryReq[retryReq.length - 1]!;
+    assert.equal(nudge.role, "user");
+    assert.match(String(nudge.content), /exactly one tool/i);
+    // The multi-call turn is recorded as plain assistant text, never as tool_calls.
+    assert.equal(retryReq[retryReq.length - 2]!.role, "assistant");
+    assert.equal(retryReq[retryReq.length - 2]!.tool_calls, undefined);
+    runtime.events.push({
+      seq: 1,
+      ts_logical: 1,
+      stage: "execute",
+      state_hash: "x",
+      verdict: "allow",
+      tool: "fs.read",
+      result: { found: 1 },
+    });
+    await propose();
+    for (const req of adapter.requests) assertTranscriptValid(req);
+  });
+
+  it("keeps the protocol reason when the retry also fails (not collapsed to empty_proposal)", async () => {
+    const adapter = scriptedAdapter([multi, multi]);
+    const propose = createConversationalPropose({
+      adapter,
+      tools: [{ id: "fs.read", input: { type: "object" } }],
+      system: "sys",
+      user: "go",
+      getRuntime: mockRuntime,
+    });
+    const out = await propose();
+    assert.equal(out.type, "invalid");
+    if (out.type === "invalid") assert.equal(out.reason, "multiple_tool_calls");
+  });
+
+  it("attaches preserved provider fields + model to the assistant turn they came from", async () => {
+    const reasoning = [{ type: "reasoning.text", text: "why" }];
+    const adapter = scriptedAdapter([
+      {
+        type: "tool",
+        name: "fs.read",
+        args: {},
+        tool_call_id: "c1",
+        transport_name: "faust_tool_0001",
+        model: "m",
+        provider_fields: { reasoning_details: reasoning },
+      },
+      { type: "stop", message: "done", model: "m" },
+    ]);
+    const runtime = { events: [] as Event[] };
+    const propose = createConversationalPropose({
+      adapter,
+      tools: [{ id: "fs.read", input: { type: "object" } }],
+      system: "sys",
+      user: "go",
+      getRuntime: () => runtime as unknown as FaustRuntime,
+      tool_choice: "auto",
+    });
+    await propose();
+    await propose();
+    const second = adapter.requests[1]!;
+    const assistant = second.find((m) => m.role === "assistant")!;
+    assert.deepEqual(assistant.provider_fields, { reasoning_details: reasoning });
+    assert.equal(assistant.model, "m");
+    assertTranscriptValid(second);
+  });
+
+  it("propagates infra errors unchanged (never turned into a proposal)", async () => {
+    const adapter: ModelPort = {
+      lastModelUsed: "m",
+      async propose() {
+        throw new ModelInfraError("timeout", "model request timed out");
+      },
+    };
+    const propose = createConversationalPropose({
+      adapter,
+      tools: [{ id: "fs.read", input: { type: "object" } }],
+      system: "sys",
+      user: "go",
+      getRuntime: mockRuntime,
+    });
+    await assert.rejects(propose(), (e: unknown) => e instanceof ModelInfraError && e.kind === "timeout");
   });
 });

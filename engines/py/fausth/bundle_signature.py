@@ -5,9 +5,10 @@ Signature object: ``{alg: "ed25519", public_key: hex32, sig: hex64}``.
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -19,6 +20,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from .canonical import canonical_json
 
 BUNDLE_SIG_ALG = "ed25519"
+
+#: Env var naming a trusted-keys file (one Ed25519 public key per line).
+TRUSTED_KEYS_ENV = "FAUSTH_TRUSTED_KEYS"
+#: Env var that, when "1"/"true", rejects unsigned and signed-untrusted bundles.
+REQUIRE_TRUSTED_ENV = "FAUSTH_REQUIRE_TRUSTED_BUNDLES"
+
+TRUST_LINE_RE = re.compile(r"([0-9a-fA-F]{64})(?:\s+(.+))?")
 
 HEX32_RE = re.compile(r"^[a-f0-9]{64}$")
 HEX64_RE = re.compile(r"^[a-f0-9]{128}$")
@@ -70,7 +78,8 @@ def parse_bundle_signature(raw: Any) -> dict[str, str]:
 
 
 def verify_bundle_signature(bundle: dict[str, Any]) -> None:
-    if "signature" not in bundle or bundle["signature"] is None:
+    """Verify the detached signature when present (a JSON ``null`` signature is invalid)."""
+    if "signature" not in bundle:
         return
     signature = parse_bundle_signature(bundle["signature"])
     pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(signature["public_key"]))
@@ -81,6 +90,83 @@ def verify_bundle_signature(bundle: dict[str, Any]) -> None:
             "bundle_signature_invalid",
             "bundle signature verification failed",
         ) from e
+
+
+def parse_trust_store(text: str, source: str | None = None) -> dict[str, Any]:
+    """Parse a trusted-keys file (mirrors TS parseTrustStore).
+
+    One 64-hex Ed25519 public key per line, optional label after whitespace;
+    ``#`` comment lines and blank lines are ignored; any other line is rejected.
+    Returns ``{"keys": {public_key: {"public_key", "label"?}}, "source"?: str}``.
+    """
+    keys: dict[str, dict[str, str]] = {}
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    for i, raw in enumerate(re.split(r"\r?\n", text)):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = TRUST_LINE_RE.fullmatch(line)
+        if not m:
+            raise BundleSignatureError(
+                "bundle_trust_store_invalid",
+                f"{source or 'trusted keys'}:{i + 1}: expected '<64-hex ed25519 public key> [label]'",
+            )
+        public_key = m.group(1).lower()
+        label = (m.group(2) or "").strip()
+        if public_key not in keys:
+            keys[public_key] = (
+                {"public_key": public_key, "label": label} if label else {"public_key": public_key}
+            )
+    store: dict[str, Any] = {"keys": keys}
+    if source:
+        store["source"] = source
+    return store
+
+
+def load_trust_store(path: str | Path) -> dict[str, Any]:
+    """Load a trusted-keys file; missing/unreadable → error (fail closed)."""
+    p = Path(path).resolve()
+    if not p.is_file():
+        raise BundleSignatureError("bundle_trust_store_invalid", f"trusted keys file not found: {p}")
+    try:
+        text = p.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise BundleSignatureError(
+            "bundle_trust_store_invalid", f"trusted keys file is not valid UTF-8: {p}"
+        ) from e
+    return parse_trust_store(text, str(p))
+
+
+def trust_store_from_env(env: Mapping[str, str] | None = None) -> dict[str, Any] | None:
+    """Trust store named by FAUSTH_TRUSTED_KEYS (a file path); None when unset."""
+    e = os.environ if env is None else env
+    p = (e.get(TRUSTED_KEYS_ENV) or "").strip()
+    return load_trust_store(p) if p else None
+
+
+def require_trusted_from_env(env: Mapping[str, str] | None = None) -> bool:
+    e = os.environ if env is None else env
+    return (e.get(REQUIRE_TRUSTED_ENV) or "").strip().lower() in ("1", "true")
+
+
+def classify_bundle_trust(bundle: dict[str, Any], store: dict[str, Any] | None = None) -> dict[str, str]:
+    """Verify the signature (raises on invalid) and classify against the trust store.
+
+    Returns ``{"status": "unsigned"|"signed-untrusted"|"signed-trusted",
+    "public_key"?: hex, "key_label"?: str}``.
+    """
+    if "signature" not in bundle:
+        return {"status": "unsigned"}
+    verify_bundle_signature(bundle)
+    signature = parse_bundle_signature(bundle["signature"])
+    hit = ((store or {}).get("keys") or {}).get(signature["public_key"])
+    if not hit:
+        return {"status": "signed-untrusted", "public_key": signature["public_key"]}
+    out = {"status": "signed-trusted", "public_key": signature["public_key"]}
+    if hit.get("label"):
+        out["key_label"] = hit["label"]
+    return out
 
 
 def _private_key_from_seed(seed: bytes) -> Ed25519PrivateKey:

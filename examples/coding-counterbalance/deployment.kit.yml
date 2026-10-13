@@ -8,10 +8,8 @@ model:
   base_url: https://ki-toolbox.scc.kit.edu/api/v1
   api_key_env: KIT_AI_API_KEY
   models:
-    - kit.minimax-m2.7-229b
-    - kit.mistral-small-4-119b-a8b
-    - kit.qwen3.5-397b-A17b
-    - kit.gemma4-31b-it
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   temperature: 0
   max_tokens: 1024
   compatibility:
@@ -20,16 +18,10 @@ model:
     gateway_system_prompt: prohibited
 
 model_catalog:
-  - id: kit.minimax-m2.7-229b
+  - id: kit.glm-5.3-flash
     capabilities: { tools: true, json: true }
     policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
-  - id: kit.mistral-small-4-119b-a8b
-    capabilities: { tools: true, json: true }
-    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
-  - id: kit.qwen3.5-397b-A17b
-    capabilities: { tools: true, json: true }
-    policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
-  - id: kit.gemma4-31b-it
+  - id: kit.deepseek-v4-flash
     capabilities: { tools: true, json: true }
     policy: { residency: kit-local, personal_data: allowed, confidential_data: allowed }
 
@@ -43,8 +35,12 @@ bindings:
   shell.run_allowlisted:
     native: stub.shell
   user.approve:
-    native: stub.approve
+    user:
+      source: simulator
+      model: kit.glm-5.3-flash
   user.correct:
-    native: stub.user_correct
+    user:
+      source: simulator
+      model: kit.glm-5.3-flash
   task.complete:
     native: stub.task_complete

@@ -11,10 +11,37 @@ import type {
 
 const TOOL_NUDGE =
   "You must call one of the provided tools. Do not answer in plain text.";
+const SINGLE_TOOL_NUDGE =
+  "Call exactly one tool per turn. Parallel tool calls are not executed; repeat only the single most important call.";
+
+/** Code-point-safe truncation (D2). */
+function truncateCodePoints(s: string, n: number): string {
+  const cps = Array.from(s);
+  return cps.length > n ? cps.slice(0, n).join("") : s;
+}
+
+function nudgeFor(proposal: ModelProposal): string {
+  return proposal.type === "invalid" && proposal.reason === "multiple_tool_calls"
+    ? SINGLE_TOOL_NUDGE
+    : TOOL_NUDGE;
+}
+
+/** Host-side transcript metadata for an assistant turn (scoped re-send of provider fields). */
+function provenanceOf(proposal: ModelProposal): Pick<ChatMessage, "model" | "provider_fields"> {
+  return {
+    ...(proposal.model ? { model: proposal.model } : {}),
+    ...(proposal.provider_fields ? { provider_fields: proposal.provider_fields } : {}),
+  };
+}
 
 /**
  * Multi-turn propose that feeds tool results back into the chat transcript.
  * When tools are offered, empty stop/invalid responses are retried once.
+ *
+ * Transcript invariants: every assistant `tool_calls` entry is answered by exactly one
+ * `tool` message before the next request (only single-call turns are recorded as
+ * tool_calls; multi-call turns are `invalid` and recorded as plain assistant text).
+ * Infra failures (`ModelInfraError`) propagate to the caller unchanged.
  */
 export function createConversationalPropose(opts: {
   adapter: ModelPort;
@@ -90,13 +117,14 @@ export function createConversationalPropose(opts: {
 
   function recordAssistant(proposal: ModelProposal): void {
     if (proposal.type === "stop") {
-      messages.push({ role: "assistant", content: proposal.message ?? "" });
+      messages.push({ role: "assistant", content: proposal.message ?? "", ...provenanceOf(proposal) });
       return;
     }
     if (proposal.type === "invalid") {
       messages.push({
         role: "assistant",
         content: proposal.raw ?? proposal.reason,
+        ...provenanceOf(proposal),
       });
     }
   }
@@ -121,18 +149,22 @@ export function createConversationalPropose(opts: {
       (proposal.type === "stop" || proposal.type === "invalid")
     ) {
       recordAssistant(proposal);
-      messages.push({ role: "user", content: TOOL_NUDGE });
+      messages.push({ role: "user", content: nudgeFor(proposal) });
       proposal = await proposeOnce();
       eventMark = runtime.events.length;
-      if (proposal.type === "stop" || proposal.type === "invalid") {
-        const raw =
-          proposal.type === "stop"
-            ? (proposal.message ?? "")
-            : (proposal.raw ?? proposal.reason);
+      if (proposal.type === "stop") {
         return {
           type: "invalid",
           reason: "empty_proposal",
-          raw: String(raw).slice(0, 500),
+          raw: truncateCodePoints(String(proposal.message ?? ""), 500),
+          ...provenanceOf(proposal),
+        };
+      }
+      if (proposal.type === "invalid") {
+        // Keep the model-protocol reason (e.g. multiple_tool_calls) — honest logs.
+        return {
+          ...proposal,
+          raw: truncateCodePoints(String(proposal.raw ?? proposal.reason), 500),
         };
       }
     }
@@ -153,6 +185,7 @@ export function createConversationalPropose(opts: {
             },
           },
         ],
+        ...provenanceOf(proposal),
       });
       pending = { tool_call_id, transport_name };
       return {
@@ -161,11 +194,12 @@ export function createConversationalPropose(opts: {
         args: proposal.args,
         tool_call_id,
         transport_name,
+        ...(proposal.model ? { model: proposal.model } : {}),
       };
     }
 
     if (proposal.type === "stop") {
-      messages.push({ role: "assistant", content: proposal.message ?? "" });
+      messages.push({ role: "assistant", content: proposal.message ?? "", ...provenanceOf(proposal) });
     }
     return proposal;
   };

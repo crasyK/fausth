@@ -11,6 +11,12 @@ export type ProviderCapabilities = {
   max_tokens_field: "max_tokens" | "max_completion_tokens";
   /** Whether tool_choice is supported. */
   tool_choice: boolean | "unknown";
+  /**
+   * Whether the endpoint accepts the `parallel_tool_calls` request flag. The runtime executes
+   * one tool per step, so transports send `parallel_tool_calls: false` unless this is `false`.
+   * Optional for backward compatibility (absent ≡ "unknown").
+   */
+  parallel_tool_calls_param?: boolean | "unknown";
   tested_model?: string;
 };
 
@@ -23,4 +29,5 @@ export const DEFAULT_CAPABILITIES: ProviderCapabilities = {
   reasoning_details: "unknown",
   max_tokens_field: "max_tokens",
   tool_choice: "unknown",
+  parallel_tool_calls_param: "unknown",
 };

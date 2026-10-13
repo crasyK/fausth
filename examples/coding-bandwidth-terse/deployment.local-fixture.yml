@@ -26,8 +26,12 @@ bindings:
   shell.run_allowlisted:
     native: local.shell
   user.approve:
-    native: local.user_approve_auto
+    user:
+      source: recorded
+      answers: user.answers.jsonl
   user.correct:
-    native: local.user_correct_auto
+    user:
+      source: recorded
+      answers: user.answers.jsonl
   task.complete:
     native: local.task_complete

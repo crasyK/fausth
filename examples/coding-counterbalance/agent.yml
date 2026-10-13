@@ -34,6 +34,9 @@ tools:
         path: { type: string }
         content: { type: string }
         found: { type: integer }
+    effects:
+      - when: { path: result.found, eq: 1 }
+        set: { researched: 1 }
   - id: fs.list
     read_only: true
     input:
@@ -50,6 +53,9 @@ tools:
         path: { type: string }
         entries: { type: array, items: { type: string } }
         found: { type: integer }
+    effects:
+      - when: { path: result.found, eq: 1 }
+        set: { researched: 1 }
   - id: fs.write_scoped
     input:
       type: object
@@ -89,7 +95,11 @@ tools:
       - kind: evidence
         require: { path: result.exit_code, eq: 0 }
         otherwise: deny
+    effects:
+      - when: { path: result.exit_code, eq: 0 }
+        set: { test_evidence_current: 1 }
   - id: user.approve
+    channel: user
     input: { type: object, additionalProperties: true, properties: {} }
     output:
       type: object
@@ -97,7 +107,11 @@ tools:
       additionalProperties: false
       properties:
         approved: { type: integer }
+    effects:
+      - when: { path: result.approved, eq: 1 }
+        set: { plan_approved: 1 }
   - id: user.correct
+    channel: user
     input:
       type: object
       additionalProperties: true
@@ -149,5 +163,10 @@ counterbalance:
   checkpoints:
     - tool: user.correct
       allow_set_keys: [open_todos]
+    - tool: user.approve
+      allow_set_keys: [plan_approved]
   orientation:
     emit_each_step: true
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: fs.list, fs.read, fs.write_scoped, shell.run_allowlisted, task.complete, user.approve, user.correct. For tests call shell.run_allowlisted with cmd \"test\" (not npm/node directly). Use only listed tools; never invent tools, shell commands, or mode.enter. Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd=\"test\" → user.correct → task.complete."

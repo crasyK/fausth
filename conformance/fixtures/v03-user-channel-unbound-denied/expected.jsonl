@@ -1,0 +1,3 @@
+{"args":{"question":"refund or replacement?"},"seq":1,"stage":"propose","state_hash":"9b62fa90e0fed7e544e63e397be808697a1a129aa76421dce25fb40e0e194051","tool":"user.ask","ts_logical":1}
+{"args":{"question":"refund or replacement?"},"failure":{"channel":"user","kind":"channel_unbound"},"reason":"capability_missing","seq":2,"stage":"validate","state_hash":"9b62fa90e0fed7e544e63e397be808697a1a129aa76421dce25fb40e0e194051","tool":"user.ask","ts_logical":2,"verdict":"deny"}
+{"seq":3,"stage":"propose","state_hash":"9b62fa90e0fed7e544e63e397be808697a1a129aa76421dce25fb40e0e194051","ts_logical":3,"verdict":"allow"}

@@ -2,6 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fausth.dev/schema/counterbalance-contract.v0.2.draft.json",
   "title": "Counterbalance Contract v0.2 DRAFT (superseded)",
-  "description": "Superseded by counterbalance-contract.v0.2.json. See docs/spec-v0.2.md.",
+  "description": "Superseded alias of counterbalance-contract.v0.2.json (itself a non-loadable draft of the authoring shape).",
   "$ref": "https://fausth.dev/schema/counterbalance-contract.v0.2.json"
 }

@@ -34,6 +34,56 @@ describe("audit", () => {
     assert.equal(budget.budget_exceeded, 1);
   });
 
+  it("CORE-18: counts an authorize-stage deny retried and denied again as a near-miss", () => {
+    // propose → validate:allow → authorize:deny, twice in a row, with orientation in between.
+    const attempt = [
+      { stage: "orient", verdict: "allow" },
+      { stage: "propose", tool: "fs.write_scoped" },
+      { stage: "validate", verdict: "allow", tool: "fs.write_scoped" },
+      { stage: "authorize", verdict: "deny", reason: "sequence_requirement_failed", tool: "fs.write_scoped" },
+    ];
+    assert.equal(auditEvents([...attempt, ...attempt]).near_misses, 1);
+    assert.equal(auditEvents([...attempt, ...attempt, ...attempt]).near_misses, 2);
+  });
+
+  it("CORE-18: a different tool or a success in between is not a near-miss", () => {
+    const deny = (tool: string) => [
+      { stage: "propose", tool },
+      { stage: "validate", verdict: "deny", reason: "capability_missing", tool },
+    ];
+    const ok = [
+      { stage: "propose", tool: "fs.read" },
+      { stage: "validate", verdict: "allow", tool: "fs.read" },
+      { stage: "authorize", verdict: "allow", tool: "fs.read" },
+      { stage: "execute", verdict: "allow", tool: "fs.read" },
+      { stage: "verify", verdict: "allow" },
+    ];
+    assert.equal(auditEvents([...deny("a"), ...deny("b")]).near_misses, 0);
+    assert.equal(auditEvents([...deny("a"), ...ok, ...deny("a")]).near_misses, 0);
+  });
+
+  it("CORE-18: child-reaction events do not break or fake a parent pairing", () => {
+    const parentDeny = [
+      { stage: "propose", tool: "x" },
+      { stage: "authorize", verdict: "deny", reason: "gate_denied", tool: "x" },
+    ];
+    const child = [
+      { stage: "propose", tool: "x", depth: 1, spawn_id: "spawn-9" },
+      { stage: "validate", verdict: "allow", tool: "x", depth: 1, spawn_id: "spawn-9" },
+    ];
+    assert.equal(auditEvents([...parentDeny, ...child, ...parentDeny]).near_misses, 1);
+  });
+
+  it("infrastructure failures are reported apart, never as denies", () => {
+    const s = auditEvents([
+      { stage: "propose", tool: "user.ask" },
+      { stage: "execute", verdict: "deny", reason: "infra_failure", tool: "user.ask", failure: { kind: "adapter" } },
+    ]);
+    assert.equal(s.infra_failures, 1);
+    assert.equal(s.denies, 0);
+    assert.equal(s.by_reason.infra_failure, undefined);
+  });
+
   it("formats human summary", () => {
     const s = auditEvents([{ verdict: "deny", reason: "capability_missing", tool: "x" }]);
     const text = formatAuditHuman(s);

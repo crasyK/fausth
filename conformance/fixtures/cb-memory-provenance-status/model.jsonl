@@ -1,2 +1,2 @@
-{"type":"tool","name":"noop.ping","args":{}}
-{"type":"tool","name":"noop.ping","args":{}}
+{"args":{},"name":"noop.ping","type":"tool"}
+{"args":{},"name":"noop.ping","type":"tool"}

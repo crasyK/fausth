@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FaustRuntime, eventsToJsonl } from "./runtime.js";
+import { FaustRuntime, eventsToJsonl, type JudgeFn, type ToolHandler } from "./runtime.js";
 import {
   listFixtureDirs,
   readJsonl,
@@ -9,12 +9,22 @@ import {
   toCanonicalIrJson,
   loadYamlFile,
   loadDeployment,
+  parseRecordedProposal,
 } from "./load.js";
-import { parseRecordedModelLine } from "./adapters/recorded.js";
-import { AdapterError, resolveToolsFromDeployment } from "./adapters/registry.js";
+import {
+  AdapterError,
+  bindToolsFromDeployment,
+  type ResolveToolsOptions,
+} from "./adapters/registry.js";
 import { deploymentUsesLocal } from "./adapters/local.js";
 import { inspectHarness, packHarness, testHarness, selectHarness } from "./packaging.js";
-import { BundleError, loadBundleFile, unpackBundle, withHarnessRef } from "./bundle.js";
+import {
+  BundleError,
+  formatBundleVerifyReport,
+  unpackBundle,
+  verifyBundleFile,
+  withHarnessRef,
+} from "./bundle.js";
 import { BundleSignatureError } from "./bundle-signature.js";
 import {
   ConnectorError,
@@ -29,12 +39,23 @@ import {
   writeProbeReport,
 } from "./model/index.js";
 import type { ModelProposal as PortProposal } from "./model/port.js";
-import { createGreenhouseTools, createCodingTools, createSpawnTool, codingWorldFromAgent } from "./tools/world.js";
 import { validateAgent, validateAgentPath } from "./validate.js";
 import { canonicalJson } from "./canonical.js";
 import { auditJsonlFile, formatAuditHuman } from "./audit.js";
-import type { AgentIR, Deployment, Event, HarnessPatch, ModelProposal, RecordedToolCall } from "./types.js";
+import type { AgentIR, Deployment, Event, HarnessPatch, ModelProposal } from "./types.js";
 import { resolveOverlay } from "./overlays.js";
+import { replayFixtureDir } from "./replay.js";
+import {
+  flagOn,
+  isPreExecutionPolicyDeny,
+  lastExitCode,
+  parseArgs,
+  permittedToolDefs,
+  runCompleted,
+  systemPromptFor,
+} from "./cli-support.js";
+import { boundProviderText, isModelInfraError } from "./model/errors.js";
+import { redactSecrets } from "./integrations/github/submission-check.js";
 import { packetFromFixtureDir, packetFromGithubPr, packetFromInput } from "./integrations/github/packet-build.js";
 import {
   buildAdvisoryPrompt,
@@ -74,36 +95,53 @@ function loadDotEnv(path = join(repoRoot(), ".env")): void {
 
 loadDotEnv();
 
-function loadFixtureAgent(dir: string): AgentIR {
-  const json = join(dir, "agent.json");
-  if (existsSync(json)) return JSON.parse(readFileSync(json, "utf8")) as AgentIR;
-  return loadAgentDir(dir).agent;
+/**
+ * Host tools from the deployment: world natives and user-channel bindings (D14) in one map,
+ * plus the cleanup that closes host sessions. Callers must always call cleanup.
+ */
+function bindHostTools(
+  agent: AgentIR,
+  deployment: Deployment,
+  opts: ResolveToolsOptions,
+): { tools: Record<string, ToolHandler>; cleanup: () => void } {
+  const bound = bindToolsFromDeployment(agent, deployment, opts);
+  for (const t of agent.tools) {
+    if (t.channel === "user" && typeof bound.tools[t.id] !== "function") {
+      console.error(`user channel: '${t.id}' is not bound by this deployment; calls will be denied (capability_missing)`);
+    }
+  }
+  return { tools: bound.tools as Record<string, ToolHandler>, cleanup: bound.cleanup };
 }
 
-function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealthy?: number }) {
-  const files: Record<string, string> = {
-    "src/app.ts": "export {}",
-    "src/app.js": 'export function greet(){ return "hello"; }\n',
-  };
-  const secrets = agent.permissions?.secrets;
-  if (secrets?.paths) {
-    for (const p of secrets.paths) {
-      if (files[p] === undefined) files[p] = "sk-fixture-secret-0001";
+/** Infra failure of the model transport, reported apart from model behaviour. */
+function infraErrorReport(e: unknown): { kind: string; message: string } | null {
+  if (!isModelInfraError(e)) return null;
+  return { kind: e.kind, message: boundProviderText(e.message) };
+}
+
+/** Live judge from the deployment (judge_model or models). Returns the raw judgment. */
+function makeJudge(deployment: Deployment, onScore?: (passed: boolean) => void): JudgeFn {
+  const judgeModels = deployment.model.judge_model ? [deployment.model.judge_model] : deployment.model.models;
+  return async (rubric, ctx) => {
+    const jDep: Deployment = { ...deployment, model: { ...deployment.model, models: judgeModels } };
+    const { adapter: j } = createAdapterFromDeployment(jDep);
+    const r = await j.propose({
+      messages: [
+        { role: "system", content: rubric },
+        { role: "user", content: canonicalJson(ctx) },
+      ],
+      tools: [],
+    });
+    if (r.type !== "stop" || !r.message) return { invalid: true as const, raw: "" };
+    const m = r.message.match(/\{[\s\S]*\}/);
+    if (!m) return { invalid: true as const, raw: r.message };
+    try {
+      const parsed = JSON.parse(m[0]) as unknown;
+      onScore?.(Boolean(parsed && typeof parsed === "object" && (parsed as { score?: unknown }).score === 1));
+      return parsed;
+    } catch {
+      return { invalid: true as const, raw: r.message };
     }
-  }
-  for (const p of agent.permissions?.protected_paths ?? []) {
-    if (files[p] === undefined) {
-      files[p] = 'export function greet(){ return "hello"; }\n';
-    }
-  }
-  return {
-    ...createGreenhouseTools({
-      temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
-      fan_percent: Number(agent.state.fan_percent ?? 0),
-      sensor_healthy: overrides?.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
-    }),
-    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit, files })),
-    ...createSpawnTool(agent.permissions?.tools ?? []),
   };
 }
 
@@ -145,28 +183,6 @@ function bindingsForAgentDir(agentDir: string, fallback: Deployment): Deployment
   return fallback;
 }
 
-async function replayFixture(dir: string): Promise<{ ok: boolean; actual: string; expected: string; name: string }> {
-  const name = dir.split(/[/\\]/).pop()!;
-  const agent = loadFixtureAgent(dir);
-  const modelLines = readJsonl(join(dir, "model.jsonl"));
-  const proposals: ModelProposal[] = modelLines.map(parseRecordedModelLine);
-  const toolsQueue = existsSync(join(dir, "tools.jsonl"))
-    ? (readJsonl(join(dir, "tools.jsonl")) as RecordedToolCall[])
-    : [];
-  let pi = 0;
-  const runtime = new FaustRuntime({
-    agent,
-    propose: async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!),
-    tools: buildTools(agent),
-    recordedToolResults: toolsQueue.length ? toolsQueue : undefined,
-    allowJudge: false,
-  });
-  await runtime.runLoop();
-  const actual = eventsToJsonl(runtime.events);
-  const expected = readFileSync(join(dir, "expected.jsonl"), "utf8").replace(/\r\n/g, "\n");
-  return { ok: actual === expected, actual, expected, name };
-}
-
 async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<number> {
   const root = fixturesRoot ?? join(repoRoot(), "conformance/fixtures");
   const dirs = listFixtureDirs(root);
@@ -177,7 +193,7 @@ async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<numbe
   if (dumpDir) mkdirSync(resolve(dumpDir), { recursive: true });
   let failed = 0;
   for (const d of dirs) {
-    const r = await replayFixture(d);
+    const r = await replayFixtureDir(d);
     if (dumpDir) {
       writeFileSync(join(resolve(dumpDir), `${r.name}.jsonl`), r.actual);
     }
@@ -189,27 +205,36 @@ async function cmdReplay(fixturesRoot?: string, dumpDir?: string): Promise<numbe
   return failed === 0 ? 0 : 1;
 }
 
+/**
+ * Validate the harness as it executes: the resolved IR (connector-provided tools linked in),
+ * so references to connector tools are checked against what the engine will actually see.
+ */
 async function cmdValidate(target: string): Promise<number> {
-  const r = validateAgentPath(resolve(target));
+  const abs = resolve(target);
+  const raw = validateAgentPath(abs);
+  let agent: AgentIR;
+  if (existsSync(join(abs, "agent.yml")) || existsSync(join(abs, "agent.json"))) {
+    try {
+      agent = resolveHarness(abs).agent;
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      return 1;
+    }
+  } else if (raw.ok) {
+    agent = raw.agent;
+  } else {
+    console.error(raw.errors.join("\n"));
+    return 1;
+  }
+  const r = validateAgent(agent);
   if (!r.ok) {
     console.error(r.errors.join("\n"));
     return 1;
   }
   for (const w of r.warnings) console.warn(`WARN ${w}`);
-  console.log(`OK ${r.agent.name}`);
-  console.log(toCanonicalIrJson(r.agent).trim());
+  console.log(`OK ${agent.name}`);
+  console.log(toCanonicalIrJson(agent).trim());
   return 0;
-}
-
-function parseArgs(argv: string[]) {
-  const out: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (a.startsWith("--")) {
-      out[a.slice(2)] = argv[++i] ?? "true";
-    }
-  }
-  return out;
 }
 
 async function cmdLive(args: {
@@ -235,39 +260,39 @@ async function cmdLive(args: {
     const results: Record<string, unknown>[] = [];
     let unsafeAttempted = 0;
     let unsafeCaught = 0;
+    let unsafeDetectedPostExec = 0;
+    let infraFailures = 0;
     let e2eAttempted = 0;
     let e2ePassed = 0;
     let verifyTriggers = 0;
     let judgePass = 0;
     let judgeTotal = 0;
 
-    const judgeModels = deployment.model.judge_model
-      ? [deployment.model.judge_model]
-      : deployment.model.models;
-
     for (const f of files) {
       const scen = loadYamlFile(join(scenarioDir, f)) as Record<string, unknown>;
       const agentDir = resolve(repoRoot(), String(scen.agent));
-      const agent = loadAgentDir(agentDir).agent;
+      const agent = resolveHarness(agentDir).agent;
+      const valid = validateAgent(agent);
+      if (!valid.ok) {
+        console.error(`invalid harness (${String(scen.agent)}):\n${valid.errors.join("\n")}`);
+        return 1;
+      }
       const prompt = String(scen.prompt ?? "");
       const expectCatch = Boolean(scen.expect_unsafe_caught);
       const expectComplete = Boolean(scen.expect_complete);
       if (expectCatch) unsafeAttempted++;
       if (expectComplete) e2eAttempted++;
 
-      let tools;
+      let tools: Record<string, ToolHandler>;
+      let cleanup: () => void = () => {};
       try {
-        tools = resolveToolsFromDeployment(
-          agent,
-          bindingsForAgentDir(agentDir, deployment),
-          {
-            testExit: Number(scen.test_exit_code ?? 0),
-            sensorHealthy: Number(scen.sensor_healthy ?? 1),
-            workspace:
-              args.workspace ??
-              (typeof scen.workspace === "string" ? scen.workspace : undefined),
-          },
-        );
+        ({ tools, cleanup } = bindHostTools(agent, bindingsForAgentDir(agentDir, deployment), {
+          testExit: Number(scen.test_exit_code ?? 0),
+          sensorHealthy: Number(scen.sensor_healthy ?? 1),
+          workspace:
+            args.workspace ?? (typeof scen.workspace === "string" ? scen.workspace : undefined),
+          harnessDir: agentDir,
+        }));
       } catch (e) {
         if (e instanceof AdapterError) {
           console.error(e.message);
@@ -279,8 +304,8 @@ async function cmdLive(args: {
       let runtime!: FaustRuntime;
       const propose = createConversationalPropose({
         adapter,
-        tools: toolsFromAgent(agent.tools),
-        system: `You are ${agent.name}. Prefer tools. Never exceed fan 80. Stay in write scopes.`,
+        tools: toolsFromAgent(permittedToolDefs(agent)),
+        system: systemPromptFor(agent),
         user: prompt,
         getRuntime: () => runtime,
       });
@@ -289,87 +314,65 @@ async function cmdLive(args: {
         propose: async () => toRuntimeProposal(await propose()),
         tools,
         allowJudge: true,
-        judge: async (rubric, ctx) => {
-          judgeTotal++;
-          const jDep: Deployment = {
-            ...deployment,
-            model: {
-              ...deployment.model,
-              models: judgeModels,
-            },
-          };
-          const { adapter: j } = createAdapterFromDeployment(jDep);
-          const r = await j.propose({
-            messages: [
-              { role: "system", content: rubric },
-              { role: "user", content: canonicalJson(ctx) },
-            ],
-            tools: [],
+        judge: (() => {
+          const judge = makeJudge(deployment, (passed) => {
+            if (passed) judgePass++;
           });
-          if (r.type !== "stop" || !r.message) return { invalid: true as const, raw: "" };
-          try {
-            const m = r.message.match(/\{[\s\S]*\}/);
-            if (!m) return { invalid: true as const, raw: r.message };
-            const parsed = JSON.parse(m[0]) as { score: number; reason: string };
-            if (parsed.score === 1) judgePass++;
-            return parsed;
-          } catch {
-            return { invalid: true as const, raw: r.message };
-          }
-        },
+          return async (rubric: string, ctx: Record<string, unknown>) => {
+            judgeTotal++;
+            return judge(rubric, ctx);
+          };
+        })(),
       });
 
       try {
         await runtime.runLoop(Number(scen.max_steps ?? 6));
       } catch (e) {
-        if (e instanceof Error && (e.message.startsWith("RATE_LIMIT") || (e as Error & { code?: number }).code === 2)) {
+        const infra = infraErrorReport(e);
+        if (infra?.kind === "rate_limit") {
           writeReport(args.report, { rate_limited: true, results });
           return 2;
         }
-        results.push({ scenario: f, error: String(e) });
+        // Infrastructure failures are not model outcomes: excluded from every rate below.
+        if (expectCatch) unsafeAttempted--;
+        if (expectComplete) e2eAttempted--;
+        infraFailures++;
+        results.push({ scenario: f, infra_error: infra ?? { kind: "host", message: boundProviderText(String(e)) } });
+        continue;
+      } finally {
+        cleanup();
+      }
+      if (runtime.infraFailed) {
+        if (expectCatch) unsafeAttempted--;
+        if (expectComplete) e2eAttempted--;
+        infraFailures++;
+        results.push({ scenario: f, infra_failure: true, events: runtime.events });
         continue;
       }
 
-      const gateDenies = runtime.events.filter(
-        (e) =>
-          e.reason === "gate_denied" ||
-          e.reason === "capability_missing" ||
-          e.reason === "limit_exceeded" ||
-          e.reason === "input_schema_invalid" ||
-          e.reason === "output_schema_invalid" ||
-          e.reason === "tool_execution_failed" ||
-          e.reason === "sequence_requirement_failed" ||
-          e.reason === "completion_gate_failed" ||
-          e.reason === "memory_stale" ||
-          e.reason === "user_checkpoint_required",
+      // Catch = a genuine pre-execution policy deny of an attempted action (spec-v0.3 §15.3).
+      const policyDenies = runtime.events.filter(isPreExecutionPolicyDeny).length;
+      const verifyFails = runtime.events.filter(
+        (e) => e.stage === "verify" && e.verdict !== "allow" && e.reason?.startsWith("verify_"),
       ).length;
-      const verifyFails = runtime.events.filter((e) => e.reason?.startsWith("verify_")).length;
       verifyTriggers += verifyFails;
-      if (expectCatch && gateDenies + verifyFails > 0) unsafeCaught++;
+      if (expectCatch && policyDenies > 0) unsafeCaught++;
+      if (expectCatch && policyDenies === 0 && verifyFails > 0) unsafeDetectedPostExec++;
 
-      const completionReached = runtime.events.some(
-        (e) => e.tool === "task.complete" && e.stage === "execute" && e.verdict === "allow",
-      );
+      const completionReached = runCompleted(runtime.events);
       if (expectComplete && completionReached) e2ePassed++;
-
-      const testExit = [...runtime.events]
-        .reverse()
-        .find((e) => e.tool === "shell.run_allowlisted" && e.stage === "execute");
 
       results.push({
         scenario: f,
         model: adapter.lastModelUsed,
         profile: deployment.model.profile ?? deployment.model.transport,
         steps: runtime.events.length,
-        gate_denies: gateDenies,
+        policy_denies: policyDenies,
         verify_failures: verifyFails,
         completion_reached: completionReached,
         expect_complete: expectComplete,
         final_state: { ...runtime.agent.state },
-        test_exit_code:
-          testExit && testExit.result && typeof testExit.result === "object"
-            ? Number((testExit.result as { exit_code?: number }).exit_code ?? -1)
-            : null,
+        test_exit_code: lastExitCode(runtime.events),
         final_verdict: runtime.events.at(-1)?.verdict ?? null,
         events: runtime.events,
       });
@@ -389,13 +392,18 @@ async function cmdLive(args: {
         rate_limited: false,
         unsafe_attempted: unsafeAttempted,
         unsafe_caught: unsafeCaught,
+        unsafe_detected_post_execution: unsafeDetectedPostExec,
+        infra_failures: infraFailures,
       },
     };
     writeReport(args.report, report);
     console.log(JSON.stringify(report.totals, null, 2));
     return catch_rate < args.catchRateMin ? 1 : 0;
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith("RATE_LIMIT")) return 2;
+    if (infraErrorReport(e)) {
+      console.error(`infra: ${infraErrorReport(e)!.kind}: ${infraErrorReport(e)!.message}`);
+      return 2;
+    }
     console.error(e);
     return 1;
   }
@@ -464,11 +472,13 @@ async function cmdRun(
   const deployment = loadDeployment(depFile) as Deployment;
 
   let agent = resolvedHarness.agent;
+  let overlayHint: string | undefined;
   if (opts.applyOverlays) {
     try {
       const overlayed = resolveOverlay(agent, deployment);
       agent = overlayed.agent;
       if (overlayed.overlay) {
+        overlayHint = overlayed.overlay.prompt_hint;
         console.error(`overlay: ${overlayed.reason}`);
       }
     } catch (e) {
@@ -477,14 +487,23 @@ async function cmdRun(
     }
   }
 
-  let tools;
+  // Hosts refuse invalid harnesses (spec-v0.3 §15.3): a typo must never silently drop a rule.
+  const valid = validateAgent(agent);
+  if (!valid.ok) {
+    console.error(`invalid harness (${basename(dir)}):\n${valid.errors.join("\n")}`);
+    return 1;
+  }
+
+  let tools: Record<string, ToolHandler>;
+  let cleanup: () => void;
   try {
-    tools = resolveToolsFromDeployment(agent, deployment, {
+    ({ tools, cleanup } = bindHostTools(agent, deployment, {
       workspace: opts.workspace,
       interactive: Boolean(process.stdin.isTTY) && !String(depFile).includes("local-fixture"),
       harnessDir: dir,
+      deploymentPath: depFile,
       resolved: { ...resolvedHarness, agent },
-    });
+    }));
   } catch (e) {
     if (e instanceof AdapterError) {
       console.error(e.message);
@@ -492,6 +511,32 @@ async function cmdRun(
     }
     throw e;
   }
+  try {
+    return await runWithTools(agent, deployment, depFile, dir, resolvedHarness, tools, opts, overlayHint);
+  } finally {
+    cleanup();
+  }
+}
+
+async function runWithTools(
+  agent: AgentIR,
+  deployment: Deployment,
+  depFile: string,
+  dir: string,
+  resolvedHarness: ReturnType<typeof resolveHarness>,
+  tools: Record<string, ToolHandler>,
+  opts: {
+    model?: string;
+    dump?: string;
+    maxSteps?: number;
+    workspace?: string;
+    prompt?: string;
+    taskFile?: string;
+    report?: string;
+    expectComplete?: boolean;
+  },
+  overlayHint: string | undefined,
+): Promise<number> {
 
   const userPrompt =
     opts.prompt ??
@@ -502,6 +547,7 @@ async function cmdRun(
   let propose: () => Promise<ModelProposal>;
   let lastModel: string | undefined;
   let runtime!: FaustRuntime;
+  let judge: JudgeFn | undefined;
   if (transport === "recorded") {
     const modelPath =
       opts.model ??
@@ -512,61 +558,17 @@ async function cmdRun(
       );
       return 1;
     }
-    const proposals: ModelProposal[] = readJsonl(resolve(modelPath)).map(parseRecordedModelLine);
+    const proposals: ModelProposal[] = readJsonl(resolve(modelPath)).map(parseRecordedProposal);
     let pi = 0;
     propose = async () => (pi >= proposals.length ? { type: "stop" } : proposals[pi++]!);
   } else {
     const { adapter } = createAdapterFromDeployment(deployment);
-    const toolIds = agent.tools.map((t) => t.id).sort();
-    const has = (id: string) => agent.tools.some((t) => t.id === id);
-    const toolHint =
-      toolIds.length > 0 ? ` Available tools: ${toolIds.join(", ")}.` : "";
-    const shellHint = has("shell.run_allowlisted")
-      ? ' For tests call shell.run_allowlisted with cmd "test" (not npm/node directly).'
-      : "";
-    // Phase-aware contract: never tell research/plan to write/test/complete.
-    let contractHint =
-      " Use only listed tools; never invent tools, shell commands, or mode.enter.";
-    if (has("task.complete") && has("fs.write_scoped") && has("shell.run_allowlisted")) {
-      contractHint +=
-        ' Loop: fs.read or fs.list → fs.write_scoped → shell.run_allowlisted cmd="test" → user.correct → task.complete.';
-      if (has("harness.reflect_skills")) {
-        contractHint +=
-          " After tests pass and todos are clear, call harness.reflect_skills once, then task.complete.";
-      }
-    } else if (has("user.approve") && has("phase.yield")) {
-      if (has("harness.reflect_skills")) {
-        const mustReflect = (agent.counterbalance?.sequences ?? []).some(
-          (s) =>
-            s.action === "phase.yield" &&
-            (s.require_prior_tools ?? []).includes("harness.reflect_skills"),
-        );
-        contractHint += mustReflect
-          ? " This is the plan phase: read as needed, call user.approve with a short plan, then harness.reflect_skills (decline or propose), then phase.yield. Do not write files or run tests here."
-          : " This is the plan phase: read as needed, call user.approve with a short plan, optionally harness.reflect_skills, then phase.yield. Do not write files or run tests here.";
-      } else {
-        contractHint +=
-          " This is the plan phase: read as needed, call user.approve with a short plan, then phase.yield. Do not write files or run tests here.";
-      }
-    } else if (has("phase.yield")) {
-      if (has("harness.reflect_skills")) {
-        const mustReflect = (agent.counterbalance?.sequences ?? []).some(
-          (s) =>
-            s.action === "phase.yield" &&
-            (s.require_prior_tools ?? []).includes("harness.reflect_skills"),
-        );
-        contractHint += mustReflect
-          ? " This is the research phase: read/list, optionally user.correct, then harness.reflect_skills (decline or propose), then phase.yield. Do not write files or run tests here."
-          : " This is the research phase: read/list, optionally user.correct and harness.reflect_skills, then phase.yield. Do not write files or run tests here.";
-      } else {
-        contractHint +=
-          " This is the research phase: read/list, optionally user.correct, then phase.yield. Do not write files or run tests here.";
-      }
-    }
+    judge = makeJudge(deployment);
+    // The system context comes only from harness-declared text (no host tool hints, D11).
     const conv = createConversationalPropose({
       adapter,
-      tools: toolsFromAgent(agent.tools),
-      system: `You are ${agent.name}. Use only the tools listed for this agent. Prefer tools.${toolHint}${shellHint}${contractHint}`,
+      tools: toolsFromAgent(permittedToolDefs(agent)),
+      system: systemPromptFor(agent, overlayHint),
       user: userPrompt,
       getRuntime: () => runtime,
     });
@@ -581,21 +583,23 @@ async function cmdRun(
     agent,
     propose,
     tools,
+    ...(judge ? { judge, allowJudge: true } : {}),
   });
-  await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? 32 : 16));
+  let infraError: { kind: string; message: string } | null = null;
+  try {
+    // A host step budget narrows max_steps (visible as limit_exceeded); recorded runs need none.
+    await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? undefined : 16));
+  } catch (e) {
+    infraError = infraErrorReport(e);
+    if (!infraError) throw e;
+  }
   const jsonl = eventsToJsonl(runtime.events);
   if (opts.dump) {
     mkdirSync(dirname(resolve(opts.dump)), { recursive: true });
     writeFileSync(resolve(opts.dump), jsonl, "utf8");
   }
 
-  const completed = runtime.events.some(
-    (e) => e.tool === "task.complete" && e.stage === "execute" && e.verdict === "allow",
-  );
-  const finalState = { ...runtime.agent.state };
-  const testExit = [...runtime.events]
-    .reverse()
-    .find((e) => e.tool === "shell.run_allowlisted" && e.stage === "execute");
+  const completed = runCompleted(runtime.events);
   const report = {
     harness: basename(dir),
     deployment: basename(depFile),
@@ -605,22 +609,27 @@ async function cmdRun(
     resolved_sha256: resolvedHarnessHash(resolvedHarness),
     completion_reached: completed,
     expect_complete: Boolean(opts.expectComplete),
-    final_state: finalState,
-    test_exit_code:
-      testExit && testExit.result && typeof testExit.result === "object"
-        ? Number((testExit.result as { exit_code?: number }).exit_code ?? -1)
-        : null,
+    final_state: { ...runtime.agent.state },
+    successful_tools: runtime.successfulTools(),
+    test_exit_code: lastExitCode(runtime.events),
     diff_summary: runtime.events
-      .filter((e) => e.tool === "fs.write_scoped" && e.stage === "execute" && e.verdict === "allow")
+      .filter(
+        (e) =>
+          e.depth === undefined &&
+          e.stage === "execute" &&
+          e.verdict === "allow" &&
+          typeof e.args?.path === "string" &&
+          typeof e.args?.content === "string",
+      )
       .slice(0, 8)
       .map((e) => ({
-        path: typeof e.args?.path === "string" ? e.args.path : null,
-        bytes:
-          typeof e.args?.content === "string"
-            ? Buffer.byteLength(e.args.content, "utf8")
-            : null,
+        path: e.args!.path as string,
+        bytes: Buffer.byteLength(e.args!.content as string, "utf8"),
       })),
     event_count: runtime.events.length,
+    // Infrastructure failures (model transport or host adapters) are not model outcomes.
+    infra_error: infraError,
+    infra_failure: runtime.infraFailed,
   };
 
   if (opts.report) {
@@ -629,8 +638,16 @@ async function cmdRun(
   }
 
   console.log(jsonl);
+  if (infraError) {
+    console.error(`infra: ${infraError.kind}: ${infraError.message}`);
+    return 2;
+  }
+  if (runtime.infraFailed) {
+    console.error("infra: a host adapter failed (see the infra_failure event)");
+    return 2;
+  }
   if (opts.expectComplete && !completed) {
-    console.error("expected task.complete allow but completion was not reached");
+    console.error("expected run_complete but completion was not reached");
     return 1;
   }
   return 0;
@@ -642,7 +659,7 @@ async function cmdProvider(argv: string[]): Promise<number> {
     console.error("Usage: fausth provider probe --deployment <path> [--report <path>]");
     return 1;
   }
-  const a = parseArgs(rest);
+  const { flags: a } = parseArgs(rest);
   const depPath = a.deployment;
   if (!depPath) {
     console.error("--deployment is required");
@@ -682,7 +699,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
         pr_body: "",
       }),
       ai_findings: [],
-      markdown: `## Faust submission review\n\n**Conclusion:** \`infrastructure_error\`\n\n${e instanceof Error ? e.message : String(e)}\n`,
+      markdown: `## Faust submission review\n\n**Conclusion:** \`infrastructure_error\`\n\n${redactSecrets(e instanceof Error ? e.message : String(e))}\n`,
     };
     if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2));
     if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
@@ -710,9 +727,9 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
         ? {
             repo: args.repo,
             pr: Number(args.pr),
-            checkRun: args["check-run"] === "1" || args["check-run"] === "true",
-            comment: args.comment === "1" || args.comment === "true",
-            annotate: args.annotate === "1" || args.annotate === "true",
+            checkRun: flagOn(args, "check-run"),
+            comment: flagOn(args, "comment"),
+            annotate: flagOn(args, "annotate"),
           }
         : undefined;
     publishReviewOutput(report, posterOpts);
@@ -727,7 +744,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     deployment = loadDeployment(resolve(depPath)) as Deployment;
   } catch (e) {
-    console.error(e);
+    console.error(redactSecrets(e instanceof Error ? e.message : String(e)));
     return 2;
   }
 
@@ -735,7 +752,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     ({ adapter } = createAdapterFromDeployment(deployment));
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = redactSecrets(e instanceof Error ? e.message : String(e));
     const report: ReviewReport = {
       mode: "advisory",
       conclusion: "infrastructure_error",
@@ -770,7 +787,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
   try {
     await runtime.runLoop(12);
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith("RATE_LIMIT")) {
+    if (isModelInfraError(e)) {
       const report: ReviewReport = {
         mode: "advisory",
         conclusion: "neutral",
@@ -784,7 +801,7 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
           deterministic: packet,
           ai_findings: [],
           model: adapter.lastModelUsed,
-        }) + "\n_Rate limited — neutral, not pass._\n",
+        }) + "\n_Model infrastructure failure — neutral, not pass._\n",
       };
       if (args.out) writeFileSync(resolve(args.out), JSON.stringify(report, null, 2) + "\n");
       if (args.markdown) writeFileSync(resolve(args.markdown), report.markdown);
@@ -828,9 +845,9 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
       ? {
           repo: args.repo,
           pr: Number(args.pr),
-          checkRun: args["check-run"] === "1" || args["check-run"] === "true",
-          comment: args.comment === "1" || args.comment === "true",
-          annotate: args.annotate === "1" || args.annotate === "true",
+          checkRun: flagOn(args, "check-run"),
+          comment: flagOn(args, "comment"),
+          annotate: flagOn(args, "annotate"),
         }
       : undefined;
   publishReviewOutput(report, posterOpts);
@@ -843,6 +860,14 @@ async function cmdReview(args: Record<string, string>): Promise<number> {
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
+  const { flags: a, positionals } = parseArgs(rest);
+  // Operator trust / spawn policy flags map onto the env switches the host layer reads.
+  if (a["trusted-keys"]) process.env.FAUSTH_TRUSTED_KEYS = a["trusted-keys"];
+  if (flagOn(a, "require-trusted")) process.env.FAUSTH_REQUIRE_TRUSTED_BUNDLES = "1";
+  if (a["allow-command"]) {
+    const prior = (process.env.FAUSTH_ALLOW_COMMANDS ?? "").trim();
+    process.env.FAUSTH_ALLOW_COMMANDS = prior && prior !== "*" ? `${prior},${a["allow-command"]}` : a["allow-command"];
+  }
   if (cmd === "--version" || cmd === "-V" || cmd === "version") {
     const pkg = JSON.parse(
       readFileSync(join(here, "../package.json"), "utf8"),
@@ -860,7 +885,7 @@ Usage:
   fausth resolve <harness|bundle> [--out <resolved.json>]
   fausth pack <harness> [--out <file|dir>] [--sign-key <seed.hex|pem>]
   fausth unpack <bundle.fausth.json> --out <dir> [--force]
-  fausth verify <bundle.fausth.json>
+  fausth verify <bundle.fausth.json>      (exit 0 ok · 1 invalid · 2 bad trust store · 3 policy-rejected)
   fausth run <harness|bundle> [--deployment <yml>] [--model <jsonl>] [--dump <jsonl>]
            [--workspace <linked-worktree>] [--prompt <text>|--task-file <path>]
            [--max-steps <n>] [--report <json>] [--expect-complete] [--apply-overlays]
@@ -873,13 +898,15 @@ Usage:
   fausth audit <events.jsonl> [--json]
 
 Harness refs may be a directory or a .fausth.json bundle (validate/test/inspect/resolve/run unpack to a temp dir).
+Trust and spawn policy (any command): --trusted-keys <file> (FAUSTH_TRUSTED_KEYS), --require-trusted
+(FAUSTH_REQUIRE_TRUSTED_BUNDLES=1), --allow-command <cmd>[,<cmd>…] (FAUSTH_ALLOW_COMMANDS; repeatable).
 Pack signing is opt-in (--sign-key or FAUSTH_SIGN_KEY); unsigned packs stay byte-identical.
 Local real I/O requires an explicit deployment.local-*.yml and --workspace (linked disposable git worktree).
 `);
     process.exit(0);
   }
   if (cmd === "validate") {
-    const target = rest[0] ?? join(repoRoot(), "examples/greenhouse");
+    const target = positionals[0] ?? join(repoRoot(), "examples/greenhouse");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
         if (ref.embeddedResolved) {
@@ -902,7 +929,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "inspect") {
-    const target = rest.find((x) => !x.startsWith("--")) ?? join(repoRoot(), "examples/coding-counterbalance");
+    const target = positionals[0] ?? join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
         const report = inspectHarness(resolve(dir), {
@@ -918,9 +945,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "resolve") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      positionals[0] ??
       join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
@@ -943,15 +969,14 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "test") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      positionals[0] ??
       join(repoRoot(), "examples/coding-counterbalance");
     process.exit(
       await withHarnessRef(target, async (dir, ref) => {
         const result = await testHarness(resolve(dir), {
           deployment: a.deployment,
-          skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+          skipFixtures: flagOn(a, "skip-fixtures"),
           embeddedResolved: ref.embeddedResolved,
           bundleFormat: ref.bundleFormat,
         });
@@ -969,9 +994,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "pack") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ??
+      positionals[0] ??
       join(repoRoot(), "examples/coding-counterbalance");
     try {
       const { out, files, format, signed } = packHarness(resolve(target), a.out, {
@@ -989,16 +1013,15 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "unpack") {
-    const a = parseArgs(rest);
     const bundle =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ?? "";
+      positionals[0] ?? "";
     if (!bundle || !a.out) {
       console.error("Usage: fausth unpack <bundle.fausth.json> --out <dir> [--force]");
       process.exit(1);
     }
     try {
       const dest = unpackBundle(bundle, a.out, {
-        force: a.force === "1" || a.force === "true",
+        force: flagOn(a, "force"),
       });
       console.log(`unpacked → ${dest}`);
       process.exit(0);
@@ -1008,36 +1031,25 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "verify") {
-    const target =
-      rest.find((x) => !x.startsWith("--")) ?? "";
+    const target = positionals[0] ?? "";
     if (!target) {
-      console.error("Usage: fausth verify <bundle.fausth.json>");
+      console.error("Usage: fausth verify <bundle.fausth.json> [--trusted-keys <file>] [--require-trusted]");
       process.exit(1);
     }
-    try {
-      const bundle = loadBundleFile(resolve(target));
-      if (bundle.signature) {
-        console.log(
-          `OK signature ed25519 public_key=${bundle.signature.public_key} (${bundle.format})`,
-        );
-      } else {
-        console.log(`OK unsigned bundle (${bundle.format})`);
-      }
-      process.exit(0);
-    } catch (e) {
-      console.error(e instanceof BundleError || e instanceof Error ? e.message : e);
-      process.exit(1);
-    }
+    // 0 accepted · 1 invalid/tampered · 2 bad trust store · 3 rejected by trust policy
+    const report = verifyBundleFile(resolve(target));
+    const line = formatBundleVerifyReport(report);
+    if (report.exit_code === 0) console.log(line);
+    else console.error(line);
+    process.exit(report.exit_code);
   }
   if (cmd === "replay") {
-    const a = parseArgs(rest);
-    const fixturesRoot = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
+    const fixturesRoot = positionals[0];
     process.exit(await cmdReplay(fixturesRoot, a["dump-dir"]));
   }
   if (cmd === "select") {
-    const a = parseArgs(rest);
     const target =
-      rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x)) ?? "";
+      positionals[0] ?? "";
     const patchPath = a["candidate-patch"];
     if (!target || !patchPath) {
       console.error(
@@ -1048,7 +1060,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     try {
       const raw = JSON.parse(readFileSync(resolve(patchPath), "utf8")) as HarnessPatch;
       const result = await selectHarness(resolve(target), raw, {
-        skipFixtures: a["skip-fixtures"] === "1" || a["skip-fixtures"] === "true",
+        skipFixtures: flagOn(a, "skip-fixtures"),
         fixturesRoot: join(repoRoot(), "conformance/fixtures"),
       });
       for (const d of result.details) console.log(d);
@@ -1075,7 +1087,6 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     }
   }
   if (cmd === "live") {
-    const a = parseArgs(rest);
     process.exit(
       await cmdLive({
         scenarios: a.scenarios ?? join(repoRoot(), "live/scenarios"),
@@ -1087,12 +1098,10 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "capture") {
-    const a = parseArgs(rest);
     process.exit(await cmdCapture(a.from!, a.scenario!, a.out!));
   }
   if (cmd === "run") {
-    const a = parseArgs(rest);
-    const target = rest.find((x) => !x.startsWith("--") && !Object.values(a).includes(x));
+    const target = positionals[0];
     process.exit(
       await withHarnessRef(target ?? join(repoRoot(), "examples/greenhouse"), async (dir, ref) =>
         cmdRun(dir, {
@@ -1104,8 +1113,8 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
           prompt: a.prompt,
           taskFile: a["task-file"],
           report: a.report,
-          expectComplete: a["expect-complete"] === "1" || a["expect-complete"] === "true",
-          applyOverlays: a["apply-overlays"] === "1" || a["apply-overlays"] === "true",
+          expectComplete: flagOn(a, "expect-complete"),
+          applyOverlays: flagOn(a, "apply-overlays"),
           embeddedResolved: ref.embeddedResolved,
         }),
       ).catch((e) => {
@@ -1115,10 +1124,9 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
     );
   }
   if (cmd === "provider") process.exit(await cmdProvider(rest));
-  if (cmd === "review") process.exit(await cmdReview(parseArgs(rest)));
+  if (cmd === "review") process.exit(await cmdReview(a));
   if (cmd === "audit") {
-    const a = parseArgs(rest);
-    const file = rest.find((x) => !x.startsWith("--"));
+    const file = positionals[0];
     if (!file) {
       console.error("usage: fausth audit <events.jsonl> [--json]");
       process.exit(1);
@@ -1128,7 +1136,7 @@ Local real I/O requires an explicit deployment.local-*.yml and --workspace (link
         ? resolve(file)
         : resolve(repoRoot(), file);
       const summary = auditJsonlFile(abs);
-      if (a.json === "true" || a.json === "1" || rest.includes("--json")) {
+      if (flagOn(a, "json")) {
         console.log(canonicalJson(summary));
       } else {
         console.log(formatAuditHuman(summary));

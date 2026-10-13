@@ -36,6 +36,9 @@ tools:
         path: { type: string }
         content: { type: string }
         found: { type: integer }
+    effects:
+      - when: { path: result.found, eq: 1 }
+        set: { researched: 1 }
   - id: fs.list
     description: List files under a scoped directory
     read_only: true
@@ -53,7 +56,11 @@ tools:
         path: { type: string }
         entries: { type: array, items: { type: string } }
         found: { type: integer }
+    effects:
+      - when: { path: result.found, eq: 1 }
+        set: { researched: 1 }
   - id: user.correct
+    channel: user
     input:
       type: object
       additionalProperties: true
@@ -74,6 +81,8 @@ tools:
       additionalProperties: false
       properties:
         ok: { type: integer }
+    effects:
+      - set: { phase_yielded: 1, researched: 1 }
 
 permissions:
   tools:
@@ -91,3 +100,8 @@ counterbalance:
       allow_set_keys: [open_todos]
   orientation:
     emit_each_step: true
+  completion:
+    tool: phase.yield
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: fs.list, fs.read, phase.yield, user.correct. Use only listed tools; never invent tools, shell commands, or mode.enter. This is the research phase: read/list, optionally user.correct, then phase.yield. Do not write files or run tests here."

@@ -1,0 +1,45 @@
+{
+  "world": "replay",
+  "id": "d14-unbound-user-channel",
+  "decision": "D14",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {},
+    "tools": [
+      {
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "id": "user.approve",
+        "channel": "user"
+      }
+    ]
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "name": "user.approve",
+      "args": {
+        "plan": "p"
+      }
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "validate",
+        "verdict": "deny",
+        "reason": "capability_missing",
+        "tool": "user.approve"
+      }
+    ],
+    "absent": [
+      {
+        "stage": "execute"
+      }
+    ]
+  }
+}

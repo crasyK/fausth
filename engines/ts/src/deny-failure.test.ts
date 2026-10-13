@@ -6,16 +6,24 @@ import {
   buildMissingPriorToolsFailure,
   buildPredicateFailure,
 } from "./deny-failure.js";
-import { FaustRuntime } from "./runtime.js";
-import { createCodingTools } from "./tools/world.js";
+import { FaustRuntime, type ToolHandler } from "./runtime.js";
 import type { AgentIR, ModelProposal } from "./types.js";
 
+/** Plain world handlers (no user-channel answers are synthesized). */
+const handlers: Record<string, ToolHandler> = {
+  "task.complete": () => ({ ok: 1 }),
+  "phase.yield": () => ({ ok: 1 }),
+  "fs.read": () => ({ ok: 1 }),
+};
+
 const agent: AgentIR = {
+  spec: "counterbalance-contract/v0.3",
   name: "impl",
   state: { open_todos: 1, test_evidence_current: 1 },
   tools: [
     {
       id: "user.correct",
+      channel: "user",
       input: { type: "object", additionalProperties: true },
       output: { type: "object", additionalProperties: true },
     },
@@ -89,7 +97,7 @@ describe("completion deny failure", () => {
     const rt = new FaustRuntime({
       agent: structuredClone(agent),
       propose: async () => proposals.shift() ?? { type: "stop" },
-      tools: createCodingTools(),
+      tools: handlers,
     });
     await rt.runLoop(2);
     const deny = rt.events.find(
@@ -115,7 +123,7 @@ describe("completion deny failure", () => {
     const rt = new FaustRuntime({
       agent: a,
       propose: async () => proposals.shift() ?? { type: "stop" },
-      tools: createCodingTools(),
+      tools: handlers,
     });
     await rt.runLoop(10);
     const completeExecs = rt.events.filter(
@@ -127,13 +135,14 @@ describe("completion deny failure", () => {
     assert.equal(proposals.length, 2);
   });
 
-  it("stops the run after the first successful phase.yield", async () => {
+  it("stops the run after the first successful declared completion tool (phase.yield)", async () => {
     const proposals: ModelProposal[] = [
       { type: "tool", name: "phase.yield", args: {} },
       { type: "tool", name: "phase.yield", args: {} },
       { type: "tool", name: "fs.read", args: { path: "README.md" } },
     ];
     const a: AgentIR = {
+      spec: "counterbalance-contract/v0.3",
       name: "research",
       state: { researched: 0, phase_yielded: 0 },
       tools: [
@@ -150,18 +159,20 @@ describe("completion deny failure", () => {
       ],
       permissions: { tools: ["fs.read", "phase.yield"] },
       limits: { max_steps: 10 },
+      // D11: the terminal tool is declared, never inferred from its name.
+      counterbalance: { completion: { tool: "phase.yield" } },
     };
     const rt = new FaustRuntime({
       agent: a,
       propose: async () => proposals.shift() ?? { type: "stop" },
-      tools: createCodingTools(),
+      tools: handlers,
     });
     await rt.runLoop(10);
     const yieldExecs = rt.events.filter(
       (e) => e.tool === "phase.yield" && e.stage === "execute" && e.verdict === "allow",
     );
     assert.equal(yieldExecs.length, 1);
-    const done = rt.events.find((e) => e.stage === "record" && e.reason === "phase_yielded");
+    const done = rt.events.find((e) => e.stage === "record" && e.reason === "run_complete");
     assert.ok(done);
     assert.equal(proposals.length, 2);
   });

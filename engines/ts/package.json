@@ -5,13 +5,13 @@
   "type": "module",
   "license": "Apache-2.0",
   "bin": {
-    "fausth": "./dist/cli.js"
+    "fausth": "./bin/fausth.mjs"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --import tsx --test src/**/*.test.ts src/**/**/*.test.ts src/integrations/**/*.test.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "fausth": "node --import tsx src/cli.ts"
   },
   "dependencies": {

@@ -1,0 +1,2 @@
+{"args":{"question":"first?"},"name":"user.ask","type":"tool"}
+{"args":{"question":"second?"},"name":"user.ask","type":"tool"}
