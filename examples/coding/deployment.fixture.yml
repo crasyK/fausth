@@ -10,7 +10,5 @@ bindings:
     native: stub.fs_write
   shell.run_allowlisted:
     native: stub.shell
-  user.approve:
-    native: stub.approve
   agent.spawn:
     native: stub.spawn

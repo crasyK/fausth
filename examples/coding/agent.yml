@@ -138,3 +138,6 @@ spawn:
   allow: true
   tighten_only: true
   allow_nested: false
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: agent.spawn, fs.read, fs.write_scoped, shell.run_allowlisted, user.approve. For tests call shell.run_allowlisted with cmd \"test\" (not npm/node directly). Use only listed tools; never invent tools, shell commands, or mode.enter."

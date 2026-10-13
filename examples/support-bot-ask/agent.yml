@@ -29,7 +29,11 @@ tools:
       properties:
         ok: { type: integer }
         article_id: { type: string }
+    effects:
+      - when: { path: result.ok, eq: 1 }
+        set: { kb_cited: 1 }
   - id: user.ask
+    channel: user
     input:
       type: object
       additionalProperties: true
@@ -41,6 +45,9 @@ tools:
       additionalProperties: false
       properties:
         answer: { type: string }
+    effects:
+      - when: { path: result.answer, neq: "" }
+        set: { clarified: 1 }
   - id: answer.send
     input:
       type: object
@@ -66,7 +73,11 @@ tools:
       additionalProperties: false
       properties:
         ok: { type: integer }
+    effects:
+      - when: { path: result.ok, eq: 1 }
+        set: { handoff: 1 }
   - id: user.correct
+    channel: user
     input: { type: object, additionalProperties: true, properties: { set: { type: object } } }
     output:
       type: object
@@ -100,3 +111,9 @@ counterbalance:
         - { path: state.clarified, eq: 1 }
   orientation:
     emit_each_step: true
+  checkpoints:
+    - tool: user.ask
+      allow_set_keys: [clarified]
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: answer.send, human.handoff, kb.lookup, user.ask, user.correct. Use only listed tools; never invent tools, shell commands, or mode.enter."

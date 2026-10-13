@@ -5,8 +5,8 @@ model:
   base_url: https://ki-toolbox.scc.kit.edu/api/v1
   api_key_env: KIT_AI_API_KEY
   models:
-    - kit.mistral-small-4-119b-a8b
-    - kit.gemma4-31b-it
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   temperature: 0
   max_tokens: 1024
   compatibility:
@@ -21,6 +21,8 @@ bindings:
   human.handoff:
     native: stub.human_handoff
   user.correct:
-    native: stub.user_correct
+    user:
+      source: simulator
+      model: kit.glm-5.3-flash
   refund.request:
     native: stub.refund_request

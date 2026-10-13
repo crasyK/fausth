@@ -33,8 +33,10 @@ bindings:
   shell.run_allowlisted:
     native: local.shell
   user.approve:
-    native: local.user_approve
+    user:
+      source: human
   user.correct:
-    native: local.user_correct
+    user:
+      source: human
   task.complete:
     native: local.task_complete

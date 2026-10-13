@@ -9,8 +9,8 @@ model:
   base_url: https://ki-toolbox.scc.kit.edu/api/v1
   api_key_env: KIT_AI_API_KEY
   models:
-    - kit.minimax-m2.7-229b
-    - kit.mistral-small-4-119b-a8b
+    - kit.glm-5.3-flash
+    - kit.deepseek-v4-flash
   temperature: 0
   max_tokens: 2048
   compatibility:
@@ -38,8 +38,10 @@ bindings:
   shell.run_allowlisted:
     native: local.shell
   user.approve:
-    native: local.user_approve
+    user:
+      source: human
   user.correct:
-    native: local.user_correct
+    user:
+      source: human
   task.complete:
     native: local.task_complete
