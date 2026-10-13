@@ -138,7 +138,7 @@ def call(world, tool, args):
     return world[tool](args, {"state": {}})
 
 
-def test_replay_world_files_and_user_ask():
+def test_replay_world_files_and_no_self_answering_user_stub():
     a = agent(["fs.read"])
     w = default_tools(a)
     assert call(w, "fs.read", {"path": "src/app.js"})["output"] == {
@@ -146,18 +146,17 @@ def test_replay_world_files_and_user_ask():
         "content": 'export function greet(){ return "hello"; }\n',
         "found": 1,
     }
-    assert call(w, "user.ask", {"question": "q?"}) == {
-        "output": {"answer": "q?"},
-        "state_transition": {"set": {"clarified": 1}},
-    }
+    # D14 (TS world after the edge WP): no user.ask stub that echoes the model's question
+    assert "user.ask" not in w
     assert "tau.invoke" not in w and "todo.complete" not in w
 
 
 def test_secrets_without_paths_or_values_do_not_activate_leak_fields():
-    a = agent(["fs.write_scoped"], permissions={"secrets": {"deny_write_contains": True}})
+    fs = {"filesystem": {"write_scopes": ["src/"]}}
+    a = agent(["fs.write_scoped"], permissions={**fs, "secrets": {"deny_write_contains": True}})
     out = call(default_tools(a), "fs.write_scoped", {"path": "src/x.ts", "content": "c"})["output"]
     assert out == {"ok": 1, "out_of_scope": 0, "path": "src/x.ts"}
-    a2 = agent(["fs.write_scoped"], permissions={"secrets": {"values": ["  sk-live  "]}})
+    a2 = agent(["fs.write_scoped"], permissions={**fs, "secrets": {"values": ["  sk-live  "]}})
     out2 = call(default_tools(a2), "fs.write_scoped", {"path": "src/x.ts", "content": "sk-live"})["output"]
     assert out2["secret_leak"] == 1
 
@@ -185,11 +184,31 @@ def test_world_coercions_follow_js():
 def test_simulation_pool_matches_ts_build_handler_pool():
     a = agent(["shell.run_allowlisted", "fs.read"], permissions={"filesystem": {"write_scopes": ["src/"]}})
     w = simulation_tool_pool(a)
-    # simulation world: tests pass by default and never set evidence state (TS createSimulationCodingAdapter)
-    assert call(w, "shell.run_allowlisted", {"cmd": "test"}) == {"output": {"exit_code": 0, "cmd": "test"}}
+    # TS createSimulationWorldForAgent: the agent's own policy on simulated I/O; tests pass
+    # by default and a passing test sets evidence like the local adapter.
+    assert call(w, "shell.run_allowlisted", {"cmd": "test"}) == {
+        "output": {"exit_code": 0, "cmd": "test"},
+        "state_transition": {"set": {"test_evidence_current": 1}},
+    }
     assert call(w, "fs.read", {"path": "src/app.js"})["output"]["found"] == 0
     w2 = simulation_tool_pool(a, test_exit=3)
-    assert call(w2, "shell.run_allowlisted", {"cmd": "typecheck"})["output"]["exit_code"] == 3
+    assert call(w2, "shell.run_allowlisted", {"cmd": "typecheck"}) == {"output": {"exit_code": 3, "cmd": "typecheck"}}
+
+
+def test_world_policy_absent_scopes_and_normalized_paths():
+    # absent write scopes = no writes; absent read scopes = unrestricted reads (TS EDGE-20)
+    w = default_tools(agent(["fs.write_scoped", "fs.read"]))
+    denied = call(w, "fs.write_scoped", {"path": "src/x.ts", "content": "x"})
+    assert denied["output"]["out_of_scope"] == 1
+    assert call(w, "fs.read", {"path": "./src//app.ts"})["output"] == {"path": "src/app.ts", "content": "export {}", "found": 1}
+    a = agent(["fs.write_scoped", "fs.read"], permissions={"filesystem": {"write_scopes": ["src"], "read_scopes": []}})
+    w2 = default_tools(a)
+    assert call(w2, "fs.read", {"path": "src/app.ts"})["output"]["error"] == "scope_denied"  # [] = nothing
+    assert call(w2, "fs.read", {"path": "../etc/passwd"})["output"]["error"] == "path_escape"
+    assert call(w2, "fs.write_scoped", {"path": "src/../x", "content": "x"})["output"]["error"] == "path_escape"
+    assert call(w2, "fs.write_scoped", {"path": ".fausth/x", "content": "x"})["output"]["out_of_scope"] == 1
+    ok = call(w2, "fs.write_scoped", {"path": "./src/new.ts", "content": "x"})["output"]
+    assert ok["ok"] == 1 and ok["path"] == "src/new.ts"
 
 
 # --- PY-10 / D2: message lengths count code points ----------------------------------

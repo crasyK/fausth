@@ -1627,6 +1627,11 @@ def events_to_jsonl(events: list[dict[str, Any]]) -> str:
 
 # --------------------------------------------------------------------------
 # Worlds — TS ``tools/world.ts`` (+ ``adapters/simulation.ts``)
+#
+# Same policy as the TS local adapter (EDGE-20): paths/scopes normalized (D7),
+# absent read scopes = unrestricted, absent write scopes = no writes, secrets
+# and protected paths initialised, the shell restores protected files and sets
+# test evidence on exit 0 — only the I/O is simulated.
 # --------------------------------------------------------------------------
 
 SHELL_NOT_ALLOWLISTED_ERROR = (
@@ -1634,6 +1639,10 @@ SHELL_NOT_ALLOWLISTED_ERROR = (
 )
 GREET_HELLO = 'export function greet(){ return "hello"; }\n'
 SECRET_FIXTURE_VALUE = "sk-fixture-secret-0001"
+#: Host control directory: never writable by the agent in any world.
+HOST_CONTROL_DIR = ".fausth"
+#: Files every simulated coding world starts with (merged under explicit files).
+SIM_DEFAULT_FILES: dict[str, str] = {"src/app.ts": "export {}"}
 
 
 def _utf8(s: str) -> bytes:
@@ -1669,34 +1678,32 @@ def create_greenhouse_tools(world: dict[str, Any]) -> dict[str, ToolHandler]:
     }
 
 
+def _normalize_world_path(raw: str) -> tuple[bool, str]:
+    """``(True, normalized)`` or ``(False, error code)`` — TS world ``normalizePath``."""
+    try:
+        return True, normalize_tool_path(raw)
+    except SandboxPathError as e:
+        return False, e.code
+
+
 def _list_entries_in_memory(path: str, files: dict[str, str]) -> list[str]:
-    normalized = path.replace("\\", "/")
-    if normalized.endswith("/"):
-        normalized = normalized[:-1]
-    prefix = f"{normalized}/" if normalized else ""
+    root = path == ROOT_SCOPE
+    prefix = "" if root else f"{path}/"
     entries: set[str] = set()
     for key in files:
-        if normalized and key != normalized and not key.startswith(prefix):
+        if not root and not key.startswith(prefix):
             continue
-        if not normalized:
-            name = key.split("/")[0]
-            if name:
-                entries.add(name)
-            continue
-        rest = key[len(prefix):]
-        name = rest.split("/")[0]
+        name = key[len(prefix):].split("/")[0]
         if name:
             entries.add(name)
     return sorted(entries)
 
 
-def _in_scope(path: str, scopes: Any) -> bool:
-    for s in js_iter(scopes, "scopes"):
-        if s in (".", "./", "*", "**"):
-            return True
-        if path == s or path.startswith(s if s.endswith("/") else s + "/"):
-            return True
-    return False
+def _read_allowed(world: dict[str, Any], path: str) -> bool:
+    scopes = world.get("read_scopes")
+    if scopes is None:
+        return True
+    return scope_covered(path, scopes)
 
 
 def _register_secret_value(world: dict[str, Any], raw: str) -> None:
@@ -1747,10 +1754,19 @@ def restore_protected_paths(world: dict[str, Any]) -> bool:
     return drifted
 
 
+def _normalize_declared(paths: Any) -> list[str]:
+    out: list[str] = []
+    for p in nn(paths, []):
+        ok, n = _normalize_world_path(js_string(p))
+        if ok:
+            out.append(n)
+    return out
+
+
 def init_coding_secrets(world: dict[str, Any], secrets: Any) -> None:
     if not js_truthy(secrets):
         return
-    world["secret_paths"] = list(nn(jget(secrets, "paths"), []))
+    world["secret_paths"] = _normalize_declared(jget(secrets, "paths"))
     world["deny_write_contains"] = jget(secrets, "deny_write_contains") is not False
     world.setdefault("secret_values", [])
     for v in nn(jget(secrets, "values"), []):
@@ -1763,8 +1779,8 @@ def init_coding_secrets(world: dict[str, Any], secrets: Any) -> None:
 def init_coding_protected_paths(world: dict[str, Any], paths: Any) -> None:
     if not js_truthy(paths) or len(paths) == 0:
         return
-    world["protected_paths"] = list(paths)
-    world["protected_baseline"] = {p: world["files"].get(p) for p in paths}
+    world["protected_paths"] = _normalize_declared(paths)
+    world["protected_baseline"] = {p: world["files"].get(p) for p in world["protected_paths"]}
 
 
 def coding_world_from_agent(
@@ -1772,59 +1788,77 @@ def coding_world_from_agent(
     *,
     test_exit: int | None = None,
     files: dict[str, str] | None = None,
+    exit_codes: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    """TS ``codingWorldFromAgent``: absent write scopes = no writes, absent read scopes =
+    unrestricted reads, secrets + protected paths initialised (scopes normalized, D7)."""
     perms = agent.get("permissions", UNDEFINED)
     fs = jget(perms, "filesystem")
+    write_scopes = jget(fs, "write_scopes")
+    read_scopes = jget(fs, "read_scopes")
     world: dict[str, Any] = {
         "files": files
         if files is not None
         else {"src/app.ts": "export {}", "src/app.js": 'export function greet(){ return "hi"; }\n'},
-        "write_scopes": nn(jget(fs, "write_scopes"), ["src/"]),
-        "read_scopes": jget(fs, "read_scopes"),
+        "write_scopes": normalize_scopes(write_scopes) if js_truthy(write_scopes) else [],
+        "read_scopes": normalize_scopes(read_scopes) if js_truthy(read_scopes) else None,
         "last_exit_code": nn(test_exit, 1),
         "out_of_scope_writes": 0,
     }
+    if exit_codes is not None:
+        world["exit_codes"] = dict(exit_codes)
     init_coding_secrets(world, jget(perms, "secrets"))
     init_coding_protected_paths(world, jget(perms, "protected_paths"))
     return world
 
 
-def create_coding_tools(world: dict[str, Any]) -> dict[str, ToolHandler]:
-    def read_scopes() -> Any:
-        return nn(world.get("read_scopes", UNDEFINED), world["write_scopes"])
+def create_coding_tools(world: dict[str, Any] | None = None) -> dict[str, ToolHandler]:
+    if world is None:
+        world = coding_world_from_agent({"permissions": {"filesystem": {"write_scopes": ["src/"]}}}, test_exit=0)
 
     def fs_read(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
-        path = js_string(jprop(args, "path"))
-        scopes = read_scopes()
-        if len(scopes) > 0 and not _in_scope(path, scopes):
+        raw = js_string(jprop(args, "path"))
+        ok, path = _normalize_world_path(raw)
+        if not ok:
+            return {"output": {"path": raw, "content": "", "found": 0, "error": path}}
+        if not _read_allowed(world, path):
             return {"output": {"path": path, "content": "", "found": 0, "error": "scope_denied"}}
-        content = world["files"].get(path, "")
         found = 1 if path in world["files"] else 0
-        if found and path in (world.get("secret_paths") or []):
+        content = world["files"][path] if found else ""
+        if found and world.get("secret_paths") and path_listed(path, world["secret_paths"]):
             _register_secret_value(world, content)
         return {"output": {"path": path, "content": content, "found": found}}
 
     def fs_list(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
-        path = js_string(jprop(args, "path"))
-        scopes = read_scopes()
-        if len(scopes) > 0 and not _in_scope(path, scopes):
+        raw = js_string(jprop(args, "path"))
+        ok, path = _normalize_world_path(raw)
+        if not ok:
+            return {"output": {"path": raw, "entries": [], "found": 0, "error": path}}
+        if not _read_allowed(world, path):
             return {"output": {"path": path, "entries": [], "found": 0, "error": "scope_denied"}}
         entries = _list_entries_in_memory(path, world["files"])
         return {"output": {"path": path, "entries": entries, "found": 1 if entries else 0}}
 
     def fs_write(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
-        path = js_string(jprop(args, "path"))
+        raw = js_string(jprop(args, "path"))
         content = js_string(nn(jprop(args, "content"), ""))
-        allowed = _in_scope(path, world["write_scopes"])
         leak_check = _should_deny_write_contains(world)
+        ok, norm = _normalize_world_path(raw)
+        path = norm if ok else raw
+        host_reserved = ok and (path == HOST_CONTROL_DIR or path.startswith(f"{HOST_CONTROL_DIR}/"))
+        allowed = ok and path != ROOT_SCOPE and not host_reserved and scope_covered(path, world["write_scopes"])
+        # Every check happens before the write (same order as the local adapter).
         if not allowed:
             world["out_of_scope_writes"] += 1
+            error = norm if not ok else "host_reserved" if host_reserved else "path_invalid" if path == ROOT_SCOPE else None
             out: dict[str, Any] = {"ok": 0, "out_of_scope": 1, "path": path}
+            if error:
+                out["error"] = error
             if leak_check:
                 out["secret_leak"] = 0
             out.update(_protect_flags(world))
             return {"output": out, "state_transition": {"set": {"out_of_scope_writes": world["out_of_scope_writes"]}}}
-        if _protection_active(world) and path in world["protected_paths"]:
+        if _protection_active(world) and path_listed(path, world["protected_paths"]):
             out_p: dict[str, Any] = {"ok": 0, "out_of_scope": 0, "protected_modified": 1, "path": path}
             if leak_check:
                 out_p["secret_leak"] = 0
@@ -1843,25 +1877,23 @@ def create_coding_tools(world: dict[str, Any]) -> dict[str, ToolHandler]:
     def shell(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
         cmd = js_string(jprop(args, "cmd"))
         protect = _protection_active(world)
-        if cmd in ("test", "typecheck"):
-            code = world["last_exit_code"]
+        codes = world.get("exit_codes")
+        scripted = isinstance(codes, dict) and cmd in codes
+        if scripted or cmd in ("test", "typecheck"):
+            code = codes[cmd] if scripted else world["last_exit_code"]
             if restore_protected_paths(world):
                 return {"output": {"exit_code": code, "cmd": cmd, "protected_modified": 1}}
             out: dict[str, Any] = {"exit_code": code, "cmd": cmd}
             if protect:
                 out["protected_modified"] = 0
             result: dict[str, Any] = {"output": out}
-            if code == 0:
+            if js_strict_eq(code, 0):
                 result["state_transition"] = {"set": {"test_evidence_current": 1}}
             return result
         out_deny: dict[str, Any] = {"exit_code": 1, "cmd": cmd, "error": SHELL_NOT_ALLOWLISTED_ERROR}
         if protect:
             out_deny["protected_modified"] = 0
         return {"output": out_deny}
-
-    def user_ask(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
-        answer = nn(jprop(args, "answer"), nn(jprop(args, "question"), ""))
-        return {"output": {"answer": js_string(answer)}, "state_transition": {"set": {"clarified": 1}}}
 
     def kb_lookup(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
         # D2: truncation counts code points.
@@ -1876,13 +1908,13 @@ def create_coding_tools(world: dict[str, Any]) -> dict[str, ToolHandler]:
     def echo(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
         return {"output": {"ok": 1, "echo": js_string(nn(jprop(args, "message"), "pong"))}}
 
+    # D14: no `user.ask` world stub — the user cell is answered by a host user channel only.
     return {
         "fs.read": fs_read,
         "fs.list": fs_list,
         "fs.write_scoped": fs_write,
         "shell.run_allowlisted": shell,
         "user.approve": lambda a, c: {"output": {"approved": 0}},
-        "user.ask": user_ask,
         "user.correct": lambda a, c: {"output": {"ok": 1}},
         "task.complete": lambda a, c: {"output": {"ok": 1}},
         "phase.yield": lambda a, c: {
@@ -1944,27 +1976,20 @@ def create_simulation_coding_tools(
     *,
     files: dict[str, str] | None = None,
     write_scopes: Any = None,
+    read_scopes: Any = None,
     exit_codes: dict[str, int] | None = None,
 ) -> dict[str, ToolHandler]:
     """TS ``createSimulationCodingAdapter`` (deterministic fake FS/shell)."""
     world: dict[str, Any] = {
-        "files": {"src/app.ts": "export {}", **(files or {})},
-        "write_scopes": nn(write_scopes, ["src/"]),
+        "files": {**SIM_DEFAULT_FILES, **(files or {})},
+        "write_scopes": normalize_scopes(nn(write_scopes, ["src/"])),
+        "read_scopes": normalize_scopes(read_scopes) if js_truthy(read_scopes) else None,
         "last_exit_code": 0,
         "out_of_scope_writes": 0,
     }
-    base = create_coding_tools(world)
-    codes = exit_codes or {}
-
-    def shell(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
-        cmd = js_string(jprop(args, "cmd"))
-        fallback = world["last_exit_code"] if cmd in ("test", "typecheck") else 1
-        code = codes.get(cmd, fallback)
-        if cmd in ("test", "typecheck") or cmd in codes:
-            return {"output": {"exit_code": code, "cmd": cmd}}
-        return {"output": {"exit_code": 1, "cmd": cmd, "error": SHELL_NOT_ALLOWLISTED_ERROR}}
-
-    return {**base, "shell.run_allowlisted": shell}
+    if exit_codes:
+        world["exit_codes"] = dict(exit_codes)
+    return create_coding_tools(world)
 
 
 def simulation_tool_pool(
@@ -1974,27 +1999,18 @@ def simulation_tool_pool(
     sensor_healthy: int | None = None,
     files: dict[str, str] | None = None,
 ) -> dict[str, ToolHandler]:
-    """Deployment handler pool — TS ``adapters/registry.ts buildHandlerPool``."""
-    write_scopes = nn(jget(jget(agent.get("permissions", UNDEFINED), "filesystem"), "write_scopes"), ["src/"])
-    coding = create_simulation_coding_tools(
-        files=files,
-        write_scopes=write_scopes,
-        exit_codes={"test": test_exit, "typecheck": test_exit} if test_exit is not None else None,
+    """Deployment handler pool — TS ``adapters/registry.ts buildHandlerPool``: the agent's own
+    permissions on a simulated world (``createSimulationWorldForAgent``)."""
+    world = coding_world_from_agent(
+        agent, test_exit=nn(test_exit, 0), files={**SIM_DEFAULT_FILES, **(files or {})}
     )
-    if test_exit is not None:
-
-        def shell(args: Any, ctx: dict[str, Any]) -> dict[str, Any]:
-            cmd = js_string(jprop(args, "cmd"))
-            if cmd in ("test", "typecheck"):
-                return {"output": {"exit_code": test_exit, "cmd": cmd}}
-            return {"output": {"exit_code": 1, "cmd": cmd, "error": SHELL_NOT_ALLOWLISTED_ERROR}}
-
-        coding["shell.run_allowlisted"] = shell
     return {
         **create_greenhouse_tools(_greenhouse_world(agent, sensor_healthy)),
-        **coding,
+        **create_coding_tools(world),
         **create_spawn_tool(),
     }
+
+
 
 
 # --------------------------------------------------------------------------
