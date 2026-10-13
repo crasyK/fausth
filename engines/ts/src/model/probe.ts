@@ -2,6 +2,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Deployment } from "../types.js";
 import type { ProviderCapabilities } from "./capabilities.js";
+import { boundProviderText, isModelInfraError, type ModelInfraErrorKind } from "./errors.js";
 import { createAdapterFromDeployment } from "./resolve.js";
 import { resolveProfile } from "./profiles/index.js";
 
@@ -11,6 +12,10 @@ export type ProbeReport = ProviderCapabilities & {
   auth: boolean;
   models_requested: string[];
   error?: string;
+  /** Infra kind (timeout, rate_limit, auth, …) or "config" — distinguishes outages from auth. */
+  error_kind?: ModelInfraErrorKind | "config";
+  /** Infra failure during the tool-calling probe (native_tools then stays "unknown"). */
+  tool_probe_error?: ModelInfraErrorKind;
   redacted: true;
 };
 
@@ -21,6 +26,7 @@ async function sleep(ms: number): Promise<void> {
 /**
  * Probe an OpenAI-compatible deployment without sending sensitive data.
  * Results are capability declarations — they do not weaken local policy.
+ * Infra failures (rate limit, timeout, …) are reported as such, never as missing capabilities.
  */
 export async function probeProvider(deployment: Deployment): Promise<ProbeReport> {
   const profile = resolveProfile(
@@ -88,22 +94,26 @@ export async function probeProvider(deployment: Deployment): Promise<ProbeReport
         base.tool_choice = true;
         const v = toolProbe.args.value;
         base.structured_output = typeof v === "number" && Number.isInteger(v);
-      } else if (toolProbe.type === "tool") {
-        base.native_tools = false;
       } else {
         base.native_tools = false;
       }
-    } catch {
-      base.native_tools = false;
+    } catch (e) {
+      if (!isModelInfraError(e)) throw e;
+      // An outage says nothing about tool support.
+      base.native_tools = "unknown";
+      base.tool_probe_error = e.kind;
     }
 
     return base;
   } catch (e) {
+    const infra = isModelInfraError(e);
     return {
       ...base,
+      // Unverified on any failure; error_kind tells an auth rejection from an outage.
       auth: false,
       chat_completions: false,
-      error: e instanceof Error ? e.message.replace(/sk-[a-zA-Z0-9_-]+/g, "[REDACTED]") : String(e),
+      error: boundProviderText(e instanceof Error ? e.message : String(e)),
+      error_kind: infra ? e.kind : "config",
     };
   }
 }

@@ -1,8 +1,18 @@
-import type { ModelPort, ModelProposeRequest, ModelProposal } from "../port.js";
+import type { ChatMessage, ModelPort, ModelProposeRequest, ModelProposal } from "../port.js";
 import type { ProviderCapabilities } from "../capabilities.js";
 import type { ProviderProfile } from "../profiles/index.js";
+import { boundProviderText, ModelInfraError } from "../errors.js";
+
+/** Default per-request timeout (connect + full body). */
+export const DEFAULT_MODEL_TIMEOUT_MS = 120_000;
+const DEFAULT_MAX_ATTEMPTS = 4;
+const DEFAULT_RETRY_BASE_MS = 500;
+const MAX_RETRY_AFTER_MS = 60_000;
+const RAW_MAX_CODE_POINTS = 1000;
+const INT53_MAX = 9007199254740991;
 
 async function sleep(ms: number): Promise<void> {
+  if (!(ms > 0)) return;
   await new Promise((r) => setTimeout(r, ms));
 }
 
@@ -14,28 +24,117 @@ export type OpenAICompatConfig = {
   maxTokens?: number;
   headers?: Record<string, string>;
   capabilities?: ProviderCapabilities;
+  /** Response-message fields to keep and re-attach to that assistant turn (same model only). */
   preserveResponseFields?: string[];
   onModelUsed?: (model: string) => void;
-  /** Session bag for preserve_response_fields across turns. */
-  sessionExtras?: Record<string, unknown>;
+  /** Per-request timeout in ms (AbortSignal); default {@link DEFAULT_MODEL_TIMEOUT_MS}. */
+  timeoutMs?: number;
+  /** Attempts per model for retryable infra failures (429/5xx/network/timeout); default 4. */
+  maxAttempts?: number;
+  /** Base for exponential backoff between retries in ms; default 500. */
+  retryBaseMs?: number;
 };
 
 type ChatToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
+  id?: string;
+  type?: "function";
+  function?: { name?: string; arguments?: unknown };
 };
+
+type ChatResponseMessage = {
+  content?: string | null;
+  tool_calls?: ChatToolCall[];
+  [k: string]: unknown;
+};
+
+type ChatResponse = {
+  choices?: { message?: ChatResponseMessage; finish_reason?: string }[];
+  error?: { code?: number | string; message?: string; [k: string]: unknown };
+  [k: string]: unknown;
+};
+
+type Provenance = { model: string; provider_fields?: Record<string, unknown> };
+
+type ModelOutcome =
+  | { ok: true; proposal: ModelProposal }
+  | { ok: false; error: ModelInfraError; fallback: boolean };
+
+type HttpFailure = { error: ModelInfraError; retry: boolean; fallback: boolean; waitMs?: number };
+
+/** A fully-read HTTP reply (body read under the same timeout as the request). */
+type HttpReply = { status: number; ok: boolean; headers: Headers; text: string };
+
+/** Provider wording for exhausted daily/account quotas (retrying will not help). */
+const QUOTA_RE = /daily|per[-\s]?day|quota/i;
+const QUOTA_OR_LIMIT_RE = /daily|per[-\s]?day|quota|rate.?limit/i;
+
+function capCodePoints(s: string, n = RAW_MAX_CODE_POINTS): string {
+  const cps = Array.from(s);
+  return cps.length > n ? `${cps.slice(0, n).join("")}…` : s;
+}
+
+function isAbortLike(e: unknown): boolean {
+  const name = (e as { name?: unknown } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
+function retryAfterMs(res: HttpReply): number | undefined {
+  const h = res.headers.get("retry-after");
+  if (!h) return undefined;
+  const secs = Number(h);
+  if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, MAX_RETRY_AFTER_MS);
+  const at = Date.parse(h);
+  if (Number.isFinite(at)) return Math.min(Math.max(0, at - Date.now()), MAX_RETRY_AFTER_MS);
+  return undefined;
+}
+
+/** D3: model-supplied numbers must be int53 integers to enter the canonical event log. */
+function hasNonCanonicalNumber(v: unknown): boolean {
+  if (typeof v === "number") return !Number.isInteger(v) || Math.abs(v) > INT53_MAX;
+  if (Array.isArray(v)) return v.some(hasNonCanonicalNumber);
+  if (v && typeof v === "object") return Object.values(v as Record<string, unknown>).some(hasNonCanonicalNumber);
+  return false;
+}
+
+/**
+ * Serialize the transcript for one request to `model`. Host-side metadata (`model`,
+ * `provider_fields`) never goes on the wire as-is; preserved provider fields are re-attached
+ * to the assistant message they came from, and only when that turn was produced by the
+ * same model (on fallback, another model's reasoning is dropped).
+ */
+export function wireMessages(messages: ChatMessage[], model: string): Record<string, unknown>[] {
+  return messages.map((m) => {
+    const out: Record<string, unknown> = { role: m.role };
+    if (m.content !== undefined) out.content = m.content;
+    if (m.tool_call_id !== undefined) out.tool_call_id = m.tool_call_id;
+    if (m.tool_calls !== undefined) out.tool_calls = m.tool_calls;
+    if (m.role === "assistant" && m.provider_fields && m.model === model) {
+      for (const [k, v] of Object.entries(m.provider_fields)) {
+        if (!(k in out) && k !== "model" && k !== "provider_fields") out[k] = v;
+      }
+    }
+    return out;
+  });
+}
 
 /**
  * Canonical OpenAI-compatible Chat Completions transport.
  * Provider quirks belong in profiles, not here.
+ *
+ * Infra failures throw {@link ModelInfraError}; model-protocol failures are returned as
+ * `invalid` proposals (closed reason set in errors.ts). One tool call per step: requests
+ * carry `parallel_tool_calls: false` and responses with more than one call are `invalid`.
  */
 export class OpenAICompatibleAdapter implements ModelPort {
   lastModelUsed = "";
-  private sessionExtras: Record<string, unknown>;
+  /** Models whose endpoint rejected the `parallel_tool_calls` flag (do not resend). */
+  private parallelFlagRejected = new Set<string>();
 
-  constructor(private cfg: OpenAICompatConfig) {
-    this.sessionExtras = cfg.sessionExtras ?? {};
+  constructor(private cfg: OpenAICompatConfig) {}
+
+  private get timeoutMs(): number {
+    const t = this.cfg.timeoutMs;
+    return typeof t === "number" && t > 0 ? t : DEFAULT_MODEL_TIMEOUT_MS;
   }
 
   async propose(input: ModelProposeRequest): Promise<ModelProposal> {
@@ -58,204 +157,310 @@ export class OpenAICompatibleAdapter implements ModelPort {
       };
     });
 
-    const caps = this.cfg.capabilities;
-    const maxField = caps?.max_tokens_field ?? "max_tokens";
-    const useToolChoice = caps?.tool_choice !== false;
-
-    let lastErr: unknown;
+    let lastErr: ModelInfraError | undefined;
     for (const model of this.cfg.models) {
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          const body: Record<string, unknown> = {
-            model,
-            temperature: this.cfg.temperature ?? 0,
-            [maxField]: this.cfg.maxTokens ?? 1024,
-            messages: input.messages,
-          };
-          if (tools.length && caps?.native_tools !== false) {
-            body.tools = tools;
-            if (useToolChoice) {
-              body.tool_choice = input.tool_choice === "required" ? "required" : "auto";
-            }
-          }
-          // Re-attach preserved provider fields (e.g. reasoning_details)
-          for (const [k, v] of Object.entries(this.sessionExtras)) {
-            body[k] = v;
-          }
-
-          let res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${this.cfg.apiKey}`,
-              "Content-Type": "application/json",
-              ...(this.cfg.headers ?? {}),
-            },
-            body: JSON.stringify(body),
-          });
-          // Some gateways reject tool_choice:"required" — fall back to auto once.
-          if (
-            !res.ok &&
-            body.tool_choice === "required" &&
-            res.status !== 429 &&
-            res.status !== 404
-          ) {
-            const failText = await res.text();
-            if (/tool_choice|required|unsupported|invalid/i.test(failText)) {
-              body.tool_choice = "auto";
-              res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${this.cfg.apiKey}`,
-                  "Content-Type": "application/json",
-                  ...(this.cfg.headers ?? {}),
-                },
-                body: JSON.stringify(body),
-              });
-            } else {
-              if (/daily|rate.?limit|quota/i.test(failText)) {
-                const err = new Error(`RATE_LIMIT: ${failText}`) as Error & { code?: number };
-                err.code = 2;
-                throw err;
-              }
-              throw new Error(`OpenAI-compatible error ${res.status}: ${failText}`);
-            }
-          }
-          if (res.status === 429) {
-            await sleep(500 * 2 ** attempt);
-            continue;
-          }
-          if (res.status === 404) {
-            lastErr = new Error(`model unavailable: ${model}`);
-            break;
-          }
-          if (!res.ok) {
-            const text = await res.text();
-            if (/daily|rate.?limit|quota/i.test(text)) {
-              const err = new Error(`RATE_LIMIT: ${text}`) as Error & { code?: number };
-              err.code = 2;
-              throw err;
-            }
-            throw new Error(`OpenAI-compatible error ${res.status}: ${text}`);
-          }
-          const data = (await res.json()) as {
-            choices: {
-              message: {
-                content?: string;
-                tool_calls?: ChatToolCall[];
-                [k: string]: unknown;
-              };
-            }[];
-            [k: string]: unknown;
-          };
-          this.lastModelUsed = model;
-          this.cfg.onModelUsed?.(model);
-
-          const msg = data.choices[0]?.message;
-          if (!msg) {
-            return { type: "invalid", reason: "empty_choices", raw: JSON.stringify(data) };
-          }
-
-          // Preserve configured response fields for next turn
-          for (const field of this.cfg.preserveResponseFields ?? []) {
-            const fromMsg = msg[field];
-            const fromRoot = data[field];
-            if (fromMsg !== undefined) this.sessionExtras[field] = fromMsg;
-            else if (fromRoot !== undefined) this.sessionExtras[field] = fromRoot;
-          }
-
-          const tc = msg.tool_calls?.[0];
-          if (tc) {
-            const name = idMap.get(tc.function.name);
-            if (!name) {
-              return {
-                type: "invalid",
-                reason: "unknown_transport_tool",
-                raw: tc.function.name,
-              };
-            }
-            let args: Record<string, unknown> = {};
-            try {
-              args = JSON.parse(tc.function.arguments || "{}") as Record<string, unknown>;
-            } catch {
-              return {
-                type: "invalid",
-                reason: "invalid_tool_arguments_json",
-                raw: tc.function.arguments,
-              };
-            }
-            return {
-              type: "tool",
-              name,
-              args,
-              tool_call_id: tc.id,
-              transport_name: tc.function.name,
-            };
-          }
-
-          // Some gateways accept tool_choice:"required" but return finish_reason
-          // tool_calls with an empty message (no tool_calls). Retry once with auto.
-          if (
-            body.tool_choice === "required" &&
-            tools.length > 0 &&
-            (!msg.tool_calls || msg.tool_calls.length === 0)
-          ) {
-            body.tool_choice = "auto";
-            const retryRes = await fetch(
-              `${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${this.cfg.apiKey}`,
-                  "Content-Type": "application/json",
-                  ...(this.cfg.headers ?? {}),
-                },
-                body: JSON.stringify(body),
-              },
-            );
-            if (retryRes.ok) {
-              const retryData = (await retryRes.json()) as typeof data;
-              this.lastModelUsed = model;
-              this.cfg.onModelUsed?.(model);
-              const retryMsg = retryData.choices[0]?.message;
-              const retryTc = retryMsg?.tool_calls?.[0];
-              if (retryTc) {
-                const name = idMap.get(retryTc.function.name);
-                if (name) {
-                  let args: Record<string, unknown> = {};
-                  try {
-                    args = JSON.parse(retryTc.function.arguments || "{}") as Record<
-                      string,
-                      unknown
-                    >;
-                    return {
-                      type: "tool",
-                      name,
-                      args,
-                      tool_call_id: retryTc.id,
-                      transport_name: retryTc.function.name,
-                    };
-                  } catch {
-                    return {
-                      type: "invalid",
-                      reason: "invalid_tool_arguments_json",
-                      raw: retryTc.function.arguments,
-                    };
-                  }
-                }
-              }
-              return { type: "stop", message: retryMsg?.content ?? "" };
-            }
-          }
-
-          return { type: "stop", message: msg.content ?? "" };
-        } catch (e) {
-          lastErr = e;
-          if (e instanceof Error && e.message.startsWith("RATE_LIMIT")) throw e;
-          if (attempt < 3) await sleep(500 * 2 ** attempt);
-        }
-      }
+      const out = await this.proposeWithModel(model, input, tools, idMap);
+      if (out.ok) return out.proposal;
+      lastErr = out.error;
+      if (!out.fallback) throw out.error;
     }
-    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+    throw lastErr ?? new ModelInfraError("model_unavailable", "no models configured");
+  }
+
+  private async proposeWithModel(
+    model: string,
+    input: ModelProposeRequest,
+    tools: Record<string, unknown>[],
+    idMap: Map<string, string>,
+  ): Promise<ModelOutcome> {
+    const caps = this.cfg.capabilities;
+    const maxAttempts = Math.max(1, this.cfg.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+    const base = this.cfg.retryBaseMs ?? DEFAULT_RETRY_BASE_MS;
+    const offerTools = tools.length > 0 && caps?.native_tools !== false;
+    let toolChoice: "auto" | "required" = input.tool_choice === "required" ? "required" : "auto";
+    let triedAutoAfterReject = false;
+    let triedAutoAfterEmpty = false;
+    let lastErr: ModelInfraError | undefined;
+    let attempt = 0;
+
+    const backoff = async (waitMs?: number) => {
+      attempt += 1;
+      if (attempt < maxAttempts) await sleep(waitMs ?? base * 2 ** (attempt - 1));
+    };
+
+    while (attempt < maxAttempts) {
+      const sendParallelFlag =
+        offerTools &&
+        caps?.parallel_tool_calls_param !== false &&
+        !this.parallelFlagRejected.has(model);
+      const body: Record<string, unknown> = {
+        model,
+        temperature: this.cfg.temperature ?? 0,
+        [caps?.max_tokens_field ?? "max_tokens"]: this.cfg.maxTokens ?? 1024,
+        messages: wireMessages(input.messages, model),
+      };
+      if (offerTools) {
+        body.tools = tools;
+        if (caps?.tool_choice !== false) body.tool_choice = toolChoice;
+        if (sendParallelFlag) body.parallel_tool_calls = false;
+      }
+
+      let res: HttpReply;
+      try {
+        res = await this.postRead(body);
+      } catch (e) {
+        lastErr = this.classifyThrown(e, model);
+        await backoff();
+        continue;
+      }
+
+      if (!res.ok) {
+        const text = res.text;
+        const requestFixable =
+          res.status >= 400 &&
+          res.status < 500 &&
+          ![401, 402, 403, 404, 408, 429].includes(res.status);
+        // Bounded request adjustments (not counted as retries).
+        if (requestFixable && sendParallelFlag && /parallel_tool_calls/i.test(text)) {
+          this.parallelFlagRejected.add(model);
+          continue;
+        }
+        if (
+          requestFixable &&
+          body.tool_choice === "required" &&
+          !triedAutoAfterReject &&
+          /tool_choice|required|unsupported|invalid/i.test(text)
+        ) {
+          // Some gateways reject tool_choice:"required" — fall back to auto once.
+          toolChoice = "auto";
+          triedAutoAfterReject = true;
+          continue;
+        }
+        const failure = this.classifyHttpFailure(res, text, model);
+        if (failure.retry) {
+          lastErr = failure.error;
+          await backoff(failure.waitMs);
+          continue;
+        }
+        return { ok: false, error: failure.error, fallback: failure.fallback };
+      }
+
+      let data: ChatResponse;
+      try {
+        data = JSON.parse(res.text) as ChatResponse;
+      } catch (e) {
+        lastErr = new ModelInfraError("server_error", `malformed (non-JSON) response body from ${model}`, {
+          status: res.status,
+          model,
+          cause: e,
+        });
+        await backoff();
+        continue;
+      }
+
+      if (data && typeof data === "object" && data.error && !Array.isArray(data.choices)) {
+        // Some gateways report provider failures in a 2xx body.
+        const code = Number(data.error.code);
+        const detail = boundProviderText(String(data.error.message ?? JSON.stringify(data.error)));
+        if (code === 429) {
+          const err = new ModelInfraError("rate_limit", `${model}: ${detail}`, { status: 429, model });
+          if (QUOTA_RE.test(detail)) return { ok: false, error: err, fallback: false };
+          lastErr = err;
+        } else {
+          lastErr = new ModelInfraError("server_error", `${model}: provider error in 2xx body: ${detail}`, {
+            status: Number.isFinite(code) ? code : res.status,
+            model,
+          });
+        }
+        await backoff();
+        continue;
+      }
+
+      this.lastModelUsed = model;
+      this.cfg.onModelUsed?.(model);
+
+      const msg = data?.choices?.[0]?.message;
+      if (!msg || typeof msg !== "object") {
+        return {
+          ok: true,
+          proposal: { type: "invalid", reason: "empty_choices", raw: capCodePoints(JSON.stringify(data)), model },
+        };
+      }
+      const prov: Provenance = { model };
+      const preserved = this.capturePreserved(msg, data);
+      if (preserved) prov.provider_fields = preserved;
+
+      const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+      if (calls.length > 1) {
+        // The runtime executes exactly one tool per step — never drop calls silently.
+        const described = calls.map((c) => ({
+          name: idMap.get(String(c?.function?.name ?? "")) ?? String(c?.function?.name ?? ""),
+          arguments: c?.function?.arguments ?? null,
+        }));
+        return {
+          ok: true,
+          proposal: {
+            type: "invalid",
+            reason: "multiple_tool_calls",
+            raw: capCodePoints(JSON.stringify(described)),
+            ...prov,
+          },
+        };
+      }
+      if (calls.length === 1) {
+        return { ok: true, proposal: this.toToolProposal(calls[0]!, idMap, prov) };
+      }
+
+      // Some gateways accept tool_choice:"required" but return no tool_calls. Retry once with auto.
+      if (body.tool_choice === "required" && !triedAutoAfterEmpty) {
+        toolChoice = "auto";
+        triedAutoAfterEmpty = true;
+        continue;
+      }
+      return {
+        ok: true,
+        proposal: { type: "stop", message: typeof msg.content === "string" ? msg.content : "", ...prov },
+      };
+    }
+    return {
+      ok: false,
+      error:
+        lastErr ?? new ModelInfraError("server_error", `no usable response from ${model}`, { model }),
+      fallback: true,
+    };
+  }
+
+  /**
+   * POST and read the full body under one timeout. A ref'd timer (cleared in finally)
+   * guarantees the abort fires even if the fetch implementation holds no event-loop ref.
+   */
+  private async postRead(body: Record<string, unknown>): Promise<HttpReply> {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new DOMException(`timed out after ${this.timeoutMs}ms`, "TimeoutError")),
+      this.timeoutMs,
+    );
+    try {
+      const res = await fetch(`${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.cfg.apiKey}`,
+          "Content-Type": "application/json",
+          ...(this.cfg.headers ?? {}),
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      return { status: res.status, ok: res.ok, headers: res.headers, text };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private classifyThrown(e: unknown, model: string): ModelInfraError {
+    if (e instanceof ModelInfraError) return e;
+    if (isAbortLike(e)) {
+      return new ModelInfraError("timeout", `model request timed out after ${this.timeoutMs}ms (${model})`, {
+        model,
+        cause: e,
+      });
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    const cause = (e as { cause?: { code?: unknown } } | null)?.cause?.code;
+    return new ModelInfraError(
+      "network",
+      `model request failed (${model}): ${boundProviderText(msg)}${typeof cause === "string" ? ` [${cause}]` : ""}`,
+      { model, cause: e },
+    );
+  }
+
+  private classifyHttpFailure(res: HttpReply, text: string, model: string): HttpFailure {
+    const status = res.status;
+    const detail = `${model} HTTP ${status}: ${boundProviderText(text)}`;
+    if (status === 429) {
+      const error = new ModelInfraError("rate_limit", detail, { status, model });
+      if (QUOTA_RE.test(text)) return { error, retry: false, fallback: false };
+      return { error, retry: true, fallback: true, waitMs: retryAfterMs(res) };
+    }
+    if (status === 401 || status === 402 || status === 403) {
+      if (QUOTA_OR_LIMIT_RE.test(text)) {
+        return { error: new ModelInfraError("rate_limit", detail, { status, model }), retry: false, fallback: false };
+      }
+      return { error: new ModelInfraError("auth", detail, { status, model }), retry: false, fallback: false };
+    }
+    if (status === 404) {
+      return {
+        error: new ModelInfraError("model_unavailable", `model unavailable: ${detail}`, { status, model }),
+        retry: false,
+        fallback: true,
+      };
+    }
+    if (status === 408) {
+      return { error: new ModelInfraError("timeout", detail, { status, model }), retry: true, fallback: true };
+    }
+    if (status >= 500) {
+      return { error: new ModelInfraError("server_error", detail, { status, model }), retry: true, fallback: true };
+    }
+    if (QUOTA_OR_LIMIT_RE.test(text)) {
+      // Legacy: some gateways report quota exhaustion as a non-429 4xx.
+      return { error: new ModelInfraError("rate_limit", detail, { status, model }), retry: false, fallback: false };
+    }
+    return { error: new ModelInfraError("bad_request", detail, { status, model }), retry: false, fallback: true };
+  }
+
+  private capturePreserved(
+    msg: ChatResponseMessage,
+    data: ChatResponse,
+  ): Record<string, unknown> | undefined {
+    let out: Record<string, unknown> | undefined;
+    for (const field of this.cfg.preserveResponseFields ?? []) {
+      const v = msg[field] !== undefined && msg[field] !== null ? msg[field] : data[field];
+      if (v === undefined || v === null) continue;
+      (out ??= {})[field] = v;
+    }
+    return out;
+  }
+
+  private toToolProposal(tc: ChatToolCall, idMap: Map<string, string>, prov: Provenance): ModelProposal {
+    const transportName = tc.function?.name;
+    const name = typeof transportName === "string" ? idMap.get(transportName) : undefined;
+    if (!name) {
+      return {
+        type: "invalid",
+        reason: "unknown_transport_tool",
+        raw: capCodePoints(String(transportName ?? "")),
+        ...prov,
+      };
+    }
+    const rawArgs = tc.function?.arguments;
+    let parsed: unknown;
+    if (rawArgs === undefined || rawArgs === null || (typeof rawArgs === "string" && rawArgs.trim() === "")) {
+      parsed = {};
+    } else if (typeof rawArgs === "string") {
+      try {
+        parsed = JSON.parse(rawArgs);
+      } catch {
+        return { type: "invalid", reason: "invalid_tool_arguments_json", raw: capCodePoints(rawArgs), ...prov };
+      }
+    } else {
+      parsed = rawArgs;
+    }
+    const rawText = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { type: "invalid", reason: "tool_arguments_not_object", raw: capCodePoints(rawText), ...prov };
+    }
+    if (hasNonCanonicalNumber(parsed)) {
+      return { type: "invalid", reason: "tool_arguments_non_canonical", raw: capCodePoints(rawText), ...prov };
+    }
+    return {
+      type: "tool",
+      name,
+      args: parsed as Record<string, unknown>,
+      ...(typeof tc.id === "string" && tc.id ? { tool_call_id: tc.id } : {}),
+      transport_name: transportName,
+      ...prov,
+    };
   }
 }
 
@@ -268,6 +473,9 @@ export function adapterFromProfile(
     temperature?: number;
     maxTokens?: number;
     headers?: Record<string, string>;
+    timeoutMs?: number;
+    /** Deployment override for profile.compatibility.preserve_response_fields. */
+    preserveResponseFields?: string[];
   },
 ): OpenAICompatibleAdapter {
   return new OpenAICompatibleAdapter({
@@ -278,6 +486,8 @@ export function adapterFromProfile(
     maxTokens: opts.maxTokens,
     headers: { ...(profile.defaultHeaders ?? {}), ...(opts.headers ?? {}) },
     capabilities: profile.capabilities,
-    preserveResponseFields: profile.compatibility?.preserve_response_fields,
+    preserveResponseFields:
+      opts.preserveResponseFields ?? profile.compatibility?.preserve_response_fields,
+    timeoutMs: opts.timeoutMs,
   });
 }

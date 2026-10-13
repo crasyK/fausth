@@ -130,6 +130,47 @@ describe("connector resolve", () => {
     }
   });
 
+  it("pins raw bytes, refuses invalid UTF-8, and maps parse errors to connectors_invalid", () => {
+    const dir = mkdtempSync(join(tmpdir(), "fausth-conn-bytes-"));
+    try {
+      writeFileSync(
+        join(dir, "agent.yml"),
+        `spec: counterbalance-contract/v0.1\nname: t\nstate: {}\ntools:\n  - id: ping.local\n`,
+        "utf8",
+      );
+      mkdirSync(join(dir, "connectors"));
+      writeFileSync(
+        join(dir, "connectors.yml"),
+        `format: fausth-connectors/v0.1\nconnectors:\n  - id: echo\n    kind: file\n    path: connectors/echo.yml\n`,
+        "utf8",
+      );
+      // Latin-1 byte 0xE9 is not UTF-8: previously decoded to U+FFFD and pinned silently.
+      const bad = Buffer.concat([
+        Buffer.from("format: fausth-connector-manifest/v0.1\nprovides:\n  - id: echo.ping\n    description: caf", "utf8"),
+        Buffer.from([0xe9]),
+        Buffer.from("\n", "utf8"),
+      ]);
+      writeFileSync(join(dir, "connectors/echo.yml"), bad);
+      assert.throws(() => resolveHarness(dir), (e: unknown) => {
+        assert.ok(e instanceof ConnectorError);
+        assert.equal(e.code, "connectors_invalid");
+        return true;
+      });
+      writeFileSync(join(dir, "connectors/echo.yml"), "format: [unclosed\n", "utf8");
+      assert.throws(() => resolveHarness(dir), (e: unknown) => {
+        assert.ok(e instanceof ConnectorError);
+        assert.equal(e.code, "connectors_invalid");
+        return true;
+      });
+      const crlf = "format: fausth-connector-manifest/v0.1\r\nprovides:\r\n  - id: echo.ping\r\n";
+      writeFileSync(join(dir, "connectors/echo.yml"), crlf, "utf8");
+      const lock = resolveHarness(dir).resolution.lock[0]!;
+      assert.equal(lock.sha256, createHash("sha256").update(Buffer.from(crlf, "utf8")).digest("hex"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects secret-like keys in connector manifests", () => {
     const dir = mkdtempSync(join(tmpdir(), "fausth-conn-secret-"));
     try {

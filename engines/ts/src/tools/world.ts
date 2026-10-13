@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 import type { ToolHandler } from "../runtime.js";
 import type { ToolResultEnvelope } from "../types.js";
+import {
+  normalizeScopes,
+  normalizeToolPath,
+  pathListed,
+  ROOT_SCOPE,
+  SandboxPathError,
+  scopeCovered,
+} from "../adapters/sandbox-path.js";
 
 /** In-memory greenhouse world for stubs + fixtures. */
 export type GreenhouseWorld = {
@@ -33,9 +41,13 @@ export function createGreenhouseTools(world: GreenhouseWorld): Record<string, To
 
 export type CodingWorld = {
   files: Record<string, string>;
+  /** Normalized write scopes; [] = no writes (absent agent write_scopes means none). */
   write_scopes: string[];
+  /** Normalized read scopes; undefined = unrestricted (agent declared none). */
   read_scopes?: string[];
   last_exit_code: number;
+  /** Scripted exit codes per allowlisted command (own keys only); test/typecheck default to last_exit_code. */
+  exit_codes?: Record<string, number>;
   out_of_scope_writes: number;
   /** Paths whose contents are treated as secrets when present in files / after read. */
   secret_paths?: string[];
@@ -49,32 +61,41 @@ export type CodingWorld = {
   protected_baseline?: Record<string, string | null>;
 };
 
-const SHELL_NOT_ALLOWLISTED_ERROR =
+/** One definition shared by the simulated and the real (local) world. */
+export const SHELL_NOT_ALLOWLISTED_ERROR =
   "not allowlisted: only 'test' and 'typecheck' are available; use fs.read/fs.list to explore";
 
+/** Host control directory: never writable by the agent in any world (mirrors adapters/local). */
+const HOST_CONTROL_DIR = ".fausth";
+
+function hasOwn(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+/** D7 path normalization for the in-memory world (same rules as the local adapter). */
+function normalizePath(raw: string): { ok: true; path: string } | { ok: false; code: string } {
+  try {
+    return { ok: true, path: normalizeToolPath(raw) };
+  } catch (e) {
+    return { ok: false, code: e instanceof SandboxPathError ? e.code : "path_invalid" };
+  }
+}
+
 function listEntriesInMemory(path: string, files: Record<string, string>): string[] {
-  const normalized = path.replace(/\\/g, "/").replace(/\/$/, "");
-  const prefix = normalized ? `${normalized}/` : "";
+  const root = path === ROOT_SCOPE;
+  const prefix = root ? "" : `${path}/`;
   const entries = new Set<string>();
   for (const key of Object.keys(files)) {
-    if (normalized && key !== normalized && !key.startsWith(prefix)) continue;
-    if (!normalized) {
-      const name = key.split("/")[0];
-      if (name) entries.add(name);
-      continue;
-    }
-    const rest = key.slice(prefix.length);
-    const name = rest.split("/")[0];
+    if (!root && !key.startsWith(prefix)) continue;
+    const name = key.slice(prefix.length).split("/")[0];
     if (name) entries.add(name);
   }
   return [...entries].sort();
 }
 
-function inScope(path: string, scopes: string[]): boolean {
-  return scopes.some((s) => {
-    if (s === "." || s === "./" || s === "*" || s === "**") return true;
-    return path === s || path.startsWith(s.endsWith("/") ? s : s + "/");
-  });
+function readAllowed(world: CodingWorld, path: string): boolean {
+  if (world.read_scopes === undefined) return true;
+  return scopeCovered(path, world.read_scopes);
 }
 
 export function contentFingerprint(content: string | null | undefined): string {
@@ -114,7 +135,7 @@ function protectionActive(world: CodingWorld): boolean {
 }
 
 function isProtectedPath(world: CodingWorld, path: string): boolean {
-  return Boolean(world.protected_paths?.includes(path));
+  return pathListed(path, world.protected_paths ?? []);
 }
 
 function protectFlags(world: CodingWorld): Record<string, number> {
@@ -126,8 +147,8 @@ export function restoreProtectedPaths(world: CodingWorld): boolean {
   if (!protectionActive(world) || !world.protected_baseline) return false;
   let drifted = false;
   for (const p of world.protected_paths!) {
-    const baseline = world.protected_baseline[p];
-    const current = world.files[p] !== undefined ? world.files[p]! : null;
+    const baseline = hasOwn(world.protected_baseline, p) ? world.protected_baseline[p] : null;
+    const current = hasOwn(world.files, p) ? world.files[p]! : null;
     if (contentFingerprint(current) !== contentFingerprint(baseline ?? null)) {
       drifted = true;
       if (baseline === null || baseline === undefined) {
@@ -140,44 +161,66 @@ export function restoreProtectedPaths(world: CodingWorld): boolean {
   return drifted;
 }
 
+function normalizeDeclared(paths: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const p of paths ?? []) {
+    const n = normalizePath(String(p));
+    if (n.ok) out.push(n.path);
+  }
+  return out;
+}
+
 /** Seed secret_values from permissions + any files already in the world. */
 export function initCodingSecrets(
   world: CodingWorld,
   secrets?: { paths?: string[]; values?: string[]; deny_write_contains?: boolean },
 ): void {
   if (!secrets) return;
-  world.secret_paths = [...(secrets.paths ?? [])];
+  world.secret_paths = normalizeDeclared(secrets.paths);
   world.deny_write_contains = secrets.deny_write_contains !== false;
   if (!world.secret_values) world.secret_values = new Set();
   for (const v of secrets.values ?? []) registerSecretValue(world, String(v));
   for (const p of world.secret_paths) {
-    if (world.files[p] !== undefined) registerSecretValue(world, world.files[p]!);
+    if (hasOwn(world.files, p)) registerSecretValue(world, world.files[p]!);
   }
 }
 
 /** Snapshot baseline content for protected paths (absence of change). */
 export function initCodingProtectedPaths(world: CodingWorld, paths?: string[]): void {
   if (!paths || paths.length === 0) return;
-  world.protected_paths = [...paths];
+  world.protected_paths = normalizeDeclared(paths);
   world.protected_baseline = {};
-  for (const p of paths) {
-    world.protected_baseline[p] = world.files[p] !== undefined ? world.files[p]! : null;
+  for (const p of world.protected_paths) {
+    world.protected_baseline[p] = hasOwn(world.files, p) ? world.files[p]! : null;
   }
 }
 
-/** Build a coding world from agent permissions (replay, packaging, fixtures). */
+/** Agent permission fields a coding world is built from. */
+export type CodingWorldPermissions = {
+  filesystem?: { write_scopes?: string[]; read_scopes?: string[] };
+  secrets?: { paths?: string[]; values?: string[]; deny_write_contains?: boolean };
+  protected_paths?: string[];
+};
+
+/**
+ * Build a coding world from agent permissions (replay, packaging, fixtures, sim bindings).
+ * Same policy as the local adapter: absent write scopes = no writes, absent read scopes =
+ * unrestricted reads, secrets + protected paths initialised (EDGE-20).
+ */
 export function codingWorldFromAgent(
-  agent: { permissions?: CodingWorld["permissions"] & { secrets?: { paths?: string[]; values?: string[]; deny_write_contains?: boolean }; protected_paths?: string[] } },
-  overrides?: { testExit?: number; files?: Record<string, string> },
+  agent: { permissions?: CodingWorldPermissions },
+  overrides?: { testExit?: number; files?: Record<string, string>; exitCodes?: Record<string, number> },
 ): CodingWorld {
+  const fsPerm = agent.permissions?.filesystem;
   const world: CodingWorld = {
     files: overrides?.files ?? {
       "src/app.ts": "export {}",
       "src/app.js": 'export function greet(){ return "hi"; }\n',
     },
-    write_scopes: agent.permissions?.filesystem?.write_scopes ?? ["src/"],
-    read_scopes: agent.permissions?.filesystem?.read_scopes,
+    write_scopes: fsPerm?.write_scopes ? normalizeScopes(fsPerm.write_scopes) : [],
+    read_scopes: fsPerm?.read_scopes ? normalizeScopes(fsPerm.read_scopes) : undefined,
     last_exit_code: overrides?.testExit ?? 1,
+    ...(overrides?.exitCodes ? { exit_codes: { ...overrides.exitCodes } } : {}),
     out_of_scope_writes: 0,
   };
   initCodingSecrets(world, agent.permissions?.secrets);
@@ -185,19 +228,27 @@ export function codingWorldFromAgent(
   return world;
 }
 
-export function createCodingTools(world: CodingWorld): Record<string, ToolHandler> {
+function defaultCodingWorld(): CodingWorld {
+  return codingWorldFromAgent({ permissions: { filesystem: { write_scopes: ["src/"] } } }, { testExit: 0 });
+}
+
+export function createCodingTools(world: CodingWorld = defaultCodingWorld()): Record<string, ToolHandler> {
   return {
     "fs.read": (args): ToolResultEnvelope => {
-      const path = String(args.path);
-      const readScopes = world.read_scopes ?? world.write_scopes;
-      if (readScopes.length > 0 && !inScope(path, readScopes)) {
+      const raw = String(args.path);
+      const n = normalizePath(raw);
+      if (!n.ok) {
+        return { output: { path: raw, content: "", found: 0, error: n.code } };
+      }
+      const path = n.path;
+      if (!readAllowed(world, path)) {
         return {
           output: { path, content: "", found: 0, error: "scope_denied" },
         };
       }
-      const content = world.files[path] ?? "";
-      const found = world.files[path] !== undefined ? 1 : 0;
-      if (found && world.secret_paths?.includes(path)) {
+      const found = hasOwn(world.files, path) ? 1 : 0;
+      const content = found ? world.files[path]! : "";
+      if (found && world.secret_paths && pathListed(path, world.secret_paths)) {
         registerSecretValue(world, content);
       }
       return {
@@ -209,9 +260,13 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
       };
     },
     "fs.list": (args): ToolResultEnvelope => {
-      const path = String(args.path);
-      const readScopes = world.read_scopes ?? world.write_scopes;
-      if (readScopes.length > 0 && !inScope(path, readScopes)) {
+      const raw = String(args.path);
+      const n = normalizePath(raw);
+      if (!n.ok) {
+        return { output: { path: raw, entries: [], found: 0, error: n.code } };
+      }
+      const path = n.path;
+      if (!readAllowed(world, path)) {
         return {
           output: { path, entries: [], found: 0, error: "scope_denied" },
         };
@@ -226,17 +281,23 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
       };
     },
     "fs.write_scoped": (args): ToolResultEnvelope => {
-      const path = String(args.path);
+      const raw = String(args.path);
       const content = String(args.content ?? "");
-      const allowed = inScope(path, world.write_scopes);
       const leakCheck = shouldDenyWriteContains(world);
+      const n = normalizePath(raw);
+      const path = n.ok ? n.path : raw;
+      const hostReserved = n.ok && (path === HOST_CONTROL_DIR || path.startsWith(`${HOST_CONTROL_DIR}/`));
+      const allowed = n.ok && path !== ROOT_SCOPE && !hostReserved && scopeCovered(path, world.write_scopes);
+      // Every check happens before the write (same order as the local adapter).
       if (!allowed) {
         world.out_of_scope_writes += 1;
+        const error = !n.ok ? n.code : hostReserved ? "host_reserved" : path === ROOT_SCOPE ? "path_invalid" : undefined;
         return {
           output: {
             ok: 0,
             out_of_scope: 1,
             path,
+            ...(error ? { error } : {}),
             ...(leakCheck ? { secret_leak: 0 } : {}),
             ...protectFlags(world),
           },
@@ -279,8 +340,9 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
     "shell.run_allowlisted": (args): ToolResultEnvelope => {
       const cmd = String(args.cmd);
       const protect = protectionActive(world);
-      if (cmd === "test" || cmd === "typecheck") {
-        const code = world.last_exit_code;
+      const scripted = world.exit_codes && hasOwn(world.exit_codes, cmd);
+      if (scripted || cmd === "test" || cmd === "typecheck") {
+        const code = scripted ? world.exit_codes![cmd]! : world.last_exit_code;
         const drifted = restoreProtectedPaths(world);
         if (drifted) {
           return {
@@ -310,10 +372,6 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
       };
     },
     "user.approve": (): ToolResultEnvelope => ({ output: { approved: 0 } }),
-    "user.ask": (args): ToolResultEnvelope => ({
-      output: { answer: String(args.answer ?? args.question ?? "") },
-      state_transition: { set: { clarified: 1 } },
-    }),
     "user.correct": (): ToolResultEnvelope => ({ output: { ok: 1 } }),
     "task.complete": (): ToolResultEnvelope => ({
       output: { ok: 1 },
@@ -323,7 +381,7 @@ export function createCodingTools(world: CodingWorld): Record<string, ToolHandle
       state_transition: { set: { phase_yielded: 1, researched: 1 } },
     }),
     "kb.lookup": (args): ToolResultEnvelope => ({
-      output: { ok: 1, article_id: `kb-${String(args.query ?? "x").slice(0, 24)}` },
+      output: { ok: 1, article_id: `kb-${Array.from(String(args.query ?? "x")).slice(0, 24).join("")}` },
       state_transition: { set: { kb_cited: 1 } },
     }),
     "answer.send": (): ToolResultEnvelope => ({

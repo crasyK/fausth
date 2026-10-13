@@ -39,11 +39,66 @@ export function packetFromInput(input: SubmissionCheckInput): ReviewPacket {
   return runSubmissionCheck(input);
 }
 
+/** `owner/name` GitHub slug with safe characters only (no `?`, `#`, `..`, extra `/`). */
+const REPO_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+
+export function assertSafeRepo(repo: string): void {
+  if (typeof repo !== "string" || !REPO_RE.test(repo) || repo.split("/")[1] === "." || repo.split("/")[1] === "..") {
+    throw new Error(`invalid repo slug (expected owner/name): ${JSON.stringify(repo)}`);
+  }
+}
+
+function assertPrNumber(pr: number): void {
+  if (!Number.isInteger(pr) || pr < 1) {
+    throw new Error(`invalid PR number: ${String(pr)}`);
+  }
+}
+
+/**
+ * `gh api` path for a file at the PR head. Every path segment is percent-encoded, so an
+ * untrusted PR filename containing `?`, `#`, `%` or `&` cannot change the endpoint or the
+ * `ref` query; traversal / empty segments are rejected.
+ */
+export function contentsApiPath(repo: string, path: string, pr: number): string {
+  assertSafeRepo(repo);
+  assertPrNumber(pr);
+  const segments = String(path ?? "").split("/");
+  if (
+    segments.length === 0 ||
+    segments.some((seg) => seg === "" || seg === "." || seg === ".." || seg.includes("\0"))
+  ) {
+    throw new Error(`unsafe PR file path: ${JSON.stringify(path)}`);
+  }
+  const encoded = segments.map((seg) => encodeURIComponent(seg)).join("/");
+  return `repos/${repo}/contents/${encoded}?ref=refs/pull/${pr}/head`;
+}
+
+/** Decoded file content at the PR head, or null when missing/unreadable. */
+function fetchPrFile(repo: string, path: string, pr: number): string | null {
+  let apiPath: string;
+  try {
+    apiPath = contentsApiPath(repo, path, pr);
+  } catch {
+    return null; // unsafe name → treated as missing (deterministic checks still see the path)
+  }
+  try {
+    const content = execFileSync("gh", ["api", apiPath, "--jq", ".content"], {
+      encoding: "utf8",
+    }).trim();
+    if (!content || content === "null") return null;
+    return Buffer.from(content.replace(/\n/g, ""), "base64").toString("utf8");
+  } catch {
+    return null; // missing file → deterministic fail where it matters
+  }
+}
+
 /**
  * Fetch PR metadata + changed files via GitHub CLI and build a packet.
  * Requires `gh` auth (GH_TOKEN or gh auth login).
  */
 export function packetFromGithubPr(repo: string, pr: number): ReviewPacket {
+  assertSafeRepo(repo);
+  assertPrNumber(pr);
   const meta = ghJson([
     "pr",
     "view",
@@ -63,31 +118,8 @@ export function packetFromGithubPr(repo: string, pr: number): ReviewPacket {
 
   for (const path of changed_paths) {
     if (/\.(png|jpe?g|gif|webp|zip|exe)$/i.test(path)) continue;
-    try {
-      // Prefer file at PR head
-      const content = execFileSync(
-        "gh",
-        ["api", `repos/${repo}/contents/${path}?ref=refs/pull/${pr}/head`, "--jq", ".content"],
-        { encoding: "utf8" },
-      ).trim();
-      if (content && content !== "null") {
-        file_contents[path] = Buffer.from(content.replace(/\n/g, ""), "base64").toString("utf8");
-      }
-    } catch {
-      // fallback: raw.githubusercontent via gh api raw
-      try {
-        const raw = execFileSync(
-          "gh",
-          ["api", `repos/${repo}/contents/${encodeURIComponent(path)}`, "--jq", ".download_url"],
-          { encoding: "utf8" },
-        ).trim();
-        if (raw && raw !== "null") {
-          // skip network fetch if complicated — leave missing for deterministic fail
-        }
-      } catch {
-        /* missing file */
-      }
-    }
+    const content = fetchPrFile(repo, path, pr);
+    if (content !== null) file_contents[path] = content;
   }
 
   // Also try to load README for project folders even if not in files list somehow
@@ -99,18 +131,8 @@ export function packetFromGithubPr(repo: string, pr: number): ReviewPacket {
   for (const folder of folders) {
     const readme = `projects/${folder}/README.md`;
     if (file_contents[readme]) continue;
-    try {
-      const content = execFileSync(
-        "gh",
-        ["api", `repos/${repo}/contents/${readme}?ref=refs/pull/${pr}/head`, "--jq", ".content"],
-        { encoding: "utf8" },
-      ).trim();
-      if (content && content !== "null") {
-        file_contents[readme] = Buffer.from(content.replace(/\n/g, ""), "base64").toString("utf8");
-      }
-    } catch {
-      /* missing */
-    }
+    const content = fetchPrFile(repo, readme, pr);
+    if (content !== null) file_contents[readme] = content;
   }
 
   const packet = runSubmissionCheck({

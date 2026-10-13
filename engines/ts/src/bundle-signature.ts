@@ -12,11 +12,19 @@ import {
   verify as cryptoVerify,
   type KeyObject,
 } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { canonicalJson } from "./canonical.js";
+import type { BundleTrustStatus } from "./adapters/provenance.js";
+
+export type { BundleTrustStatus } from "./adapters/provenance.js";
 
 export const BUNDLE_SIG_ALG = "ed25519" as const;
+
+/** Env var naming a trusted-keys file (one Ed25519 public key per line). */
+export const TRUSTED_KEYS_ENV = "FAUSTH_TRUSTED_KEYS";
+/** Env var that, when "1"/"true", rejects unsigned and signed-untrusted bundles. */
+export const REQUIRE_TRUSTED_ENV = "FAUSTH_REQUIRE_TRUSTED_BUNDLES";
 
 /** PKCS8 DER prefix for a 32-byte Ed25519 seed. */
 const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
@@ -33,7 +41,8 @@ export class BundleSignatureError extends Error {
   readonly code:
     | "bundle_signature_invalid"
     | "bundle_signature_unsupported"
-    | "bundle_sign_key_invalid";
+    | "bundle_sign_key_invalid"
+    | "bundle_trust_store_invalid";
   constructor(code: BundleSignatureError["code"], message: string) {
     super(message);
     this.name = "BundleSignatureError";
@@ -143,6 +152,110 @@ export function verifyBundleSignature(bundle: Record<string, unknown>): void {
       "bundle signature verification failed",
     );
   }
+}
+
+/** One trusted signer from the operator's trust store. */
+export type TrustedKey = { public_key: string; label?: string };
+
+/**
+ * Operator-configured trust store. A valid signature only means "signed by the key
+ * embedded in the bundle"; trust comes exclusively from this store.
+ */
+export type TrustStore = {
+  keys: Map<string, TrustedKey>;
+  /** File the store was loaded from (diagnostics only). */
+  source?: string;
+};
+
+/** Result of signature verification + trust classification. */
+export type BundleTrust = {
+  status: BundleTrustStatus;
+  public_key?: string;
+  /** Label of the matching trusted key (signed-trusted only). */
+  key_label?: string;
+};
+
+const TRUST_LINE_RE = /^([0-9a-fA-F]{64})(?:\s+(.+))?$/;
+
+/**
+ * Parse a trusted-keys file: one 64-hex Ed25519 public key per line, optional label after
+ * whitespace. `#` comment lines and blank lines are ignored; any other line is rejected.
+ */
+export function parseTrustStore(text: string, source?: string): TrustStore {
+  const keys = new Map<string, TrustedKey>();
+  const lines = (text.startsWith("\uFEFF") ? text.slice(1) : text).split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = TRUST_LINE_RE.exec(line);
+    if (!m) {
+      throw new BundleSignatureError(
+        "bundle_trust_store_invalid",
+        `${source ?? "trusted keys"}:${i + 1}: expected '<64-hex ed25519 public key> [label]'`,
+      );
+    }
+    const publicKey = m[1]!.toLowerCase();
+    const label = m[2]?.trim();
+    if (!keys.has(publicKey)) {
+      keys.set(publicKey, label ? { public_key: publicKey, label } : { public_key: publicKey });
+    }
+  }
+  return { keys, ...(source ? { source } : {}) };
+}
+
+/** Load a trusted-keys file; a missing or unreadable file is an error (fail closed). */
+export function loadTrustStore(path: string): TrustStore {
+  const abs = resolve(path);
+  if (!existsSync(abs) || !statSync(abs).isFile()) {
+    throw new BundleSignatureError(
+      "bundle_trust_store_invalid",
+      `trusted keys file not found: ${abs}`,
+    );
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(abs));
+  } catch {
+    throw new BundleSignatureError(
+      "bundle_trust_store_invalid",
+      `trusted keys file is not valid UTF-8: ${abs}`,
+    );
+  }
+  return parseTrustStore(text, abs);
+}
+
+/** Trust store named by FAUSTH_TRUSTED_KEYS (a file path); undefined when unset. */
+export function trustStoreFromEnv(env: NodeJS.ProcessEnv = process.env): TrustStore | undefined {
+  const p = env[TRUSTED_KEYS_ENV]?.trim();
+  return p ? loadTrustStore(p) : undefined;
+}
+
+/** FAUSTH_REQUIRE_TRUSTED_BUNDLES=1|true → only signed-trusted bundles are accepted. */
+export function requireTrustedFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = env[REQUIRE_TRUSTED_ENV]?.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
+/**
+ * Verify the signature (throws BundleSignatureError when a signature is present but
+ * invalid/unsupported) and classify the bundle against the trust store.
+ */
+export function classifyBundleTrust(
+  bundle: Record<string, unknown>,
+  store?: TrustStore,
+): BundleTrust {
+  if (!("signature" in bundle) || bundle.signature === undefined) {
+    return { status: "unsigned" };
+  }
+  verifyBundleSignature(bundle);
+  const signature = parseBundleSignature(bundle.signature);
+  const hit = store?.keys.get(signature.public_key);
+  if (!hit) return { status: "signed-untrusted", public_key: signature.public_key };
+  return {
+    status: "signed-trusted",
+    public_key: signature.public_key,
+    ...(hit.label ? { key_label: hit.label } : {}),
+  };
 }
 
 export function loadSignKeyMaterial(input: string | Buffer): KeyObject {

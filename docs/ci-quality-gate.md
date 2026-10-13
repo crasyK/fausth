@@ -54,7 +54,23 @@ Never use `pull_request_target` with checkout/execution of contributor code whil
 
 ## Evidence-bound findings
 
-AI findings must match a closed schema and survive deterministic evidence checks (cited path exists, line in range, snippet occurs). Unsupported conclusions are dropped before they reach the maintainer.
+AI findings must match a closed schema and survive deterministic evidence checks. Unsupported conclusions are dropped before they reach the maintainer. The gate (`verifyFindingEvidence`, also enforced inside `finding.submit`) is strict — arguments are type-checked, never cast:
+
+- `category` ∈ the closed category set; `severity` ∈ `info | warning | blocking`.
+- **Advisory severity:** the model layer may only use `info` or `warning`. `blocking` is reserved for Layer 1 (deterministic checks); a model finding marked `blocking` is rejected, not silently downgraded. Use `human_review` when a maintainer must decide.
+- `evidence` is a non-empty string that occurs verbatim in an included packet file of the submission.
+- `line_start`, when given, is an integer within the cited file (NaN / floats / 0 are rejected).
+- `recommendation` is a non-empty string.
+
+Rejections carry one reason from a closed set (`FINDING_REJECT_REASONS`): `invalid_category`, `invalid_severity`, `severity_reserved_for_deterministic`, `invalid_path`, `path_not_in_packet`, `path_outside_submission`, `evidence_empty`, `evidence_not_found`, `line_invalid`, `line_out_of_range`, `recommendation_empty`.
+
+## Secret redaction
+
+One closed list of secret shapes drives both detection and redaction (`redactSecrets` / `containsSecret` in `integrations/github/submission-check.ts`): `key = value` / `key: value` assignments for api_key/secret/token/password, `sk-…` keys (incl. `sk-or-v1-…`), GitHub tokens (`ghp_ gho_ ghu_ ghs_ ghr_ github_pat_`), AWS access key ids (`AKIA…`/`ASIA…`), Slack tokens (`xox[abprs]-…`), Bearer tokens, and PEM `PRIVATE KEY` blocks.
+
+- A file containing any of them is a blocking `potential_secret` finding; its packet content is replaced and the finding evidence names the shape (`[REDACTED:github_token]`, `password: [REDACTED]`), never the value.
+- Redaction is applied to **every** outbound channel: deterministic and advisory finding evidence/recommendations (redact first, then truncate — a cut can never expose a partial secret), the rendered markdown, the step summary, PR comments, Check Run title/summary, workflow-command annotations, and the PR title/snippets sent to the model.
+- Workflow-command annotations escape untrusted values per the GitHub spec (`%`, CR, LF in messages; additionally `:` and `,` in `file=` / `title=` properties), so a crafted PR filename cannot inject commands.
 
 ## Reporting
 
