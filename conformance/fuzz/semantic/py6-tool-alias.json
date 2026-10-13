@@ -1,0 +1,35 @@
+{
+  "world": "replay",
+  "id": "py6-tool-alias",
+  "finding": "PY-6",
+  "kind": "run",
+  "agent": {
+    "spec": "counterbalance-contract/v0.1",
+    "name": "semantic",
+    "state": {},
+    "tools": [
+      {
+        "id": "echo.ping",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    ]
+  },
+  "model_lines": [
+    {
+      "type": "tool",
+      "tool": "echo.ping"
+    }
+  ],
+  "expect": {
+    "contains": [
+      {
+        "stage": "execute",
+        "verdict": "allow",
+        "tool": "echo.ping"
+      }
+    ]
+  }
+}

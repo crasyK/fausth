@@ -1,0 +1,2 @@
+{"call_seq":1,"result":{"output":{"approved":1}},"tool":"user.approve"}
+{"call_seq":1,"result":{"output":{"ok":1},"state_transition":{"set":{"open_todos":0}}},"tool":"user.correct"}

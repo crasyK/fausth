@@ -1,7 +1,8 @@
 /**
  * Deny-log audit — treat closed reason codes as a measurement grammar.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readJsonl } from "./load.js";
 
 export type AuditSummary = {
   source: string;
@@ -14,6 +15,8 @@ export type AuditSummary = {
   verify_output_failed: number;
   memory_stale: number;
   budget_exceeded: number;
+  /** Host infrastructure failures (`infra_failure`): reported apart, never counted as denies. */
+  infra_failures: number;
 };
 
 export type AuditEvent = {
@@ -21,33 +24,47 @@ export type AuditEvent = {
   verdict?: string;
   reason?: string;
   tool?: string;
+  depth?: number;
+  spawn_id?: string;
   failure?: { kind?: string };
 };
 
-function readJsonl(path: string): AuditEvent[] {
-  const raw = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
-  return raw
-    .split("\n")
-    .filter((l) => l.trim().length > 0)
-    .map((l) => JSON.parse(l) as AuditEvent);
-}
-
-/** Count deny→retry→deny sequences on the same tool as near-misses. */
+/**
+ * Near-miss: a denied attempt of tool T whose NEXT attempt in the same reaction (same depth and
+ * spawn) is again T and is denied again (spec-v0.3 §13; CORE-18). An attempt starts at a
+ * `propose` event that names a tool and runs until the next such `propose`; it is denied when any
+ * of its events has a `deny`/`safe_state` verdict. Orientation, record and nested-child events in
+ * between do not break the pairing.
+ */
 function countNearMisses(events: AuditEvent[]): number {
+  type Attempt = { tool: string; denied: boolean };
+  const byReaction = new Map<string, Attempt[]>();
+  const current = new Map<string, Attempt>();
+  for (const e of events) {
+    const key = `${e.depth ?? 0}|${e.spawn_id ?? ""}`;
+    if (e.stage === "propose" && e.tool) {
+      const attempt: Attempt = { tool: e.tool, denied: e.verdict === "deny" };
+      const list = byReaction.get(key) ?? [];
+      list.push(attempt);
+      byReaction.set(key, list);
+      current.set(key, attempt);
+      continue;
+    }
+    const attempt = current.get(key);
+    if (!attempt) continue;
+    if (e.stage === "propose") {
+      // A stop / invalid proposal ends the current attempt.
+      current.delete(key);
+      continue;
+    }
+    if (e.verdict === "deny" || e.verdict === "safe_state") attempt.denied = true;
+  }
   let n = 0;
-  for (let i = 0; i < events.length - 2; i++) {
-    const a = events[i]!;
-    const b = events[i + 1]!;
-    const c = events[i + 2]!;
-    if (
-      a.verdict === "deny" &&
-      a.tool &&
-      b.stage === "propose" &&
-      b.tool === a.tool &&
-      c.verdict === "deny" &&
-      c.tool === a.tool
-    ) {
-      n += 1;
+  for (const list of byReaction.values()) {
+    for (let i = 1; i < list.length; i++) {
+      const a = list[i - 1]!;
+      const b = list[i]!;
+      if (a.denied && b.denied && a.tool === b.tool) n += 1;
     }
   }
   return n;
@@ -61,8 +78,13 @@ export function auditEvents(events: AuditEvent[], source = "<memory>"): AuditSum
   let verify_output_failed = 0;
   let memory_stale = 0;
   let budget_exceeded = 0;
+  let infra_failures = 0;
 
   for (const e of events) {
+    if (e.reason === "infra_failure") {
+      infra_failures += 1;
+      continue;
+    }
     if (e.verdict === "deny") {
       denies += 1;
       const r = e.reason ?? "unknown";
@@ -88,6 +110,7 @@ export function auditEvents(events: AuditEvent[], source = "<memory>"): AuditSum
     verify_output_failed,
     memory_stale,
     budget_exceeded,
+    infra_failures,
   };
 }
 
@@ -95,7 +118,7 @@ export function auditJsonlFile(path: string): AuditSummary {
   if (!existsSync(path)) {
     throw new Error(`audit: file not found: ${path}`);
   }
-  return auditEvents(readJsonl(path), path);
+  return auditEvents(readJsonl(path) as AuditEvent[], path);
 }
 
 export function formatAuditHuman(s: AuditSummary): string {
@@ -111,7 +134,7 @@ export function formatAuditHuman(s: AuditSummary): string {
     `fausth audit — ${s.source}`,
     `events: ${s.events}  denies: ${s.denies}  near_misses: ${s.near_misses}`,
     `capability_missing: ${s.capability_missing}  verify_output_failed: ${s.verify_output_failed}`,
-    `memory_stale: ${s.memory_stale}  budget_exceeded: ${s.budget_exceeded}`,
+    `memory_stale: ${s.memory_stale}  budget_exceeded: ${s.budget_exceeded}  infra_failures: ${s.infra_failures}`,
     reasons ? `by_reason:\n${reasons}` : "by_reason: (none)",
     failures ? `structured_failures:\n${failures}` : "structured_failures: (none)",
   ].join("\n");

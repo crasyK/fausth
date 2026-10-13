@@ -1,0 +1,2 @@
+{"observation":{"stop_message":"What do you expect the loop to print first?"},"seq":1,"stage":"propose","state_hash":"f3babf84b7a054d10af7e44e01dbaea7c7bd47e64da73be3ebc0c07c8e420573","ts_logical":1,"verdict":"allow"}
+{"observation":{"message":{"contains_code_fence":0,"content":"What do you expect the loop to print first?","length":43}},"seq":2,"stage":"verify","state_hash":"f3babf84b7a054d10af7e44e01dbaea7c7bd47e64da73be3ebc0c07c8e420573","ts_logical":2,"verdict":"allow"}

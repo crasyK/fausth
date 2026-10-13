@@ -1,0 +1,3 @@
+{"message":"{\"path\": ","reason":"invalid_tool_arguments_json","type":"invalid"}
+{"message":"I would read the file first.","reason":"empty_proposal","type":"invalid"}
+{"args":{},"name":"noop.ping","type":"tool"}

@@ -16,7 +16,7 @@ import {
   type Expectation,
   type Score,
 } from "./model/matrix-scoring.js";
-import type { ModelInfraErrorKind } from "./model/errors.js";
+import type { ModelInfraErrorKind, ModelTransportErrorJson } from "./model/errors.js";
 import { FaustRuntime } from "./runtime.js";
 import type { Deployment } from "./types.js";
 import { packetFromFixtureDir } from "./integrations/github/packet-build.js";
@@ -68,6 +68,8 @@ type Cell = {
   /** Set when the cell threw: no model behaviour was scored (excluded from leaderboard). */
   error_class?: CellErrorClass;
   infra_kind?: ModelInfraErrorKind;
+  /** Structured transport error (kind/status/model/attempts/total_attempts). */
+  transport_error?: ModelTransportErrorJson;
   error?: string;
   elapsed_ms: number;
   report: string;
@@ -185,6 +187,7 @@ async function runCell(
           error: msg,
           error_class: info.error_class,
           ...(info.infra_kind ? { infra_kind: info.infra_kind } : {}),
+          ...(info.transport_error ? { transport_error: info.transport_error } : {}),
           score,
         },
         null,
@@ -203,6 +206,7 @@ async function runCell(
       score,
       error_class: info.error_class,
       ...(info.infra_kind ? { infra_kind: info.infra_kind } : {}),
+      ...(info.transport_error ? { transport_error: info.transport_error } : {}),
       error: msg.slice(0, 400),
       elapsed_ms: Date.now() - t0,
       report: reportPath,
@@ -292,6 +296,7 @@ async function main() {
         ok_runs: row.ok_runs,
         scored_cells: row.scored_cells,
         infra_errors: row.infra_errors,
+        request_rejected: row.request_rejected,
         setup_errors: row.setup_errors,
       }),
     );

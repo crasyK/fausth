@@ -1,0 +1,2 @@
+{"args":{"level":5},"call_seq":1,"result":{"ok":1},"tool":"dial.set"}
+{"args":{"confirm":60,"level":60,"mode":"safe"},"call_seq":2,"result":{"ok":1},"tool":"dial.set"}

@@ -1,40 +1,36 @@
 #!/usr/bin/env node
 /**
- * Seeded IR fuzz corpus + TS↔PY validate agreement.
+ * IR fuzzing against EXPECTED verdicts (not only TS ↔ PY agreement).
  *
  * Usage:
- *   node scripts/fuzz-ir.mjs generate
- *   node scripts/fuzz-ir.mjs check
- *   node scripts/fuzz-ir.mjs          # generate + check
+ *   node scripts/fuzz-ir.mjs generate          # seeded validate corpus → conformance/fuzz/cases
+ *   node scripts/fuzz-ir.mjs check             # both engines vs expect_valid_hint + agreement
+ *   node scripts/fuzz-ir.mjs semantic          # conformance/fuzz/semantic/*.json expectations, per engine
+ *   node scripts/fuzz-ir.mjs runtime [--n N] [--seed S]   # TS ↔ PY differential replay corpus
+ *   node scripts/fuzz-ir.mjs                   # generate + check + semantic + runtime
+ *
+ * Python runs through conformance/fuzz/runners/engines.mjs ($FAUSTH_PYTHON or the
+ * repository .venv, shell-free, engines/py on PYTHONPATH, location-checked).
  */
-import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
+  EngineSetupError,
+  assertPythonEngine,
+  firstDiff,
+  repoRoot as root,
+  resolvePython,
+  runPy,
+  runTs,
+} from "../conformance/fuzz/runners/engines.mjs";
+import { generateRuntimeCases, mulberry32 } from "../conformance/fuzz/runners/gen-runtime.mjs";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fuzzRoot = join(root, "conformance/fuzz");
 const casesDir = join(fuzzRoot, "cases");
-const require = createRequire(join(root, "engines/ts/package.json"));
+const semanticDir = join(fuzzRoot, "semantic");
 
 const SEED = 42;
 const N_CASES = 48;
-
-function mulberry32(a) {
-  return function () {
-    let t = (a += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const TOOL_POOL = [
   {
@@ -139,10 +135,9 @@ function generateCase(rnd, i) {
     tools.push(structuredClone(tools[0]));
     expectValid = false;
   } else if (kind === 1) {
-    // Near-miss: permissions tool not in tools[]
+    // Near-miss: permissions name a tool that is not declared (SPEC-16: invalid)
     agent.permissions.tools = [...toolIds, "shell.unrestricted"];
-    // schema may still accept; structural may warn — keep as valid IR if schema allows
-    expectValid = true;
+    expectValid = false;
   } else if (kind === 2) {
     // Near-miss: bad mutable cell
     agent.mutable = ["skills", "not-a-cell"];
@@ -160,10 +155,9 @@ function generateCase(rnd, i) {
     }
     expectValid = true;
   } else if (kind === 4) {
-    // Near-miss: missing required top-level name → empty
+    // Near-miss: empty name (schema: minLength 1)
     agent.name = "";
-    // schema may require minLength — treat as invalid if validate fails
-    expectValid = true; // resolved by actual validate
+    expectValid = false;
   } else if (kind === 5) {
     // Valid completion gate
     if (toolIds.includes("task.complete")) {
@@ -201,110 +195,198 @@ function generate() {
   console.log(`generated ${N_CASES} fuzz cases → ${casesDir}`);
 }
 
-function validateTs(agent) {
-  const script = `
-import { validateAgent } from "./src/validate.ts";
-const agent = ${JSON.stringify(agent)};
-const r = validateAgent(agent);
-console.log(JSON.stringify({ ok: r.ok === true, errors: r.ok ? [] : r.errors }));
-`;
-  const tmp = join(root, "engines/ts/.fuzz-tmp-validate.mjs");
-  // Use tsx inline via stdin-less file in engines/ts
-  const tmpTs = join(root, "engines/ts/.fuzz-tmp-validate.ts");
-  writeFileSync(
-    tmpTs,
-    `import { validateAgent } from "./src/validate.js";\nconst agent = ${JSON.stringify(agent)} as any;\nconst r = validateAgent(agent);\nconsole.log(JSON.stringify({ ok: r.ok === true, errors: r.ok ? [] : (r as any).errors }));\n`,
-  );
-  try {
-    const out = execFileSync(
-      process.execPath,
-      ["--import", "tsx", tmpTs],
-      { cwd: join(root, "engines/ts"), encoding: "utf8" },
-    );
-    return JSON.parse(out.trim().split(/\r?\n/).filter(Boolean).pop());
-  } finally {
-    try {
-      require("node:fs").unlinkSync(tmpTs);
-    } catch {
-      /* ignore */
-    }
+let python;
+function py() {
+  if (!python) {
+    python = resolvePython(root);
+    assertPythonEngine(python, root);
   }
+  return python;
 }
 
-function validatePy(agent) {
-  const py = `
-import json, sys
-sys.path.insert(0, ${JSON.stringify(join(root, "engines/py"))})
-from fausth.validate import validate_agent
-agent = json.loads(sys.stdin.read())
-ok, errors, warnings = validate_agent(agent)
-print(json.dumps({"ok": bool(ok), "errors": list(errors or [])}))
-`;
-  const out = execFileSync("python3", ["-c", py], {
-    cwd: root,
-    encoding: "utf8",
-    input: JSON.stringify(agent),
-    env: {
-      ...process.env,
-      PYTHONPATH: join(root, "engines/py"),
-    },
-  });
-  return JSON.parse(out.trim().split(/\r?\n/).filter(Boolean).pop());
+function verdictOf(res) {
+  if (!res) return { error: "missing result" };
+  if (!res.ok) return { error: res.error };
+  return JSON.parse(res.out);
 }
 
 function check() {
   if (!existsSync(casesDir)) generate();
   const files = readdirSync(casesDir).filter((f) => f.endsWith(".json")).sort();
+  const cases = files.map((f) => JSON.parse(readFileSync(join(casesDir, f), "utf8")));
+  const reqs = cases.map((c) => ({ id: c.id, kind: "validate", agent: c.agent }));
+  const ts = runTs(reqs, root);
+  const pr = runPy(reqs, py(), root);
   let agree = 0;
   let disagree = 0;
   let crashes = 0;
+  const wrong = { ts: [], py: [] };
   /** @type {unknown[]} */
   const mismatches = [];
-
-  for (const f of files) {
-    const c = JSON.parse(readFileSync(join(casesDir, f), "utf8"));
-    let ts;
-    let py;
-    try {
-      ts = validateTs(c.agent);
-    } catch (e) {
+  for (const c of cases) {
+    const a = verdictOf(ts.get(c.id));
+    const b = verdictOf(pr.get(c.id));
+    if (a.error || b.error) {
       crashes += 1;
-      mismatches.push({ id: c.id, crash: "ts", error: String(e) });
+      mismatches.push({ id: c.id, ts: a, py: b });
       continue;
     }
-    try {
-      py = validatePy(c.agent);
-    } catch (e) {
-      crashes += 1;
-      mismatches.push({ id: c.id, crash: "py", error: String(e) });
-      continue;
-    }
-    if (Boolean(ts.ok) === Boolean(py.ok)) {
-      agree += 1;
-    } else {
+    if (a.ok === b.ok) agree += 1;
+    else {
       disagree += 1;
-      mismatches.push({ id: c.id, ts, py });
+      mismatches.push({ id: c.id, ts: a.ok, py: b.ok });
     }
+    if (a.ok !== c.expect_valid_hint) wrong.ts.push(c.id);
+    if (b.ok !== c.expect_valid_hint) wrong.py.push(c.id);
   }
-
   const report = {
     seed: SEED,
-    n: files.length,
+    n: cases.length,
     agree,
     disagree,
     crashes,
-    pass: disagree === 0 && crashes === 0,
+    expected_verdict_misses: wrong,
+    pass: disagree === 0 && crashes === 0 && wrong.ts.length === 0 && wrong.py.length === 0,
     mismatches: mismatches.slice(0, 20),
   };
   writeFileSync(join(fuzzRoot, "last-check.json"), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report, null, 2));
-  if (!report.pass) process.exitCode = 1;
+  return report.pass;
 }
 
-const cmd = process.argv[2] ?? "all";
-if (cmd === "generate") generate();
-else if (cmd === "check") check();
-else {
-  generate();
-  check();
+function getPath(obj, path) {
+  let cur = obj;
+  for (const p of path.split(".")) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur) || !Object.prototype.hasOwnProperty.call(cur, p)) {
+      return { missing: true };
+    }
+    cur = cur[p];
+  }
+  return { value: cur };
+}
+
+function canonical(v) {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k of Object.keys(v).sort()) o[k] = canonical(v[k]);
+    return o;
+  }
+  return v;
+}
+
+/** Every key of `partial` deep-equals the event's value (deep subset for objects). */
+function matches(event, partial) {
+  for (const [k, v] of Object.entries(partial)) {
+    if (!Object.prototype.hasOwnProperty.call(event, k)) return false;
+    if (JSON.stringify(canonical(event[k])) !== JSON.stringify(canonical(v))) return false;
+  }
+  return true;
+}
+
+/** @returns {string[]} problems (empty = expectation met) */
+function evaluate(c, res) {
+  const exp = c.expect ?? {};
+  if (!res) return ["no result"];
+  if (exp.error) return res.ok ? [`expected rejection, got ${res.out}`] : [];
+  if (!res.ok) return [`engine error: ${res.error}`];
+  if (c.kind === "validate") {
+    const v = JSON.parse(res.out);
+    return v.ok === exp.ok ? [] : [`validate ok=${v.ok}, expected ${exp.ok}`];
+  }
+  if (c.kind === "yaml" || c.kind === "canonical") {
+    return res.out === exp.out ? [] : [`got ${res.out}, expected ${exp.out}`];
+  }
+  const events = res.out.split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
+  const problems = [];
+  let from = 0;
+  for (const partial of exp.contains ?? []) {
+    const idx = events.findIndex((e, i) => i >= from && matches(e, partial));
+    if (idx < 0) problems.push(`missing event ${JSON.stringify(partial)}`);
+    else from = idx + 1;
+  }
+  for (const partial of exp.absent ?? []) {
+    if (events.some((e) => matches(e, partial))) problems.push(`unexpected event ${JSON.stringify(partial)}`);
+  }
+  for (const { match, path } of exp.absent_paths ?? []) {
+    for (const e of events.filter((ev) => matches(ev, match))) {
+      if (!getPath(e, path).missing) problems.push(`event ${e.seq} has ${path}`);
+    }
+  }
+  for (const { match, n } of exp.count ?? []) {
+    const got = events.filter((e) => matches(e, match)).length;
+    if (got !== n) problems.push(`${JSON.stringify(match)} occurs ${got}×, expected ${n}`);
+  }
+  return problems;
+}
+
+function semantic() {
+  const files = readdirSync(semanticDir).filter((f) => f.endsWith(".json")).sort();
+  const cases = files.map((f) => JSON.parse(readFileSync(join(semanticDir, f), "utf8")));
+  const ts = runTs(cases, root);
+  const pr = runPy(cases, py(), root);
+  const report = { n: cases.length, ts_failed: [], py_failed: [] };
+  for (const c of cases) {
+    const label = `${c.id}${c.finding ? ` [${c.finding}]` : ""}${c.decision ? ` [${c.decision}]` : ""}`;
+    const tsProblems = evaluate(c, ts.get(c.id));
+    const pyProblems = evaluate(c, pr.get(c.id));
+    if (tsProblems.length) report.ts_failed.push({ case: label, problems: tsProblems });
+    if (pyProblems.length) report.py_failed.push({ case: label, problems: pyProblems });
+  }
+  report.pass = report.ts_failed.length === 0 && report.py_failed.length === 0;
+  writeFileSync(join(fuzzRoot, "last-semantic.json"), JSON.stringify(report, null, 2) + "\n");
+  console.log(
+    `semantic: ${cases.length} cases — TS misses ${report.ts_failed.length}, PY misses ${report.py_failed.length}`,
+  );
+  for (const [engine, list] of [["TS", report.ts_failed], ["PY", report.py_failed]]) {
+    for (const f of list) console.log(`  ${engine} ${f.case}: ${f.problems.join("; ").slice(0, 300)}`);
+  }
+  return report.pass;
+}
+
+function runtime(args) {
+  const n = Number(args[args.indexOf("--n") + 1] ?? 200) || 200;
+  const seed = Number(args[args.indexOf("--seed") + 1] ?? 20261012) || 20261012;
+  const cases = generateRuntimeCases(seed, n, { astral: args.includes("--astral") });
+  const ts = runTs(cases, root);
+  const pr = runPy(cases, py(), root);
+  let same = 0;
+  const diffs = [];
+  for (const c of cases) {
+    const a = ts.get(c.id);
+    const b = pr.get(c.id);
+    if (a.ok && b.ok && a.out === b.out) same += 1;
+    else if (!a.ok && !b.ok) same += 1;
+    else {
+      const d = a.ok && b.ok ? firstDiff(a.out, b.out) : { byte: -1, lineA: a.error ?? "", lineB: b.error ?? "" };
+      diffs.push({ id: c.id, byte: d.byte, ts: d.lineA.slice(0, 300), py: d.lineB.slice(0, 300) });
+    }
+  }
+  const report = { seed, n, same, differ: diffs.length, pass: diffs.length === 0, first: diffs.slice(0, 10) };
+  writeFileSync(join(fuzzRoot, "last-runtime.json"), JSON.stringify(report, null, 2) + "\n");
+  console.log(`runtime: ${n} cases (seed ${seed}) — identical ${same}, differ ${diffs.length}`);
+  for (const d of diffs.slice(0, 5)) console.log(`  ${d.id} @${d.byte}\n    TS: ${d.ts}\n    PY: ${d.py}`);
+  return report.pass;
+}
+
+const [cmd = "all", ...rest] = process.argv.slice(2);
+try {
+  let ok = true;
+  if (cmd === "generate") generate();
+  else if (cmd === "check") ok = check();
+  else if (cmd === "semantic") ok = semantic();
+  else if (cmd === "runtime") ok = runtime(rest);
+  else {
+    generate();
+    ok = check() && ok;
+    ok = semantic() && ok;
+    ok = runtime(rest) && ok;
+  }
+  if (!ok) process.exitCode = 1;
+} catch (e) {
+  if (e instanceof EngineSetupError) {
+    console.error(`fuzz-ir: ${e.message}`);
+    process.exit(2);
+  }
+  throw e;
 }

@@ -25,6 +25,9 @@ tools:
       properties:
         ok: { type: integer }
         article_id: { type: string }
+    effects:
+      - when: { path: result.ok, eq: 1 }
+        set: { kb_cited: 1 }
   - id: answer.send
     input:
       type: object
@@ -50,7 +53,11 @@ tools:
       additionalProperties: false
       properties:
         ok: { type: integer }
+    effects:
+      - when: { path: result.ok, eq: 1 }
+        set: { handoff: 1 }
   - id: user.correct
+    channel: user
     input: { type: object, additionalProperties: true, properties: { set: { type: object } } }
     output:
       type: object
@@ -89,3 +96,6 @@ counterbalance:
     require:
       path: state.kb_cited
       eq: 1
+
+# Harness-declared disposition: hosts render it verbatim as system context (spec-v0.3 §15.3).
+instinct_text: "Use only the tools listed for this agent. Prefer tools. Available tools: answer.send, human.handoff, kb.lookup, refund.request, user.correct. Use only listed tools; never invent tools, shell commands, or mode.enter."

@@ -1,33 +1,108 @@
-export type Verdict = "allow" | "deny" | "safe_state";
+/** Closed verdicts (spec-v0.3 §13.1). */
+export const VERDICTS = ["allow", "deny", "safe_state"] as const;
+export type Verdict = (typeof VERDICTS)[number];
 
-export type ReasonCode =
-  | "gate_denied"
-  | "capability_missing"
-  | "limit_exceeded"
-  | "verify_effect_failed"
-  | "verify_evidence_failed"
-  | "verify_absence_failed"
-  | "verify_output_failed"
-  | "verify_judge_invalid"
-  | "verify_judge_failed"
-  | "budget_exceeded"
-  | "schema_invalid"
-  | "input_schema_invalid"
-  | "output_schema_invalid"
-  | "tool_execution_failed"
-  | "safe_state_entered"
-  | "recovery_succeeded"
-  | "terminal_failure"
-  | "sequence_requirement_failed"
-  | "memory_stale"
-  | "completion_gate_failed"
-  | "checkpoint_authority_failed"
-  | "user_checkpoint_required"
-  | "empty_proposal"
-  | "harness_patch_denied"
-  | "harness_patch_applied"
-  | "harness_patch_invalid"
-  | "harness_patch_declined";
+/** Closed reason codes (spec-v0.3 §13.2). Single source of truth for engine + tests. */
+export const REASON_CODES = [
+  "gate_denied",
+  "capability_missing",
+  "limit_exceeded",
+  "input_schema_invalid",
+  "output_schema_invalid",
+  "schema_invalid",
+  "tool_execution_failed",
+  "infra_failure",
+  "state_write_denied",
+  "checkpoint_authority_failed",
+  "sequence_requirement_failed",
+  "completion_gate_failed",
+  "verify_effect_failed",
+  "verify_evidence_failed",
+  "verify_absence_failed",
+  "verify_output_failed",
+  "verify_judge_invalid",
+  "verify_judge_failed",
+  "empty_proposal",
+  "invalid_proposal",
+  "harness_patch_invalid",
+  "harness_patch_denied",
+  "harness_patch_applied",
+  "harness_patch_declined",
+  "memory_stale",
+  "budget_exceeded",
+  "run_complete",
+  "spawn_returned",
+  "recovery_attempt",
+  "recovery_succeeded",
+  "terminal_failure",
+  "safe_state_entered",
+  "user_checkpoint_required",
+] as const;
+export type ReasonCode = (typeof REASON_CODES)[number];
+
+/** Closed `failure.kind` values (spec-v0.3 §13.3). */
+export const FAILURE_KINDS = [
+  "predicate",
+  "missing_prior_tools",
+  "missing_prior_any_of",
+  "checkpoint_key",
+  "state_key",
+  "non_canonical",
+  "malformed_envelope",
+  "channel_unbound",
+  "transcript",
+  "host_error",
+  "adapter",
+  "observation_failed",
+  "judge",
+  "spawn",
+  "harness_patch",
+] as const;
+export type FailureKind = (typeof FAILURE_KINDS)[number];
+
+/** Closed `harness_patch` failure codes (spec-v0.3 §12). */
+export const HARNESS_PATCH_CODES = [
+  "reflection_done",
+  "attempt_cap",
+  "invalid_disposition",
+  "invalid_decline",
+  "malformed_patch",
+  "malformed_op",
+  "immutable_surface",
+  "cell_not_mutable",
+  "unknown_tool",
+  "unknown_op",
+] as const;
+export type HarnessPatchCode = (typeof HARNESS_PATCH_CODES)[number];
+
+/** Spawn escalation dimensions (spec-v0.3 §10). */
+export const SPAWN_DIMENSIONS = [
+  "tools",
+  "write_scopes",
+  "read_scopes",
+  "max_steps",
+  "max_tool_calls",
+  "nested",
+] as const;
+export type SpawnDimension = (typeof SPAWN_DIMENSIONS)[number];
+
+/** Tool channels (D14): world (default) or user. */
+export const TOOL_CHANNELS = ["world", "user"] as const;
+export type ToolChannel = (typeof TOOL_CHANNELS)[number];
+
+/** Spec ids accepted for the executable IR (spec-v0.3 §2.1). */
+export const SPEC_IDS = [
+  "counterbalance-contract/v0.1",
+  "counterbalance-contract/v0.2",
+  "counterbalance-contract/v0.3",
+] as const;
+
+/** Contract tools with engine semantics (spec-v0.3 §10, §12). */
+export const SPAWN_TOOL = "agent.spawn";
+export const PATCH_TOOL = "harness.propose_skills_patch";
+export const DECLINE_TOOL = "harness.decline_skills_patch";
+export const REFLECT_TOOL = "harness.reflect_skills";
+export const REFLECTION_TOOLS = [PATCH_TOOL, DECLINE_TOOL, REFLECT_TOOL] as const;
 
 /** Cells the agent may propose harness edits to (never security / checkpoints). */
 export type MutableCell = "skills" | "memory" | "instincts";
@@ -72,9 +147,9 @@ export type SkillsPatchDecline = {
 };
 
 export type CounterbalanceInvalidateAfter = {
-  /** Mutation-triggered invalidation (v0.2). XOR with ttl_steps in v0.3. */
+  /** Mutation-triggered invalidation. Exactly one of action / ttl_steps. */
   action?: string;
-  /** Step-age invalidation (v0.3): stale after N steps since last fresh write. */
+  /** Step-age invalidation: stale once steps_used - updated_at_step > ttl_steps. */
   ttl_steps?: number;
   memory_keys: string[];
 };
@@ -97,14 +172,15 @@ export type CounterbalanceTrigger = {
 };
 
 export type CounterbalanceCompletion = {
-  tool?: string;
+  /** The run's terminal tool (required; no default id). */
+  tool: string;
   require?: Predicate;
 };
 
 export type CounterbalanceCheckpointPolicy = {
-  /** Tool id that requires adapter-attested state transitions. */
+  /** User-channel tool that owns the keys (D14). */
   tool: string;
-  /** Only these state keys may be set by the checkpoint tool. */
+  /** Checkpoint keys: only this tool may write them, and it may write only these. */
   allow_set_keys: string[];
 };
 
@@ -128,16 +204,19 @@ export type CounterbalanceExt = {
   /** Optional memory notes (mutable when `mutable` includes memory). */
   memory_notes?: Record<string, string>;
 };
-export type Stage =
-  | "orient"
-  | "propose"
-  | "validate"
-  | "authorize"
-  | "execute"
-  | "verify"
-  | "observe"
-  | "record"
-  | "rebalance";
+/** Closed stages (spec-v0.3 §13.1). */
+export const STAGES = [
+  "orient",
+  "propose",
+  "validate",
+  "authorize",
+  "execute",
+  "observe",
+  "verify",
+  "record",
+  "rebalance",
+] as const;
+export type Stage = (typeof STAGES)[number];
 
 export type Predicate =
   | { path: string; eq: unknown }
@@ -169,7 +248,18 @@ export type DenyFailure =
   | { kind: "predicate"; failed: DenyFailureItem[] }
   | { kind: "missing_prior_tools"; missing_prior_tools: string[] }
   | { kind: "missing_prior_any_of"; options: string[] }
-  | { kind: "checkpoint_key"; checkpoint_key: string };
+  | { kind: "checkpoint_key"; checkpoint_key: string }
+  | { kind: "state_key"; state_key: string }
+  | { kind: "non_canonical"; path: string }
+  | { kind: "malformed_envelope" }
+  | { kind: "channel_unbound"; channel: ToolChannel }
+  | { kind: "transcript"; code: "mismatch" | "exhausted"; call_seq: number }
+  | { kind: "host_error" }
+  | { kind: "adapter"; code: import("./adapters/error.js").AdapterErrorCode }
+  | { kind: "observation_failed" }
+  | { kind: "judge"; code: "unavailable" | "invalid" }
+  | { kind: "spawn"; code: "not_allowed" | "escalation" | "malformed"; dimension?: SpawnDimension }
+  | { kind: "harness_patch"; code: HarnessPatchCode };
 
 export type Gate = {
   id?: string;
@@ -223,9 +313,22 @@ export type ToolDef = {
   id: string;
   description?: string;
   read_only?: boolean;
+  /** D14: "user" tools are answered by the host's user channel, never synthesized. */
+  channel?: ToolChannel;
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   verify?: Verify[];
+  /**
+   * Declared state effects (spec-v0.3 §6.3): on this tool's result, each effect whose `when`
+   * holds adds its `set` to the call's transition. Harness memory semantics live here, not in
+   * host adapters or the engine (D11).
+   */
+  effects?: ToolEffect[];
+};
+
+export type ToolEffect = {
+  when?: Predicate;
+  set: Record<string, unknown>;
 };
 
 export type StateTransition = {
@@ -239,7 +342,7 @@ export type ToolResultEnvelope = {
 };
 
 export type Recovery = {
-  on?: ReasonCode | string;
+  on?: "verify_effect_failed" | "verify_evidence_failed" | "verify_absence_failed" | "verify_output_failed" | "verify_judge_invalid" | "verify_judge_failed" | "gate_denied";
   execute: { tool: string; args?: Record<string, unknown> };
   verify: Verify;
   on_failure?: "terminal_failure";
@@ -254,9 +357,12 @@ export type AgentIR = {
   limits?: {
     max_steps?: number;
     max_tool_calls?: number;
+    /** Host-enforced wall clock (not Track A). */
     timeout_ms?: number;
     /** When true, plain deny verdicts continue the loop; limit_exceeded and safe_state still stop. */
     continue_after_deny?: boolean;
+    /** Max code points per world-feedback string in events/predicates (default 8000). */
+    max_observation_chars?: number;
   };
   /** @deprecated use fallback_state */
   safe_state?: Record<string, unknown>;
@@ -312,6 +418,8 @@ export type DeploymentModel = {
   temperature?: number;
   max_tokens?: number;
   judge_model?: string;
+  /** Per-request transport timeout (ms) for live model calls. */
+  timeout_ms?: number;
   compatibility?: {
     preserve_response_fields?: string[];
     gateway_system_prompt?: "prohibited" | "unknown";
@@ -347,6 +455,10 @@ export type DeploymentWorld = {
     read?: string[];
     write?: string[];
   };
+  /** Literal env values for world commands (non-secret names only). */
+  env?: Record<string, string>;
+  /** Host env var names passed through to world commands (non-secret names only). */
+  env_passthrough?: string[];
 };
 
 export type DeploymentMcpServer = {
@@ -358,6 +470,8 @@ export type DeploymentMcpServer = {
   args?: string[];
   /** Optional env overlay (no secret-like keys). */
   env?: Record<string, string>;
+  /** Host env var names passed through to the server (non-secret names only). */
+  env_passthrough?: string[];
   timeout_ms?: number;
 };
 
@@ -369,7 +483,38 @@ export type DeploymentModuleServer = {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Host env var names passed through to the module (non-secret names only). */
+  env_passthrough?: string[];
   timeout_ms?: number;
+};
+
+/**
+ * User-channel binding (D14, spec-v0.3 §9): `bindings.<tool>.user`. A `channel: user` tool is
+ * answered by recorded answers (Track A), a declared simulator, or a human — never by a world
+ * native and never from the acting model's arguments.
+ */
+export type DeploymentUserBinding = {
+  source: "recorded" | "simulator" | "human";
+  /** recorded: JSONL answers file, resolved inside the deployment directory. */
+  answers?: string;
+  /** simulator: model id (temperature 0). */
+  model?: string;
+  /** simulator: persona / instructions file. */
+  system_prompt_file?: string;
+  /** simulator: private context the agent never sees. */
+  context_file?: string;
+  /** simulator transport overrides (default: the deployment's model settings). */
+  profile?: string;
+  base_url?: string;
+  api_key_env?: string;
+  max_tokens?: number;
+};
+
+/** One deployment binding: a host native (world channel) or a user-channel binding. */
+export type DeploymentBinding = {
+  native?: string;
+  user?: DeploymentUserBinding;
+  [k: string]: unknown;
 };
 
 export type Deployment = {
@@ -381,7 +526,7 @@ export type Deployment = {
     classification?: string;
     require?: { residency?: string };
   };
-  bindings: Record<string, { native: string; [k: string]: unknown }>;
+  bindings: Record<string, DeploymentBinding>;
   permissions?: Record<string, unknown>;
   /** Real local I/O settings for `local.*` bindings. */
   world?: DeploymentWorld;
@@ -420,6 +565,13 @@ export type ModelProposal =
   | { type: "stop"; message?: string }
   | { type: "invalid"; reason: string; message?: string };
 
+/** Recorded user-channel answer (spec-v0.3 §15.2). */
+export type RecordedUserAnswer = {
+  tool: string;
+  args?: Record<string, unknown>;
+  result: Record<string, unknown> | ToolResultEnvelope;
+};
+
 export type MessageSnapshot = {
   content: string;
   contains_code_fence: number;
@@ -438,10 +590,12 @@ export type Snapshot = {
 /** Build message.* paths for kind:output verifies. */
 export function buildMessageSnapshot(content: string): MessageSnapshot {
   const c = String(content ?? "");
+  let length = 0;
+  for (const _ of c) length += 1; // code points (D2)
   return {
     content: c,
     contains_code_fence: c.includes("```") ? 1 : 0,
-    length: c.length,
+    length,
   };
 }
 

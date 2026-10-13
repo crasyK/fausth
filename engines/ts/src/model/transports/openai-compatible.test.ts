@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { OpenAICompatibleAdapter, wireMessages } from "./openai-compatible.js";
-import { boundProviderText, isModelInfraError, ModelInfraError } from "../errors.js";
+import {
+  boundProviderText,
+  isModelInfraError,
+  isModelRequestError,
+  ModelInfraError,
+  modelTransportErrorJson,
+} from "../errors.js";
 import type { ProviderCapabilities } from "../capabilities.js";
 
 function mockFetchSequence(
@@ -452,13 +458,120 @@ describe("OpenAICompatibleAdapter infra taxonomy (EDGE-13)", () => {
     }
   });
 
-  it("non-429 4xx is bad_request infra (not a model failure)", async () => {
-    const { restore } = mockFetchSteps([{ status: 400, text: "context length exceeded" }]);
+  it("HTTP 400 for a request the harness built is request_rejected — neither infra nor a model failure", async () => {
+    const { calls, restore } = mockFetchSteps([{ status: 400, text: "context length exceeded: 140000 > 131072" }]);
     try {
       await assert.rejects(
         adapterFor(["m"]).propose({ messages: [{ role: "user", content: "hi" }], tools: [] }),
-        (e: unknown) => isModelInfraError(e) && e.kind === "bad_request" && e.status === 400,
+        (e: unknown) =>
+          isModelRequestError(e) &&
+          !isModelInfraError(e) &&
+          e.kind === "request_rejected" &&
+          e.infra === false &&
+          e.status === 400 &&
+          e.model === "m" &&
+          e.attempts === 1 &&
+          e.total_attempts === 1,
       );
+      assert.equal(calls.length, 1, "a rejected request is not retried");
+    } finally {
+      restore();
+    }
+  });
+
+  it("413/422 are request_rejected too; another model may still accept the request", async () => {
+    const { calls, restore } = mockFetchSteps([
+      { status: 413, text: "payload too large" },
+      { status: 200, body: { id: "cmpl-b", choices: [{ message: { content: "fits" } }] } },
+    ]);
+    try {
+      const out = await adapterFor(["small", "large"]).propose({ messages: [{ role: "user", content: "hi" }], tools: [] });
+      assert.equal(out.type, "stop");
+      assert.equal(out.model, "large");
+      assert.equal(calls.length, 2);
+    } finally {
+      restore();
+    }
+  });
+
+  it("KIT '400 ServiceUnavailable' (gateway overload) stays infra: retried, then server_error", async () => {
+    const overload = {
+      status: 400,
+      text: '{"error":{"message":"litellm.ServiceUnavailableError: 400 ServiceUnavailable - model overloaded","code":"400"}}',
+    };
+    const recover = mockFetchSteps([overload, { status: 200, body: { id: "cmpl-ok", choices: [{ message: { content: "ok" } }] } }]);
+    try {
+      const out = await adapterFor(["m"]).propose({ messages: [{ role: "user", content: "hi" }], tools: [] });
+      assert.equal(out.type, "stop");
+      assert.equal(recover.calls.length, 2, "transient 400 is retried");
+    } finally {
+      recover.restore();
+    }
+    const down = mockFetchSteps([overload]);
+    try {
+      await assert.rejects(
+        adapterFor(["m"], { maxAttempts: 3 }).propose({ messages: [{ role: "user", content: "hi" }], tools: [] }),
+        (e: unknown) => isModelInfraError(e) && e.kind === "server_error" && e.status === 400 && e.attempts === 3,
+      );
+    } finally {
+      down.restore();
+    }
+  });
+
+  it("a provider error with code 400 in a 2xx body is request_rejected; a transient one is infra", async () => {
+    const rejected = mockFetchSteps([{ status: 200, body: { error: { code: 400, message: "tools[0].parameters is invalid" } } }]);
+    try {
+      await assert.rejects(
+        adapterFor(["m"]).propose({ messages: [{ role: "user", content: "hi" }], tools: [] }),
+        (e: unknown) => isModelRequestError(e) && e.status === 400,
+      );
+    } finally {
+      rejected.restore();
+    }
+    const transient = mockFetchSteps([
+      { status: 200, body: { error: { code: 400, message: "ServiceUnavailable: overloaded" } } },
+      { status: 200, body: { choices: [{ message: { content: "ok" } }] } },
+    ]);
+    try {
+      const out = await adapterFor(["m"]).propose({ messages: [{ role: "user", content: "hi" }], tools: [] });
+      assert.equal(out.type, "stop");
+    } finally {
+      transient.restore();
+    }
+  });
+
+  it("transport errors are structured: kind/status/model/attempts/total_attempts on the object and in JSON", async () => {
+    const { restore } = mockFetchSteps([{ status: 503, text: "upstream down" }]);
+    try {
+      const err = await adapterFor(["a", "b"], { maxAttempts: 2 })
+        .propose({ messages: [{ role: "user", content: "hi" }], tools: [] })
+        .then(
+          () => assert.fail("expected an infra error"),
+          (e: unknown) => e,
+        );
+      assert.ok(isModelInfraError(err));
+      assert.equal(err.kind, "server_error");
+      assert.equal(err.status, 503);
+      assert.equal(err.model, "b", "last model tried");
+      assert.equal(err.attempts, 2, "requests to that model");
+      assert.equal(err.total_attempts, 4, "requests across the fallback chain");
+      const json = JSON.parse(JSON.stringify(err)) as Record<string, unknown>;
+      assert.deepEqual(
+        { ...json, message: undefined },
+        {
+          name: "ModelInfraError",
+          infra: true,
+          kind: "server_error",
+          status: 503,
+          model: "b",
+          attempts: 2,
+          total_attempts: 4,
+          message: undefined,
+        },
+      );
+      assert.match(String(json.message), /HTTP 503/);
+      assert.deepEqual(modelTransportErrorJson(err), json);
+      assert.equal(modelTransportErrorJson(new Error("x")), null);
     } finally {
       restore();
     }
@@ -492,7 +605,7 @@ describe("OpenAICompatibleAdapter infra taxonomy (EDGE-13)", () => {
   });
 
   it("error messages are bounded and redact key-like text", () => {
-    const e = new ModelInfraError("bad_request", boundProviderText(`Bearer abcdefghijklmnop ${"x".repeat(2000)}`));
+    const e = new ModelInfraError("server_error", boundProviderText(`Bearer abcdefghijklmnop ${"x".repeat(2000)}`));
     assert.ok(!e.message.includes("abcdefghijklmnop"));
     assert.ok(Array.from(e.message).length <= 501);
   });
@@ -672,6 +785,67 @@ describe("OpenAICompatibleAdapter provider fields (EDGE-13)", () => {
       await adapter.propose({ messages: [{ role: "user", content: "conversation one" }], tools: [] });
       await adapter.propose({ messages: [{ role: "user", content: "conversation two" }], tools: [] });
       assert.equal(JSON.stringify(calls[1]!.body).includes("reasoning"), false);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("OpenAICompatibleAdapter per-call log (completion ids)", () => {
+  it("records every request with its completion id and flags repeated ids (gateway cache hits)", async () => {
+    const reply = { id: "chatcmpl-same", created: 1760000000, choices: [{ message: { content: "hi" } }] };
+    const { restore } = mockFetchSteps([
+      { status: 503, text: "busy" },
+      { status: 200, body: reply },
+      { status: 200, body: reply },
+      { status: 200, body: { ...reply, id: "chatcmpl-other" } },
+    ]);
+    const seen: number[] = [];
+    try {
+      const adapter = adapterFor(["m"], { onCall: (r) => seen.push(r.seq) });
+      const first = await adapter.propose({ messages: [{ role: "user", content: "hi" }], tools: [] });
+      const second = await adapter.propose({ messages: [{ role: "user", content: "hi" }], tools: [] });
+      const third = await adapter.propose({ messages: [{ role: "user", content: "hi" }], tools: [] });
+      assert.deepEqual(
+        adapter.callLog.map((r) => ({
+          seq: r.seq,
+          attempt: r.attempt,
+          status: r.status,
+          outcome: r.outcome,
+          completion_id: r.completion_id,
+          repeat_of: r.repeat_of,
+          error_kind: r.error_kind,
+        })),
+        [
+          { seq: 1, attempt: 1, status: 503, outcome: "http_error", completion_id: undefined, repeat_of: undefined, error_kind: "server_error" },
+          { seq: 2, attempt: 2, status: 200, outcome: "ok", completion_id: "chatcmpl-same", repeat_of: undefined, error_kind: undefined },
+          { seq: 3, attempt: 1, status: 200, outcome: "ok", completion_id: "chatcmpl-same", repeat_of: 2, error_kind: undefined },
+          { seq: 4, attempt: 1, status: 200, outcome: "ok", completion_id: "chatcmpl-other", repeat_of: undefined, error_kind: undefined },
+        ],
+      );
+      assert.deepEqual(seen, [1, 2, 3, 4]);
+      assert.equal(first.completion_id, "chatcmpl-same");
+      assert.equal(first.call_seq, 2);
+      assert.equal(first.repeat_of_call, undefined);
+      assert.equal(second.repeat_of_call, 2, "the proposal itself says it repeats call 2");
+      assert.equal(third.completion_id, "chatcmpl-other");
+      assert.equal(adapter.callLog[1]!.created, 1760000000);
+      assert.equal(adapter.drainCallLog().length, 4);
+      assert.equal(adapter.callLog.length, 0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("timeouts and network failures are logged without a status", async () => {
+    const { restore } = mockFetchSteps([{ throws: new TypeError("fetch failed") }]);
+    try {
+      const adapter = adapterFor(["m"], { maxAttempts: 1 });
+      await assert.rejects(adapter.propose({ messages: [{ role: "user", content: "hi" }], tools: [] }));
+      assert.equal(adapter.callLog.length, 1);
+      assert.equal(adapter.callLog[0]!.status, null);
+      assert.equal(adapter.callLog[0]!.outcome, "network");
+      assert.equal(adapter.callLog[0]!.error_kind, "network");
     } finally {
       restore();
     }
