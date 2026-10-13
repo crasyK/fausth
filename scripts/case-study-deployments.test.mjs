@@ -6,12 +6,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import {
+  answerEnvelope,
   materializeAttemptDeployment,
   materializeKitDeployment,
   resolvePytestCommands,
   resolveUserChannel,
 } from "./lib/case-study-deployments.mjs";
+import { bootstrapWorkspace, cleanupWorkspace } from "./lib/workspace.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const YAML = createRequire(join(root, "engines/ts/package.json"))("yaml");
@@ -81,10 +84,15 @@ describe("user channel bindings (D14)", () => {
 
   const taskAbsDir = join(root, "case-studies/tau-bench/tasks/retail-000");
   const taskYml = YAML.parse(readFileSync(join(taskAbsDir, "task.yml"), "utf8"));
+  const tauDep = "case-studies/tau-bench/deployments/local-recorded.yml";
+  const askDef = {
+    id: "user.ask",
+    output: { type: "object", required: ["answer"], properties: { answer: { type: "string" } } },
+  };
 
-  it("keeps the base deployment when the manifest declares no user_channel", () => {
+  it("keeps the base deployment when the attempt has no user-channel tools", () => {
     const r = materializeAttemptDeployment({
-      basePath: "case-studies/tau-bench/deployments/local-recorded.yml",
+      basePath: "case-studies/coding-counterbalance/deployments/local-recorded.yml",
       attemptDir: join(dir, "a0"),
       userChannel: null,
       mode: "recorded",
@@ -93,72 +101,114 @@ describe("user channel bindings (D14)", () => {
       taskId: "retail-000",
     });
     assert.equal(r.user_channel, null);
-    assert.equal(r.path, join(root, "case-studies/tau-bench/deployments/local-recorded.yml"));
+    assert.equal(r.path, join(root, "case-studies/coding-counterbalance/deployments/local-recorded.yml"));
   });
 
-  it("recorded mode binds user tools to recorded answers outside the workspace", () => {
+  it("rebinds removed auto-answer natives to recorded scripted answers (engine JSONL, relative path)", () => {
     const attemptDir = join(dir, "a1");
     const r = materializeAttemptDeployment({
-      basePath: "case-studies/tau-bench/deployments/local-recorded.yml",
+      basePath: tauDep,
       attemptDir,
+      userChannel: null,
+      mode: "live",
+      taskYml,
+      taskAbsDir,
+      taskId: "retail-000",
+      toolDefs: { "user.ask": askDef },
+      maxCalls: 5,
+    });
+    const dep = YAML.parse(readFileSync(r.path, "utf8"));
+    assert.deepEqual(dep.bindings["user.ask"], {
+      user: { source: "recorded", answers: "user-answers.user.ask.jsonl" },
+    });
+    assert.equal(dirname(r.path), attemptDir, "answers resolve next to the deployment");
+    const lines = readFileSync(join(attemptDir, "user-answers.user.ask.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.deepEqual(
+      lines.map((l) => [l.tool, l.call_seq, l.result.output.answer]),
+      [
+        ["user.ask", 1, "yes"],
+        ["user.ask", 2, "yes please"],
+        ["user.ask", 3, "that is correct"],
+        ["user.ask", 4, "that is correct"],
+        ["user.ask", 5, "that is correct"],
+      ],
+    );
+    assert.deepEqual(dep.bindings["tau.invoke"], { native: "local.tau_invoke" }, "other bindings untouched");
+    assert.equal(r.user_channel["user.ask"].scripted_answers, 3);
+  });
+
+  it("recorded mode never binds a live simulator", () => {
+    const r = materializeAttemptDeployment({
+      basePath: tauDep,
+      attemptDir: join(dir, "a2"),
       userChannel: { source: "simulator", model: "kit.glm-5.3-flash" },
       mode: "recorded",
       taskYml,
       taskAbsDir,
       taskId: "retail-000",
+      toolDefs: { "user.ask": askDef },
     });
-    const dep = YAML.parse(readFileSync(r.path, "utf8"));
-    assert.deepEqual(dep.bindings["user.ask"], {
-      user: { source: "recorded", answers: join(attemptDir, "user-answers.json") },
-    });
-    assert.deepEqual(JSON.parse(readFileSync(join(attemptDir, "user-answers.json"), "utf8")), [
-      "yes",
-      "yes please",
-      "that is correct",
-    ]);
-    // Other bindings untouched.
-    assert.deepEqual(dep.bindings["tau.invoke"], { native: "local.tau_invoke" });
-    assert.deepEqual(r.user_tools, ["user.ask"]);
+    assert.equal(YAML.parse(readFileSync(r.path, "utf8")).bindings["user.ask"].user.source, "recorded");
   });
 
-  it("live simulator binding resolves per-task files and requires a model", () => {
+  it("live simulator binding copies per-task files next to the deployment", () => {
     const ctxDir = join(dir, "ctx");
     mkdirSync(ctxDir, { recursive: true });
-    writeFileSync(join(ctxDir, "retail-000.md"), "persona\n");
-    const spec = resolveUserChannel({
-      userChannel: { source: "simulator", model: "kit.deepseek-v4-flash", context_file: `${ctxDir}/{task_id}.md` },
+    writeFileSync(join(ctxDir, "retail-000.md"), "persona goal\n");
+    writeFileSync(join(ctxDir, "sim.md"), "You are the customer.\n");
+    const attemptDir = join(dir, "a3");
+    const r = materializeAttemptDeployment({
+      basePath: tauDep,
+      attemptDir,
+      userChannel: {
+        source: "simulator",
+        model: "kit.deepseek-v4-flash",
+        system_prompt_file: `${ctxDir}/sim.md`,
+        context_file: `${ctxDir}/{task_id}.md`,
+        max_tokens: 256,
+      },
       mode: "live",
       taskYml,
       taskAbsDir,
       taskId: "retail-000",
-      attemptDir: join(dir, "a2"),
-    }).spec;
+    });
+    const spec = YAML.parse(readFileSync(r.path, "utf8")).bindings["user.ask"].user;
     assert.deepEqual(spec, {
       source: "simulator",
       model: "kit.deepseek-v4-flash",
-      context_file: join(ctxDir, "retail-000.md"),
+      system_prompt_file: "user-sim.user.ask.system.md",
+      context_file: "user-sim.user.ask.context.md",
+      max_tokens: 256,
     });
+    assert.equal(readFileSync(join(attemptDir, spec.context_file), "utf8"), "persona goal\n");
     assert.throws(
       () =>
         resolveUserChannel({
+          tool: "user.ask",
           userChannel: { source: "simulator" },
+          baseDir: dir,
           mode: "live",
           taskYml,
           taskAbsDir,
           taskId: "retail-000",
-          attemptDir: join(dir, "a3"),
+          attemptDir: join(dir, "a4"),
         }),
       /requires user_channel.model/,
     );
     assert.throws(
       () =>
         resolveUserChannel({
+          tool: "user.ask",
           userChannel: { source: "oracle" },
+          baseDir: dir,
           mode: "live",
           taskYml,
           taskAbsDir,
           taskId: "retail-000",
-          attemptDir: join(dir, "a4"),
+          attemptDir: join(dir, "a5"),
         }),
       /recorded\|simulator\|human/,
     );
@@ -166,9 +216,9 @@ describe("user channel bindings (D14)", () => {
 
   it("leaves user tools unbound (deny) when no answers exist", () => {
     const r = materializeAttemptDeployment({
-      basePath: "case-studies/tau-bench/deployments/local-recorded.yml",
-      attemptDir: join(dir, "a5"),
-      userChannel: { source: "recorded" },
+      basePath: tauDep,
+      attemptDir: join(dir, "a6"),
+      userChannel: null,
       mode: "recorded",
       taskYml: {},
       taskAbsDir,
@@ -176,6 +226,160 @@ describe("user channel bindings (D14)", () => {
     });
     const dep = YAML.parse(readFileSync(r.path, "utf8"));
     assert.equal(dep.bindings["user.ask"], undefined);
-    assert.deepEqual(r.user_channel.unbound, ["user.ask"]);
+    assert.equal(r.user_channel["user.ask"].unbound, true);
   });
+
+  it("maps scripted answers onto non-string output schemas or refuses", () => {
+    assert.deepEqual(
+      answerEnvelope({ output: { type: "object", required: ["approved"], properties: { approved: { type: "integer" } } } }, "yes"),
+      { output: { approved: 1 } },
+    );
+    assert.equal(
+      answerEnvelope({ output: { type: "object", required: ["a", "b"], properties: {} } }, "yes"),
+      null,
+    );
+    assert.deepEqual(answerEnvelope(askDef, { output: { answer: "x" } }), { output: { answer: "x" } });
+  });
+
+  it("checkpoint tools on the user channel keep the auto-checkpoint protocol as recorded scripts", () => {
+    const attemptDir = join(dir, "cp");
+    const r = materializeAttemptDeployment({
+      basePath: "case-studies/coding-counterbalance/deployments/local-recorded.yml",
+      attemptDir,
+      userChannel: { recorded: { "user.approve": [{ output: { approved: 1 } }] } },
+      mode: "recorded",
+      taskYml: {},
+      taskAbsDir,
+      taskId: "01-fix-add",
+      declaredUserTools: ["user.correct", "user.approve"],
+      maxCalls: 2,
+    });
+    const dep = YAML.parse(readFileSync(r.path, "utf8"));
+    assert.deepEqual(dep.bindings["user.correct"], {
+      user: { source: "recorded", answers: "user-answers.user.correct.jsonl" },
+    });
+    const read = (f) =>
+      readFileSync(join(attemptDir, f), "utf8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l));
+    assert.deepEqual(read("user-answers.user.correct.jsonl"), [
+      { tool: "user.correct", call_seq: 1, result: { output: { ok: 1 }, state_transition: { set: { open_todos: 0 } } } },
+      { tool: "user.correct", call_seq: 2, result: { output: { ok: 1 }, state_transition: { set: { open_todos: 0 } } } },
+    ]);
+    // Manifest inline scripts win over the legacy translation.
+    assert.deepEqual(read("user-answers.user.approve.jsonl")[0].result, { output: { approved: 1 } });
+    assert.deepEqual(dep.bindings["fs.read"], { native: "local.fs_read" });
+  });
+
+  /** Generated deployment + scripted answers for the τ counterbalanced harness. */
+  function tauAttempt(name) {
+    const attemptDir = join(dir, name);
+    const r = materializeAttemptDeployment({
+      basePath: tauDep,
+      attemptDir,
+      userChannel: null,
+      mode: "recorded",
+      taskYml,
+      taskAbsDir,
+      taskId: "retail-000",
+      toolDefs: { "user.ask": askDef },
+      maxCalls: 4,
+    });
+    return { attemptDir, deploymentPath: r.path };
+  }
+
+  it("the engine's user-channel adapter answers user.ask in order from the generated binding", () => {
+    const { deploymentPath } = tauAttempt("adapter");
+    const ws = bootstrapWorkspace({ seed: join(taskAbsDir, "seed"), root: join(dir, "ws-root") });
+    try {
+      const probe = `
+        import { readFileSync } from "node:fs";
+        import { parse } from "yaml";
+        import { loadAgentDir } from ${JSON.stringify(join(root, "engines/ts/src/load.ts"))};
+        import { resolveToolsFromDeployment } from ${JSON.stringify(join(root, "engines/ts/src/adapters/registry.ts"))};
+        const harnessDir = ${JSON.stringify(join(root, "case-studies/tau-bench/harnesses/counterbalanced"))};
+        const { agent } = loadAgentDir(harnessDir);
+        const dep = parse(readFileSync(${JSON.stringify(deploymentPath)}, "utf8"));
+        const tools = resolveToolsFromDeployment(agent, dep, {
+          workspace: ${JSON.stringify(ws.worktree)},
+          harnessDir,
+          deploymentPath: ${JSON.stringify(deploymentPath)},
+        });
+        const ctx = { state: { ...agent.state } };
+        const out = [];
+        for (const q of ["Exchange both items?", "Use credit_card_9513926?"]) {
+          out.push((await tools["user.ask"]({ question: q }, ctx)).output.answer);
+        }
+        console.log(JSON.stringify(out));
+      `;
+      const r = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", probe], {
+        cwd: join(root, "engines/ts"),
+        encoding: "utf8",
+      });
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(JSON.parse(r.stdout.trim().split("\n").pop()), ["yes", "yes please"]);
+    } finally {
+      cleanupWorkspace({ worktree: ws.worktree, root: join(dir, "ws-root") });
+    }
+  });
+
+  // The CLI resolves user-channel files next to --deployment only once it passes
+  // deploymentPath to the adapter registry (integrator wiring on fix/contract).
+  const cliPassesDeploymentPath = /deploymentPath:\s*depFile/.test(
+    readFileSync(join(root, "engines/ts/src/cli.ts"), "utf8"),
+  );
+  it(
+    "the engine CLI answers user.ask in order from the generated binding",
+    { skip: cliPassesDeploymentPath ? false : "engine CLI does not pass deploymentPath to the registry yet" },
+    () => {
+      const { attemptDir, deploymentPath } = tauAttempt("cli");
+      const trace = join(attemptDir, "model.jsonl");
+      writeFileSync(
+        trace,
+        [
+          { type: "tool", name: "user.ask", args: { question: "Exchange both items?" } },
+          { type: "tool", name: "user.ask", args: { question: "Use credit_card_9513926?" } },
+          { type: "stop" },
+        ]
+          .map((x) => JSON.stringify(x))
+          .join("\n") + "\n",
+      );
+      const ws = bootstrapWorkspace({ seed: join(taskAbsDir, "seed"), root: join(dir, "ws-root") });
+      try {
+        const dump = join(attemptDir, "events.jsonl");
+        const run = spawnSync(
+          process.execPath,
+          [
+            "--import",
+            "tsx",
+            "src/cli.ts",
+            "run",
+            join(root, "case-studies/tau-bench/harnesses/counterbalanced"),
+            "--deployment",
+            deploymentPath,
+            "--workspace",
+            ws.worktree,
+            "--model",
+            trace,
+            "--max-steps",
+            "6",
+            "--dump",
+            dump,
+          ],
+          { cwd: join(root, "engines/ts"), encoding: "utf8" },
+        );
+        assert.equal(run.status, 0, run.stderr);
+        const answers = readFileSync(dump, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => JSON.parse(l))
+          .filter((e) => e.stage === "execute" && e.tool === "user.ask" && e.verdict === "allow")
+          .map((e) => e.result?.answer);
+        assert.deepEqual(answers, ["yes", "yes please"]);
+      } finally {
+        cleanupWorkspace({ worktree: ws.worktree, root: join(dir, "ws-root") });
+      }
+    },
+  );
 });
