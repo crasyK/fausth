@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Local coding e2e — recorded happy path inside a disposable linked worktree.
- * PR CI safe (no live model). Real KIT/OpenRouter stays in nightly workflow.
+ * Local coding e2e — recorded happy path inside an isolated disposable workspace
+ * (scripts/lib/workspace.mjs). PR CI safe (no live model). Real KIT/OpenRouter
+ * stays in the nightly workflow.
  *
  * Exit 0 on completion_reached; writes live/reports/local-e2e.json
  */
@@ -9,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bootstrapWorkspace, cleanupWorkspace } from "./lib/workspace.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const harness = join(root, "examples/coding-counterbalance");
@@ -22,16 +24,7 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-const boot = JSON.parse(
-  run(process.execPath, [
-    join(root, "scripts/disposable-worktree.mjs"),
-    "bootstrap",
-    "--parent",
-    root,
-    "--tiny-seed",
-    "true",
-  ]),
-);
+const boot = bootstrapWorkspace({ tinySeed: true });
 
 const worktree = boot.worktree;
 let report;
@@ -92,16 +85,9 @@ try {
   };
 } finally {
   try {
-    run(process.execPath, [
-      join(root, "scripts/disposable-worktree.mjs"),
-      "cleanup",
-      "--parent",
-      root,
-      "--worktree",
-      worktree,
-    ]);
-  } catch {
-    /* ignore */
+    cleanupWorkspace({ worktree });
+  } catch (e) {
+    console.error(`[warn] workspace cleanup failed: ${e instanceof Error ? e.message : e}`);
   }
 }
 
