@@ -44,6 +44,13 @@ Rule: each row is **pass** / **blocked** with command evidence — not “code l
 
 Host-layer citation checks: `verifyFindingEvidence` unit tests **pass**.
 
+> **Note (2026-10-13, D15):** the KIT model ids recorded in this document
+> (`kit.minimax-m2.7-229b`, `kit.mistral-small-4-119b-a8b`, `kit.qwen3.5-397b-A17b`,
+> `kit.gemma4-31b-it`) are retired. Results below are historical and were not re-run;
+> `deployment.kit.yml` now lists `kit.glm-5.3-flash` (default) and `kit.deepseek-v4-flash`.
+> The matrix runner now excludes infra failures (timeouts, rate limits, 5xx) from TP/FP/FN
+> instead of scoring them as false negatives.
+
 ## D. Provider probes
 
 | Check | Result |

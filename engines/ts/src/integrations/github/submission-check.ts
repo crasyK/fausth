@@ -62,12 +62,117 @@ export type SubmissionCheckInput = {
   max_file_bytes?: number;
 };
 
-const SECRET_RE =
-  /(?:api[_-]?key|secret|token|password)\s*[=:]\s*['"]?[A-Za-z0-9_\-]{16,}/i;
-const SK_RE = /\bsk-(?:or-)?[a-zA-Z0-9]{20,}\b/;
+/** Closed category set for findings (deterministic + advisory). */
+export const FINDING_CATEGORIES: readonly FindingCategory[] = [
+  "incomplete_submission",
+  "scope_violation",
+  "missing_instructions",
+  "potential_secret",
+  "safety_concern",
+  "contradiction",
+  "human_review",
+];
+
+export const FINDING_SEVERITIES: readonly FindingSeverity[] = ["info", "warning", "blocking"];
+
+/** Severities the advisory (model) layer may use; `blocking` is reserved for deterministic checks. */
+export const ADVISORY_SEVERITIES: readonly FindingSeverity[] = ["info", "warning"];
+
+/** Closed set of evidence-gate rejection reasons (D12). */
+export const FINDING_REJECT_REASONS = [
+  "invalid_category",
+  "invalid_severity",
+  "severity_reserved_for_deterministic",
+  "invalid_path",
+  "path_not_in_packet",
+  "path_outside_submission",
+  "evidence_empty",
+  "evidence_not_found",
+  "line_invalid",
+  "line_out_of_range",
+  "recommendation_empty",
+] as const;
+
+export type FindingRejectReason = (typeof FINDING_REJECT_REASONS)[number];
+
+/**
+ * Closed list of secret shapes. The same list drives detection (potential_secret findings,
+ * packet redaction) and output redaction, so anything we would mask is also flagged.
+ * `keep`: capture group 1 is kept verbatim (e.g. the key name in `password: …`).
+ * Order matters: specific token shapes before the generic `key = value` form.
+ */
+const SECRET_PATTERNS: ReadonlyArray<{ id: string; re: RegExp; keep?: true }> = [
+  {
+    id: "private_key_block",
+    re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/,
+  },
+  { id: "openai_style_key", re: /\bsk-[A-Za-z0-9_-]{20,}/ },
+  { id: "github_token", re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/ },
+  { id: "aws_access_key_id", re: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/ },
+  { id: "slack_token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}/ },
+  { id: "bearer_token", re: /\b(Bearer\s+)[A-Za-z0-9._~+/-]{16,}=*/i, keep: true },
+  {
+    id: "assignment",
+    re: /((?:api[_-]?key|secret|token|password)\s*[=:]\s*['"]?)[A-Za-z0-9_\-]{16,}/i,
+    keep: true,
+  },
+];
+
+function secretRegex(p: (typeof SECRET_PATTERNS)[number], global: boolean): RegExp {
+  // Fresh instance per use: no shared lastIndex state between callers.
+  return new RegExp(p.re.source, global ? `${p.re.flags}g` : p.re.flags);
+}
+
+/** First secret-shaped match in `text` (lowest index), or null. */
+export function findSecret(text: string): { id: string; index: number; match: string } | null {
+  let best: { id: string; index: number; match: string } | null = null;
+  for (const p of SECRET_PATTERNS) {
+    const m = secretRegex(p, false).exec(text);
+    if (m && (best === null || m.index < best.index)) {
+      best = { id: p.id, index: m.index, match: m[0] };
+    }
+  }
+  return best;
+}
+
+export function containsSecret(text: string): boolean {
+  return findSecret(text) !== null;
+}
+
+/**
+ * Replace every secret-shaped substring. Used on everything that leaves the process
+ * (finding evidence, markdown, annotations, check-run text, prompts).
+ */
+export function redactSecrets(text: string): string {
+  let out = String(text ?? "");
+  for (const p of SECRET_PATTERNS) {
+    out = out.replace(secretRegex(p, true), (...m: unknown[]) =>
+      p.keep ? `${String(m[1] ?? "")}[REDACTED]` : `[REDACTED:${p.id}]`,
+    );
+  }
+  return out;
+}
+
+/** Redact first, then cut — so a slice can never expose a partial secret. */
+function redactedSlice(text: string, max: number): string {
+  return redactSecrets(text).slice(0, max);
+}
+
 const SETUP_RE = /^#{1,3}\s*(setup|installation|getting started|install)\b/im;
 const DEMO_RE = /^#{1,3}\s*(demo|usage|run|how to (run|use)|try it)\b/im;
-const NOT_AVAILABLE_RE = /\b(demo\s*(link)?\s*:\s*)?(n\/?a|not available|none)\b/i;
+/**
+ * Explicit, demo-specific "not available" notes only ("Demo: n/a", "no demo available",
+ * "the demo is not available"). A bare "none"/"n/a" elsewhere must not waive the check.
+ */
+const NOT_AVAILABLE_RES: readonly RegExp[] = [
+  /\bdemo(?:\s+link)?\s*[:\-\u2013\u2014]\s*(?:n\/a|na|none|not available|unavailable)\b/i,
+  /\bno\s+demo\s+(?:is\s+)?available\b/i,
+  /\bdemo\s+(?:is\s+)?(?:not\s+(?:yet\s+)?available|unavailable)\b/i,
+];
+
+function hasDemoNotAvailableNote(readme: string): boolean {
+  return NOT_AVAILABLE_RES.some((re) => re.test(readme));
+}
 
 const TEMPLATE_CHECKS = [
   /\[x\]\s*Our project lives inside one folder under `projects\/?`\.?/i,
@@ -95,15 +200,6 @@ function projectFolders(paths: string[]): string[] {
 function isUnderProject(path: string, folder: string): boolean {
   const p = normalizePath(path);
   return p === `projects/${folder}` || p.startsWith(`projects/${folder}/`);
-}
-
-function isAllowlistedOutside(path: string): boolean {
-  const p = normalizePath(path);
-  return (
-    p === ".github/PULL_REQUEST_TEMPLATE.md" ||
-    p === "README.md" ||
-    p.startsWith(".github/") === false && p === "projects.json"
-  );
 }
 
 function lineOf(content: string, needle: string): number | undefined {
@@ -249,18 +345,18 @@ export function runSubmissionCheck(input: SubmissionCheckInput): ReviewPacket {
           severity: "blocking",
           path: readmePath,
           line_start: 1,
-          evidence: readme.slice(0, 120),
+          evidence: redactedSlice(readme, 120),
           recommendation: "Add a Setup / Installation section heading in the README.",
         });
       }
-      if (!DEMO_RE.test(readme) && !NOT_AVAILABLE_RE.test(readme)) {
+      if (!DEMO_RE.test(readme) && !hasDemoNotAvailableNote(readme)) {
         findings.push({
           category: "missing_instructions",
           severity: "blocking",
           path: readmePath,
           line_start: 1,
-          evidence: readme.slice(0, 120),
-          recommendation: "Add a Demo / Usage section, or an explicit 'not available' note.",
+          evidence: redactedSlice(readme, 120),
+          recommendation: "Add a Demo / Usage section, or an explicit 'Demo: not available' note.",
         });
       }
     }
@@ -311,18 +407,16 @@ export function runSubmissionCheck(input: SubmissionCheckInput): ReviewPacket {
       exclude_reason = "byte_budget";
     }
 
-    if (included && (SECRET_RE.test(content) || SK_RE.test(content))) {
-      const evidence = (content.match(SK_RE)?.[0] ?? content.match(SECRET_RE)?.[0] ?? "secret").replace(
-        /sk-[a-zA-Z0-9_-]+/g,
-        "[REDACTED]",
-      );
+    const secret = included ? findSecret(content) : null;
+    if (secret) {
       redacted.push(path);
       findings.push({
         category: "potential_secret",
         severity: "blocking",
         path,
-        line_start: lineOf(content, content.match(SK_RE)?.[0] ?? content.match(SECRET_RE)?.[0] ?? "") ?? 1,
-        evidence,
+        line_start: lineOf(content, secret.match) ?? 1,
+        // Never the value: the masked match (keeps e.g. the key name) or the shape id.
+        evidence: redactSecrets(secret.match).slice(0, 120),
         recommendation: "Remove credentials and rotate any exposed secrets.",
       });
       // still include but mark redacted — content replaced
@@ -343,6 +437,13 @@ export function runSubmissionCheck(input: SubmissionCheckInput): ReviewPacket {
     }
   }
 
+  // Defense in depth: nothing secret-shaped may leave via finding text.
+  for (const f of findings) {
+    f.evidence = redactSecrets(f.evidence);
+    f.recommendation = redactSecrets(f.recommendation);
+    f.path = redactSecrets(f.path);
+  }
+
   const blocking = findings.some((f) => f.severity === "blocking");
   const conclusion: ReviewConclusion = blocking ? "fail" : "pass";
 
@@ -361,19 +462,44 @@ export function runSubmissionCheck(input: SubmissionCheckInput): ReviewPacket {
   };
 }
 
-/** Verify an AI finding against packet file contents. */
+function isOneOf<T extends string>(v: unknown, set: readonly T[]): v is T {
+  return typeof v === "string" && (set as readonly string[]).includes(v);
+}
+
+/**
+ * Verify an advisory (model) finding against packet file contents.
+ * Strict: closed category/severity enums, non-empty evidence that occurs verbatim in an
+ * included file, integer line_start within the file, path inside the submission.
+ * `blocking` is reserved for the deterministic layer.
+ */
 export function verifyFindingEvidence(
   finding: ReviewFinding,
   packet: ReviewPacket,
-): { ok: true } | { ok: false; reason: string } {
-  const file = packet.files.find((f) => f.path === finding.path && f.included);
+): { ok: true } | { ok: false; reason: FindingRejectReason } {
+  const f = finding as unknown as Record<string, unknown>;
+  if (!isOneOf(f.category, FINDING_CATEGORIES)) return { ok: false, reason: "invalid_category" };
+  if (!isOneOf(f.severity, FINDING_SEVERITIES)) return { ok: false, reason: "invalid_severity" };
+  if (!isOneOf(f.severity, ADVISORY_SEVERITIES)) {
+    return { ok: false, reason: "severity_reserved_for_deterministic" };
+  }
+  if (typeof f.path !== "string" || f.path.length === 0) return { ok: false, reason: "invalid_path" };
+  if (typeof f.recommendation !== "string" || f.recommendation.trim().length === 0) {
+    return { ok: false, reason: "recommendation_empty" };
+  }
+  const file = packet.files.find((pf) => pf.path === f.path && pf.included);
   if (!file) return { ok: false, reason: "path_not_in_packet" };
-  if (finding.evidence && !file.content.includes(finding.evidence)) {
+  if (typeof f.evidence !== "string" || f.evidence.trim().length === 0) {
+    return { ok: false, reason: "evidence_empty" };
+  }
+  if (!file.content.includes(f.evidence)) {
     return { ok: false, reason: "evidence_not_found" };
   }
-  if (finding.line_start !== undefined) {
+  if (f.line_start !== undefined) {
+    if (typeof f.line_start !== "number" || !Number.isInteger(f.line_start)) {
+      return { ok: false, reason: "line_invalid" };
+    }
     const lines = file.content.split(/\r?\n/);
-    if (finding.line_start < 1 || finding.line_start > lines.length) {
+    if (f.line_start < 1 || f.line_start > lines.length) {
       return { ok: false, reason: "line_out_of_range" };
     }
   }
@@ -382,10 +508,10 @@ export function verifyFindingEvidence(
   if (folders.length === 1) {
     const folder = folders[0]!;
     if (
-      !isUnderProject(finding.path, folder) &&
-      finding.path !== ".github/PULL_REQUEST_TEMPLATE.md" &&
-      finding.path !== "pull_request" &&
-      finding.path !== "projects/"
+      !isUnderProject(f.path, folder) &&
+      f.path !== ".github/PULL_REQUEST_TEMPLATE.md" &&
+      f.path !== "pull_request" &&
+      f.path !== "projects/"
     ) {
       return { ok: false, reason: "path_outside_submission" };
     }
@@ -396,9 +522,9 @@ export function verifyFindingEvidence(
 export function filterVerifiedFindings(
   findings: ReviewFinding[],
   packet: ReviewPacket,
-): { kept: ReviewFinding[]; dropped: { finding: ReviewFinding; reason: string }[] } {
+): { kept: ReviewFinding[]; dropped: { finding: ReviewFinding; reason: FindingRejectReason }[] } {
   const kept: ReviewFinding[] = [];
-  const dropped: { finding: ReviewFinding; reason: string }[] = [];
+  const dropped: { finding: ReviewFinding; reason: FindingRejectReason }[] = [];
   for (const f of findings) {
     const v = verifyFindingEvidence(f, packet);
     if (v.ok) kept.push(f);

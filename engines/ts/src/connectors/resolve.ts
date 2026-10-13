@@ -1,9 +1,12 @@
 /**
  * Deterministic connector resolution (M10): compile/link sidecar manifests
  * into ResolvedHarnessIR without network access or module execution.
+ *
+ * Lock hashes are computed over the raw file bytes (never newline-translated text) so
+ * every engine produces the same pins on CRLF and LF checkouts. Files must be UTF-8.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { canonicalJson } from "../canonical.js";
@@ -45,8 +48,20 @@ export class ConnectorError extends Error {
 
 const SECRET_KEY_RE = /(api[_-]?key|secret|password|token|credential|authorization)/i;
 
-function sha256Hex(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
+function sha256Hex(content: string | Uint8Array): string {
+  const h = createHash("sha256");
+  if (typeof content === "string") h.update(content, "utf8");
+  else h.update(content);
+  return h.digest("hex");
+}
+
+/** Strict UTF-8 decode that keeps a BOM and CRLF exactly as stored. */
+export function decodeUtf8Strict(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 function assertNoSecrets(value: unknown, path: string): void {
@@ -82,15 +97,13 @@ function assertSafeRelativePath(relPath: string): void {
   }
 }
 
+/** Resolve under the harness root; symlinks are allowed only if the real target stays inside. */
 function resolveUnderHarness(harnessDir: string, relPath: string): { abs: string; rel: string } {
   assertSafeRelativePath(relPath);
   const abs = resolve(harnessDir, relPath);
   const rootReal = realpathSync(harnessDir);
   if (!existsSync(abs)) {
     throw new ConnectorError("connectors_path", `connector file not found: ${relPath}`);
-  }
-  if (lstatSync(abs).isSymbolicLink()) {
-    // Allow symlink only if the real target stays inside the harness.
   }
   const fileReal = realpathSync(abs);
   const rel = relative(rootReal, fileReal);
@@ -103,12 +116,25 @@ function resolveUnderHarness(harnessDir: string, relPath: string): { abs: string
   return { abs: fileReal, rel: rel.split(sep).join("/") };
 }
 
-function loadYamlOrJson(path: string): unknown {
-  const text = readFileSync(path, "utf8");
-  if (path.endsWith(".json")) {
-    return JSON.parse(text);
+/** Read raw bytes; pin = sha256(bytes); content = strict UTF-8 text. */
+function readPinnedText(abs: string, rel: string): { content: string; sha256: string } {
+  const bytes = readFileSync(abs);
+  const content = decodeUtf8Strict(bytes);
+  if (content === null) {
+    throw new ConnectorError("connectors_invalid", `connector file is not valid UTF-8: ${rel}`);
   }
-  return parseYaml(text);
+  return { content, sha256: sha256Hex(bytes) };
+}
+
+function parseDocument(content: string, asJson: boolean, what: string): unknown {
+  try {
+    return asJson ? JSON.parse(content) : parseYaml(content);
+  } catch (e) {
+    throw new ConnectorError(
+      "connectors_invalid",
+      `${what} is not valid ${asJson ? "JSON" : "YAML"}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 function asProvision(raw: unknown, path: string): ConnectorProvision {
@@ -146,107 +172,42 @@ function provisionToTool(p: ConnectorProvision): ToolDef {
   return t;
 }
 
-function loadMcpDescriptor(
-  harnessDir: string,
-  connector: Extract<ConnectorSource, { kind: "mcp" }>,
-): { provides: ConnectorProvision[]; sha256: string; path: string } {
-  const { abs, rel } = resolveUnderHarness(harnessDir, connector.descriptor);
-  if (!abs.endsWith(".json")) {
-    throw new ConnectorError(
-      "connectors_invalid",
-      `mcp descriptor must be JSON (.json): ${rel}`,
-    );
-  }
-  const content = readFileSync(abs, "utf8");
-  const digest = sha256Hex(content);
-  if (connector.sha256 !== undefined) {
-    const expected = String(connector.sha256);
-    if (!/^[a-f0-9]{64}$/.test(expected)) {
-      throw new ConnectorError(
-        "connectors_invalid",
-        `connector '${connector.id}' sha256 must be a 64-char lowercase hex string`,
-      );
-    }
-    if (expected !== digest) {
-      throw new ConnectorError(
-        "connectors_hash_mismatch",
-        `sha256 mismatch for connector '${connector.id}' at ${rel}: expected ${expected}, got ${digest}`,
-      );
-    }
-  }
-  const raw = JSON.parse(content);
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new ConnectorError("connectors_invalid", `mcp descriptor at ${rel} must be an object`);
-  }
-  const obj = raw as Record<string, unknown>;
-  if (obj.format !== MCP_DESCRIPTOR_FORMAT) {
-    throw new ConnectorError(
-      "connectors_unsupported",
-      `unsupported mcp descriptor format at ${rel}: ${String(obj.format)}`,
-    );
-  }
-  assertNoSecrets(obj, `mcp:${rel}`);
-  if (!Array.isArray(obj.provides) || obj.provides.length === 0) {
-    throw new ConnectorError("connectors_invalid", `mcp descriptor at ${rel} requires provides[]`);
-  }
-  const provides = obj.provides.map((p, i) => asProvision(p, `mcp:${rel}.provides[${i}]`));
-  return { provides, sha256: digest, path: rel };
+type ManifestKind = "file" | "mcp" | "module";
+
+/** Per-kind rules for manifest-backed connectors (one shared loader). */
+const MANIFEST_SPECS: Record<
+  ManifestKind,
+  { field: "path" | "descriptor"; format: string; noun: string; jsonOnly: boolean }
+> = {
+  file: { field: "path", format: CONNECTOR_MANIFEST_FORMAT, noun: "manifest", jsonOnly: false },
+  mcp: { field: "descriptor", format: MCP_DESCRIPTOR_FORMAT, noun: "mcp descriptor", jsonOnly: true },
+  module: { field: "path", format: MODULE_MANIFEST_FORMAT, noun: "module manifest", jsonOnly: false },
+};
+
+function unsupportedFormatMessage(kind: ManifestKind, rel: string, format: unknown): string {
+  const what = kind === "file" ? "connector manifest" : MANIFEST_SPECS[kind].noun;
+  return `unsupported ${what} format at ${rel}: ${String(format)}`;
 }
 
-function loadFileManifest(
+/** Load + pin-check + parse a file / mcp / module manifest. */
+function loadPinnedManifest(
   harnessDir: string,
-  connector: Extract<ConnectorSource, { kind: "file" }>,
+  kind: ManifestKind,
+  connector: { id: string; sha256?: string } & Record<string, unknown>,
 ): { provides: ConnectorProvision[]; sha256: string; path: string } {
-  const { abs, rel } = resolveUnderHarness(harnessDir, connector.path);
-  const content = readFileSync(abs, "utf8");
-  const digest = sha256Hex(content);
-  if (connector.sha256 !== undefined) {
-    const expected = String(connector.sha256);
-    if (!/^[a-f0-9]{64}$/.test(expected)) {
-      throw new ConnectorError(
-        "connectors_invalid",
-        `connector '${connector.id}' sha256 must be a 64-char lowercase hex string`,
-      );
-    }
-    if (expected !== digest) {
-      throw new ConnectorError(
-        "connectors_hash_mismatch",
-        `sha256 mismatch for connector '${connector.id}' at ${rel}: expected ${expected}, got ${digest}`,
-      );
-    }
-  }
-  const raw = abs.endsWith(".json") ? JSON.parse(content) : parseYaml(content);
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new ConnectorError("connectors_invalid", `manifest at ${rel} must be an object`);
-  }
-  const obj = raw as Record<string, unknown>;
-  if (obj.format !== CONNECTOR_MANIFEST_FORMAT) {
-    throw new ConnectorError(
-      "connectors_unsupported",
-      `unsupported connector manifest format at ${rel}: ${String(obj.format)}`,
-    );
-  }
-  assertNoSecrets(obj, `file:${rel}`);
-  if (!Array.isArray(obj.provides) || obj.provides.length === 0) {
-    throw new ConnectorError("connectors_invalid", `manifest at ${rel} requires provides[]`);
-  }
-  const provides = obj.provides.map((p, i) => asProvision(p, `file:${rel}.provides[${i}]`));
-  return { provides, sha256: digest, path: rel };
-}
-
-function loadModuleManifest(
-  harnessDir: string,
-  connector: Extract<ConnectorSource, { kind: "module" }>,
-): { provides: ConnectorProvision[]; sha256: string; path: string } {
-  if (typeof connector.path !== "string" || !connector.path) {
+  const spec = MANIFEST_SPECS[kind];
+  const relPath = connector[spec.field];
+  if (typeof relPath !== "string" || !relPath) {
     throw new ConnectorError(
       "connectors_invalid",
-      `module connector '${connector.id}' requires path`,
+      `${kind} connector '${connector.id}' requires ${spec.field}`,
     );
   }
-  const { abs, rel } = resolveUnderHarness(harnessDir, connector.path);
-  const content = readFileSync(abs, "utf8");
-  const digest = sha256Hex(content);
+  const { abs, rel } = resolveUnderHarness(harnessDir, relPath);
+  if (spec.jsonOnly && !abs.endsWith(".json")) {
+    throw new ConnectorError("connectors_invalid", `${spec.noun} must be JSON (.json): ${rel}`);
+  }
+  const { content, sha256: digest } = readPinnedText(abs, rel);
   if (connector.sha256 !== undefined) {
     const expected = String(connector.sha256);
     if (!/^[a-f0-9]{64}$/.test(expected)) {
@@ -262,22 +223,19 @@ function loadModuleManifest(
       );
     }
   }
-  const raw = abs.endsWith(".json") ? JSON.parse(content) : parseYaml(content);
+  const raw = parseDocument(content, spec.jsonOnly || abs.endsWith(".json"), `${spec.noun} at ${rel}`);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new ConnectorError("connectors_invalid", `module manifest at ${rel} must be an object`);
+    throw new ConnectorError("connectors_invalid", `${spec.noun} at ${rel} must be an object`);
   }
   const obj = raw as Record<string, unknown>;
-  if (obj.format !== MODULE_MANIFEST_FORMAT) {
-    throw new ConnectorError(
-      "connectors_unsupported",
-      `unsupported module manifest format at ${rel}: ${String(obj.format)}`,
-    );
+  if (obj.format !== spec.format) {
+    throw new ConnectorError("connectors_unsupported", unsupportedFormatMessage(kind, rel, obj.format));
   }
-  assertNoSecrets(obj, `module:${rel}`);
+  assertNoSecrets(obj, `${kind}:${rel}`);
   if (!Array.isArray(obj.provides) || obj.provides.length === 0) {
-    throw new ConnectorError("connectors_invalid", `module manifest at ${rel} requires provides[]`);
+    throw new ConnectorError("connectors_invalid", `${spec.noun} at ${rel} requires provides[]`);
   }
-  const provides = obj.provides.map((p, i) => asProvision(p, `module:${rel}.provides[${i}]`));
+  const provides = obj.provides.map((p, i) => asProvision(p, `${kind}:${rel}.provides[${i}]`));
   return { provides, sha256: digest, path: rel };
 }
 
@@ -285,7 +243,11 @@ function loadConnectorsFile(harnessDir: string): ConnectorsFile | null {
   for (const name of ["connectors.yml", "connectors.yaml", "connectors.json"]) {
     const p = join(harnessDir, name);
     if (!existsSync(p)) continue;
-    const raw = loadYamlOrJson(p);
+    const text = decodeUtf8Strict(readFileSync(p));
+    if (text === null) {
+      throw new ConnectorError("connectors_invalid", `${name} is not valid UTF-8`);
+    }
+    const raw = parseDocument(text, name.endsWith(".json"), name);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       throw new ConnectorError("connectors_invalid", `${name} must be an object`);
     }
@@ -359,6 +321,10 @@ function emptyResolution(): ResolvedHarnessIR["resolution"] {
   return { connectors: [], selected: [], lock: [] };
 }
 
+function sortedIds(provisions: ConnectorProvision[]): string[] {
+  return provisions.map((p) => p.id).sort();
+}
+
 /**
  * Resolve a harness directory into canonical ResolvedHarnessIR.
  * Identity passthrough when connectors.yml is absent.
@@ -381,6 +347,20 @@ export function resolveHarness(harnessDir: string): ResolvedHarnessIR {
   const selectedProvisions: ConnectorProvision[] = [];
   const selectedIds: string[] = [];
   const selectedSeen = new Set<string>();
+
+  const takeSelected = (selected: ConnectorProvision[]): void => {
+    for (const p of selected) {
+      if (selectedSeen.has(p.id)) {
+        throw new ConnectorError(
+          "connectors_duplicate",
+          `selected provision '${p.id}' provided by multiple connectors`,
+        );
+      }
+      selectedSeen.add(p.id);
+      selectedProvisions.push(p);
+      selectedIds.push(p.id);
+    }
+  };
 
   for (const raw of source.connectors) {
     if (!raw || typeof raw !== "object") {
@@ -410,140 +390,46 @@ export function resolveHarness(harnessDir: string): ResolvedHarnessIR {
         id: c.id,
         kind: "inline",
         sha256: digest,
-        provides: provides.map((p) => p.id).sort(),
-        selected: selected.map((p) => p.id).sort(),
+        provides: sortedIds(provides),
+        selected: sortedIds(selected),
       });
       lock.push({ connector: c.id, kind: "inline", sha256: digest });
-      for (const p of selected) {
-        if (selectedSeen.has(p.id)) {
-          throw new ConnectorError(
-            "connectors_duplicate",
-            `selected provision '${p.id}' provided by multiple connectors`,
-          );
-        }
-        selectedSeen.add(p.id);
-        selectedProvisions.push(p);
-        selectedIds.push(p.id);
-      }
+      takeSelected(selected);
       continue;
     }
 
-    if (c.kind === "file") {
+    if (c.kind === "file" || c.kind === "mcp" || c.kind === "module") {
       assertNoSecrets(c, `connector:${c.id}`);
-      if (typeof c.path !== "string" || !c.path) {
-        throw new ConnectorError(
-          "connectors_invalid",
-          `file connector '${c.id}' requires path`,
-        );
-      }
-      const loaded = loadFileManifest(dir, c);
-      const selected = selectProvides(c.id, loaded.provides, c.select);
-      entries.push({
-        id: c.id,
-        kind: "file",
-        path: loaded.path,
-        sha256: loaded.sha256,
-        provides: loaded.provides.map((p) => p.id).sort(),
-        selected: selected.map((p) => p.id).sort(),
-      });
-      lock.push({
-        connector: c.id,
-        kind: "file",
-        path: loaded.path,
-        sha256: loaded.sha256,
-      });
-      for (const p of selected) {
-        if (selectedSeen.has(p.id)) {
-          throw new ConnectorError(
-            "connectors_duplicate",
-            `selected provision '${p.id}' provided by multiple connectors`,
-          );
-        }
-        selectedSeen.add(p.id);
-        selectedProvisions.push(p);
-        selectedIds.push(p.id);
-      }
-      continue;
-    }
-
-    if (c.kind === "mcp") {
-      assertNoSecrets(c, `connector:${c.id}`);
-      if (typeof c.descriptor !== "string" || !c.descriptor) {
-        throw new ConnectorError(
-          "connectors_invalid",
-          `mcp connector '${c.id}' requires descriptor`,
-        );
-      }
-      const loaded = loadMcpDescriptor(dir, c);
-      const selected = selectProvides(c.id, loaded.provides, c.select);
-      const mcp_tools: Record<string, string> = {};
-      for (const p of loaded.provides) {
-        mcp_tools[p.id] = p.mcp_tool ?? p.id;
-      }
-      // Stable key order for canonical JSON
-      const orderedMcpTools = Object.fromEntries(
-        Object.keys(mcp_tools)
-          .sort()
-          .map((k) => [k, mcp_tools[k]!]),
+      const loaded = loadPinnedManifest(
+        dir,
+        c.kind,
+        c as unknown as { id: string; sha256?: string } & Record<string, unknown>,
       );
-      entries.push({
-        id: c.id,
-        kind: "mcp",
-        path: loaded.path,
-        sha256: loaded.sha256,
-        provides: loaded.provides.map((p) => p.id).sort(),
-        selected: selected.map((p) => p.id).sort(),
-        mcp_tools: orderedMcpTools,
-      });
-      lock.push({
-        connector: c.id,
-        kind: "mcp",
-        path: loaded.path,
-        sha256: loaded.sha256,
-      });
-      for (const p of selected) {
-        if (selectedSeen.has(p.id)) {
-          throw new ConnectorError(
-            "connectors_duplicate",
-            `selected provision '${p.id}' provided by multiple connectors`,
-          );
-        }
-        selectedSeen.add(p.id);
-        selectedProvisions.push(p);
-        selectedIds.push(p.id);
-      }
-      continue;
-    }
-
-    if (c.kind === "module") {
-      assertNoSecrets(c, `connector:${c.id}`);
-      const loaded = loadModuleManifest(dir, c);
       const selected = selectProvides(c.id, loaded.provides, c.select);
-      entries.push({
+      const entry: ResolvedConnectorEntry = {
         id: c.id,
-        kind: "module",
+        kind: c.kind,
         path: loaded.path,
         sha256: loaded.sha256,
-        provides: loaded.provides.map((p) => p.id).sort(),
-        selected: selected.map((p) => p.id).sort(),
-      });
+        provides: sortedIds(loaded.provides),
+        selected: sortedIds(selected),
+      };
+      if (c.kind === "mcp") {
+        // Stable key order for canonical JSON
+        const mcpTools: Record<string, string> = {};
+        for (const p of [...loaded.provides].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+          mcpTools[p.id] = p.mcp_tool ?? p.id;
+        }
+        entry.mcp_tools = mcpTools;
+      }
+      entries.push(entry);
       lock.push({
         connector: c.id,
-        kind: "module",
+        kind: c.kind,
         path: loaded.path,
         sha256: loaded.sha256,
       });
-      for (const p of selected) {
-        if (selectedSeen.has(p.id)) {
-          throw new ConnectorError(
-            "connectors_duplicate",
-            `selected provision '${p.id}' provided by multiple connectors`,
-          );
-        }
-        selectedSeen.add(p.id);
-        selectedProvisions.push(p);
-        selectedIds.push(p.id);
-      }
+      takeSelected(selected);
       continue;
     }
 

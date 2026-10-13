@@ -64,31 +64,39 @@ describe("slopathon-review testdata goldens (offline)", () => {
     const packet = packetFromFixtureDir(dir);
     assert.equal(packet.conclusion, "pass");
 
+    // Advisory findings may only be info|warning — blocking is reserved for Layer 1 (EDGE-15).
     const good: ReviewFinding = {
       category: "contradiction",
-      severity: "blocking",
+      severity: "warning",
       path: "projects/contradiction/README.md",
       evidence: "No API keys required",
       recommendation: "Resolve the contradiction between Setup and Demo regarding API keys.",
     };
     const badPath: ReviewFinding = {
       category: "contradiction",
-      severity: "blocking",
+      severity: "warning",
       path: "projects/other/README.md",
       evidence: "No API keys required",
       recommendation: "bad path should drop",
     };
     const badSnippet: ReviewFinding = {
       category: "contradiction",
-      severity: "blocking",
+      severity: "warning",
       path: "projects/contradiction/README.md",
       evidence: "this-snippet-is-not-in-the-file-zzzz",
       recommendation: "bad snippet should drop",
     };
 
     assert.equal(verifyFindingEvidence(good, packet).ok, true);
-    assert.equal(verifyFindingEvidence(badPath, packet).ok, false);
-    assert.equal(verifyFindingEvidence(badSnippet, packet).ok, false);
+    assert.deepEqual(verifyFindingEvidence({ ...good, severity: "blocking" }, packet), {
+      ok: false,
+      reason: "severity_reserved_for_deterministic",
+    });
+    assert.deepEqual(verifyFindingEvidence(badPath, packet), { ok: false, reason: "path_not_in_packet" });
+    assert.deepEqual(verifyFindingEvidence(badSnippet, packet), {
+      ok: false,
+      reason: "evidence_not_found",
+    });
 
     const { kept, dropped } = filterVerifiedFindings([good, badPath, badSnippet], packet);
     assert.equal(kept.length, 1);
@@ -102,7 +110,7 @@ describe("slopathon-review testdata goldens (offline)", () => {
     assert.equal(packet.conclusion, "pass");
     const finding: ReviewFinding = {
       category: "contradiction",
-      severity: "blocking",
+      severity: "warning",
       path: "projects/klarna-bnpl/README.md",
       evidence: "No API keys required",
       recommendation: "Remove the no-API-keys claim or the CLOUD_VENDOR_AUTH_TOKEN requirement.",
@@ -110,7 +118,7 @@ describe("slopathon-review testdata goldens (offline)", () => {
     assert.equal(verifyFindingEvidence(finding, packet).ok, true);
     const safety: ReviewFinding = {
       category: "safety_concern",
-      severity: "blocking",
+      severity: "warning",
       path: "projects/klarna-bnpl/README.md",
       evidence: "hardcode the admin password as `admin`",
       recommendation: "Do not hardcode admin passwords or disable authentication.",

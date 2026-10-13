@@ -7,10 +7,15 @@ import { createRequire } from "node:module";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const require = createRequire(join(root, "engines/ts/package.json"));
-const { parse: parseYaml } = require("yaml");
+const { parse: parseYaml } = require("yaml") as { parse: (text: string) => unknown };
 
-function loadAgent(rel) {
-  return parseYaml(readFileSync(join(root, rel, "agent.yml"), "utf8"));
+type AgentDoc = {
+  tools: Array<{ id: string }>;
+  counterbalance?: { modes?: unknown; completion?: { tool?: string } };
+};
+
+function loadAgent(rel: string): AgentDoc {
+  return parseYaml(readFileSync(join(root, rel, "agent.yml"), "utf8")) as AgentDoc;
 }
 
 describe("coding subagent harnesses", () => {

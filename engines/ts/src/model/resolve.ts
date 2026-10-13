@@ -30,10 +30,16 @@ export function resolveApiKey(envName: string, fallback?: string): string {
 /**
  * Filter model IDs by deployment data_policy vs admin-authored model_catalog.
  * Remote catalogs must never weaken this — only local metadata applies.
+ * Fails closed: a residency requirement without catalog metadata admits no model.
  */
 export function filterModelsByDataPolicy(models: string[], deployment: Deployment): string[] {
   const requireResidency = deployment.data_policy?.require?.residency;
-  if (!requireResidency || !deployment.model_catalog?.length) return models;
+  if (!requireResidency) return models;
+  if (!Array.isArray(deployment.model_catalog) || deployment.model_catalog.length === 0) {
+    throw new Error(
+      `data_policy.require.residency=${requireResidency} needs an admin-authored model_catalog with policy.residency per model (fail closed: no catalog, no model)`,
+    );
+  }
   const allowed = new Set(
     deployment.model_catalog
       .filter((e: DeploymentModelEntry) => {
@@ -47,6 +53,14 @@ export function filterModelsByDataPolicy(models: string[], deployment: Deploymen
     throw new Error(`No models satisfy data_policy.require.residency=${requireResidency}`);
   }
   return filtered;
+}
+
+function positiveIntOrUndefined(v: unknown, what: string): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "number" || !Number.isInteger(v) || v <= 0) {
+    throw new Error(`${what} must be a positive integer (ms)`);
+  }
+  return v;
 }
 
 /**
@@ -93,12 +107,20 @@ export function createAdapterFromDeployment(deployment: Deployment): ResolvedMod
     }
   }
 
+  // `timeout_ms` is not (yet) part of the DeploymentModel type; read it defensively.
+  const timeoutMs = positiveIntOrUndefined(
+    (m as { timeout_ms?: unknown }).timeout_ms,
+    "deployment.model.timeout_ms",
+  );
+
   const adapter = adapterFromProfile(profile, {
     baseUrl,
     apiKey,
     models,
     temperature: m.temperature,
     maxTokens: m.max_tokens,
+    timeoutMs,
+    preserveResponseFields: m.compatibility?.preserve_response_fields,
   });
 
   return {
