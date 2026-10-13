@@ -29,9 +29,14 @@ describe("tool schema validation (CORE-10, spec-v0.3 §2.3)", () => {
     assert.notEqual(schemaCompiles(bad), null);
   });
 
-  it("defaults: missing type = object, missing additionalProperties = false", () => {
-    assert.equal(validateAgainstSchema({ properties: { a: { type: "integer" } } }, { a: 1, b: 2 }).ok, false);
-    assert.equal(validateAgainstSchema({ properties: { a: { type: "integer" } } }, "x").ok, false);
+  it("standard JSON Schema semantics: no injected type / additionalProperties defaults", () => {
+    // spec-v0.3 §2.3 (supersedes spec-v0.1 §5.1's closed-by-default dialect): same as Python.
+    assert.equal(validateAgainstSchema({ properties: { a: { type: "integer" } } }, { a: 1, b: 2 }).ok, true);
+    assert.equal(
+      validateAgainstSchema({ type: "object", additionalProperties: false, properties: { a: { type: "integer" } } }, { a: 1, b: 2 }).ok,
+      false,
+    );
+    assert.equal(validateAgainstSchema({ properties: { a: { type: "integer" } } }, { a: "x" }).ok, false);
   });
 
   it("format is an annotation only (same as the Python engine)", () => {

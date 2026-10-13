@@ -3,9 +3,10 @@ import type { ValidateFunction } from "ajv/dist/2020.js";
 import { canonicalJson } from "./canonical.js";
 
 /**
- * Tool I/O schema validation (spec-v0.3 §2.3).
+ * Tool I/O schema validation (spec-v0.3 §2.3): standard JSON Schema 2020-12 semantics — no
+ * injected defaults (a missing `additionalProperties` allows extra members, a missing `type`
+ * constrains nothing), exactly like the Python engine's Draft202012Validator.
  *
- * - Missing top-level `type` ⇒ `object`; missing top-level `additionalProperties` ⇒ `false`.
  * - `format` is an annotation only (never validated) — same as the Python engine.
  * - A top-level `$id` is ignored (tool schemas are anonymous), so two tools may reuse one.
  * - Compiled validators are cached by the canonical JSON of the effective schema; a schema
@@ -25,12 +26,7 @@ export type SchemaCheck =
   | { ok: false; errors: string[]; compileError: true };
 
 function effectiveSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const effective: Record<string, unknown> = {
-    ...schema,
-    type: schema.type ?? "object",
-    additionalProperties:
-      schema.additionalProperties !== undefined ? schema.additionalProperties : false,
-  };
+  const effective: Record<string, unknown> = { ...schema };
   delete effective.$id;
   delete effective.$schema;
   return effective;

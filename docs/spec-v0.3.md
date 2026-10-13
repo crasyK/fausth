@@ -154,9 +154,12 @@ never write a state key because of its name (D11); a host adapter reports what h
 world (its `output`, and only world-derived transitions such as counters), and the harness maps
 results to memory through `effects`.
 
-JSON Schema dialect: 2020-12. When a schema is present the engine applies it with two defaults:
-a missing top-level `type` means `object`; a missing top-level `additionalProperties` means
-`false`. `format` is an annotation only (never validated). A top-level `$id` is ignored.
+JSON Schema dialect: 2020-12 with **standard semantics** — the engine injects no defaults (a
+missing `additionalProperties` allows extra members; a missing `type` constrains nothing; this
+supersedes spec-v0.1 §5.1's closed-by-default rule). Authors who want closed inputs write
+`additionalProperties: false` (validators warn when an input schema omits it). Tool arguments
+must still be a JSON object (§6.1) and outputs must still be objects (§6.3). `format` is an
+annotation only (never validated). A top-level `$id` is ignored.
 
 ### 2.4 Reserved contract tools
 
@@ -313,7 +316,9 @@ proposals, and per-contract-tool attempt counters (§12). None of this is part o
 
 ### 5.2 Iteration
 
-The host calls the engine with an iteration cap `H` (Track A replay: 32). For each iteration:
+The engine enforces the harness limits itself. A host MAY pass a step cap for one run; it
+narrows `max_steps` (effective `max_steps = min(limits.max_steps, cap)`), so reaching it is the
+same visible `limit_exceeded` event — a run never stops silently. For each iteration:
 
 1. **Limits.** If `steps_used ≥ max_steps` or `tool_calls_used ≥ max_tool_calls`: emit
    `authorize`/`deny`/`limit_exceeded` (no `tool`) and **end the run**.
@@ -327,8 +332,6 @@ The host calls the engine with an iteration cap `H` (Track A replay: 32). For ea
    - **tool**: process the action (§6) with origin `model`. Outcome: *complete*, *safe_state* or
      *infra* ⇒ end; *denied* ⇒ end unless `continue_after_deny` is `true`; *success* ⇒ next
      iteration.
-
-When the iteration cap is reached the run ends without an extra event.
 
 ### 5.3 Tool proposals
 
@@ -346,10 +349,16 @@ run the safe flow (§11). Otherwise the run ends.
 
 ### 5.5 Invalid proposals
 
-Emit `propose`/`deny`/`empty_proposal` with
+An invalid proposal carries a reason from the closed model-protocol set (`empty_choices`,
+`unknown_transport_tool`, `invalid_tool_arguments_json`, `tool_arguments_not_object`,
+`tool_arguments_non_canonical`, `multiple_tool_calls`, `empty_proposal`). Emit
+`propose`/`deny` with reason `empty_proposal` when the model answered without any tool call
+(reason `empty_proposal`), and `invalid_proposal` for every other reason (a malformed call is a
+protocol failure, not silence), with
 `observation: {invalid_reason: excerpt(reason, 500), stop_message: excerpt(text, 500) | null}`.
-The run ends unless `continue_after_deny` is `true`, and always ends after **two consecutive**
-invalid proposals (a tool proposal resets the count).
+Hosts MUST NOT turn invalid proposals into `stop`. The run ends unless `continue_after_deny` is
+`true`, and always ends after **two consecutive** invalid proposals (a tool proposal resets the
+count).
 
 ---
 
@@ -784,7 +793,8 @@ qualifies the recorded fact.
 | `verify_output_failed` | verify · deny/safe_state | §7, §8.6 |
 | `verify_judge_invalid` | verify · deny/safe_state | judge unavailable or invalid result |
 | `verify_judge_failed` | verify · deny/safe_state | judgment fails `require` |
-| `empty_proposal` | propose · deny | invalid model proposal (§5.5) |
+| `empty_proposal` | propose · deny | the model answered without a tool call (§5.5) |
+| `invalid_proposal` | propose · deny | malformed proposal: protocol failure (§5.5) |
 | `harness_patch_invalid` | authorize · deny | §12 |
 | `harness_patch_denied` | authorize · deny | §12 (immutable surface / cell not mutable) |
 | `harness_patch_applied` | rebalance · allow | §12 |
@@ -865,9 +875,14 @@ failure (`infra_failure`, `adapter` `user_channel_unavailable`).
 
 ### 15.3 Host conduct
 
-- Hosts offer the model exactly the permitted set (§4.1) and SHOULD build the system context
-  only from harness-declared text (`name`, `instinct_text`, an applied overlay's `prompt_hint`),
-  so the agent sees the same tokens on every host.
+- Hosts offer the model exactly the permitted set (§4.1), each tool as `{id, description,
+  input}` from the IR (after applied skills patches).
+- **System context (instincts).** Hosts MUST build the model's system message only from
+  harness-declared text, exactly: `"You are " + name + "."`, then — each preceded by a blank line
+  (`"\n\n"`) and only when present — `instinct_text`, then the applied overlay's `prompt_hint`.
+  No host-authored task hints, tool names or policy prose are added, so the agent sees the same
+  tokens on every host. `instinct_text` is the instincts cell: harness-authored disposition,
+  editable only through `set_instinct_text` when `mutable` includes `instincts` (§12).
 - Hosts MAY render prose from `failure` objects for the model; such prose never enters the event
   log.
 - A run's success is `record`/`run_complete` — never a bare `execute`/`allow` (D8).
@@ -887,11 +902,12 @@ wall clock, randomness, locale or environment reads; no `judge` verifies in fixt
 A conformance fixture directory contains `agent.json` (valid IR), `model.jsonl` (recorded
 proposals: `{type: "tool", name, args}`, `{type: "stop", message?}`, `{type: "invalid", reason,
 message?}`), optional `tools.jsonl` (§15.1), optional `user.jsonl` (§15.2) and `expected.jsonl`.
-The replay host runs with `H = 32`, the reference in-memory world (greenhouse sensors/actuator,
+The replay host uses the reference in-memory world (greenhouse sensors/actuator,
 coding files `src/app.ts` = `export {}` and `src/app.js` =
 `export function greet(){ return "hello"; }\n`, every declared secret path holding
 `sk-fixture-secret-0001`, every protected path present) for world tools, and the recorded user
-source for user-channel tools (none ⇒ unbound). An exhausted model stream yields `stop`.
+source for user-channel tools (none ⇒ unbound). An exhausted model stream yields `stop`; the
+replay passes no step cap (the harness limits govern).
 
 ---
 

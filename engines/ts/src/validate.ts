@@ -138,6 +138,11 @@ function structuralChecks(agent: AgentIR): { errors: string[]; warnings: string[
         }
       }
     });
+    if (t.input && typeof t.input === "object" && t.input.additionalProperties === undefined) {
+      warnings.push(
+        `Tool ${t.id}: input schema does not set additionalProperties (JSON Schema default: extra arguments are accepted)`,
+      );
+    }
     // Rule 15: schemas compile
     for (const which of ["input", "output"] as const) {
       const err = schemaCompiles(t[which]);

@@ -23,6 +23,7 @@ export const REASON_CODES = [
   "verify_judge_invalid",
   "verify_judge_failed",
   "empty_proposal",
+  "invalid_proposal",
   "harness_patch_invalid",
   "harness_patch_denied",
   "harness_patch_applied",

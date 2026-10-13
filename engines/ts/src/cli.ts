@@ -555,7 +555,8 @@ async function runWithTools(
   });
   let infraError: { kind: string; message: string } | null = null;
   try {
-    await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? 32 : 16));
+    // A host step budget narrows max_steps (visible as limit_exceeded); recorded runs need none.
+    await runtime.runLoop(opts.maxSteps ?? (transport === "recorded" ? undefined : 16));
   } catch (e) {
     infraError = infraErrorReport(e);
     if (!infraError) throw e;

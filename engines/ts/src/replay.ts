@@ -7,7 +7,7 @@
  * - otherwise world tools come from the reference in-memory world, and user-channel tools only
  *   from `user.jsonl` recorded answers (none ⇒ unbound ⇒ capability_missing). Recorded answers
  *   use the deployment adapter's recorded user channel (same format as `user: {source: recorded}`);
- * - iteration cap 32, no judge.
+ * - no iteration cap (the harness limits govern; an exhausted model stream yields stop), no judge.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -24,7 +24,6 @@ import {
 import { createUserChannelHandler, stateValueType } from "./adapters/user-channel.js";
 import type { AgentIR, Deployment, ModelProposal, RecordedToolCall } from "./types.js";
 
-export const TRACK_A_ITERATIONS = 32;
 export const FIXTURE_SECRET = "sk-fixture-secret-0001";
 
 /** Drop handlers for user-channel tools: a world stub must never answer for the user (D14). */
@@ -102,7 +101,7 @@ export async function runFixture(dir: string, agentOverride?: AgentIR): Promise<
     ...(transcript !== undefined ? { recordedToolResults: transcript } : {}),
     allowJudge: false,
   });
-  await runtime.runLoop(TRACK_A_ITERATIONS);
+  await runtime.runLoop();
   return runtime;
 }
 

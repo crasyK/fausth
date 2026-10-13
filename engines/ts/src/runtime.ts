@@ -426,17 +426,33 @@ export class FaustRuntime {
 
   // ---------------------------------------------------------------- run loop (§5)
 
+  /** Host iteration cap (runLoop argument); folded into the step limit (spec-v0.3 §5.2). */
+  private hostStepCap: number | undefined;
+
+  private effectiveMaxSteps(): number {
+    const own = this.maxSteps();
+    return this.hostStepCap === undefined ? own : Math.min(own, this.hostStepCap);
+  }
+
   private checkLimits(): boolean {
-    if (this.steps >= this.maxSteps() || this.toolCalls >= this.maxToolCalls()) {
+    if (this.steps >= this.effectiveMaxSteps() || this.toolCalls >= this.maxToolCalls()) {
       this.emit({ stage: "authorize", verdict: "deny", reason: "limit_exceeded" });
       return false;
     }
     return true;
   }
 
-  async runLoop(maxIterations = 32): Promise<Event[]> {
+  /**
+   * Run the exchange until the run ends (spec-v0.3 §5.2). The engine enforces the harness
+   * limits itself; an optional host cap narrows `max_steps` for this run, so reaching it is a
+   * visible `limit_exceeded`, never a silent stop.
+   */
+  async runLoop(hostStepCap?: number): Promise<Event[]> {
+    if (hostStepCap !== undefined && Number.isInteger(hostStepCap) && hostStepCap >= 0) {
+      this.hostStepCap = hostStepCap;
+    }
     let consecutiveInvalid = 0;
-    for (let i = 0; i < maxIterations; i++) {
+    for (;;) {
       if (!this.checkLimits()) break;
       this.steps += 1;
       this.applyTtlInvalidation();
@@ -467,10 +483,12 @@ export class FaustRuntime {
       if (proposal.type === "invalid") {
         consecutiveInvalid += 1;
         const text = typeof proposal.message === "string" ? proposal.message : undefined;
+        // "empty_proposal": the model answered without a tool call; any other reason is a
+        // protocol failure of the proposal itself (spec-v0.3 §5.5).
         this.emit({
           stage: "propose",
           verdict: "deny",
-          reason: "empty_proposal",
+          reason: proposal.reason === "empty_proposal" ? "empty_proposal" : "invalid_proposal",
           observation: {
             invalid_reason: excerpt(String(proposal.reason ?? ""), EXCERPT_CHARS),
             stop_message: text !== undefined ? excerpt(text, EXCERPT_CHARS) : null,
@@ -747,7 +765,7 @@ export class FaustRuntime {
     if (packet.read_scopes && fs?.read_scopes && packet.read_scopes.some((s) => !covered(s, fs.read_scopes))) {
       return escalation("read_scopes");
     }
-    if (packet.max_steps !== undefined && packet.max_steps > this.maxSteps() - this.steps) {
+    if (packet.max_steps !== undefined && packet.max_steps > this.effectiveMaxSteps() - this.steps) {
       return escalation("max_steps");
     }
     if (packet.max_tool_calls !== undefined && packet.max_tool_calls > this.maxToolCalls() - this.toolCalls - 1) {
@@ -1303,7 +1321,7 @@ export class FaustRuntime {
 
   private buildChildAgent(packet: SpawnPacket): AgentIR {
     const parent = this.agent;
-    const remainingSteps = Math.max(0, this.maxSteps() - this.steps);
+    const remainingSteps = Math.max(0, this.effectiveMaxSteps() - this.steps);
     const remainingCalls = Math.max(0, this.maxToolCalls() - this.toolCalls);
     const childIds = new Set(packet.tools);
     const fs = parent.permissions?.filesystem;
@@ -1364,7 +1382,7 @@ export class FaustRuntime {
       allowJudge: false,
       ...(this.transcript ? { transcript: this.transcript } : {}),
     });
-    await child.runLoop((childAgent.limits?.max_steps ?? 0) + 1);
+    await child.runLoop();
     for (const cev of child.events) {
       this.seq += 1;
       this.events.push({ ...cev, seq: this.seq, ts_logical: this.seq });

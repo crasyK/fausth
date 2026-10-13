@@ -646,6 +646,39 @@ describe("invalid proposals", () => {
     assert.deepEqual(events[0]!.observation, { invalid_reason: "no_tool_call", stop_message: "I think…" });
     assert.equal(events[0]!.error, undefined);
   });
+
+  it("silence is empty_proposal; a malformed call is invalid_proposal (never mapped to stop)", async () => {
+    const a = agent({ tools: [tool("t")], limits: { continue_after_deny: true } });
+    const { events } = await run(a, [
+      { type: "invalid", reason: "invalid_tool_arguments_json" },
+      call("t"),
+      { type: "invalid", reason: "empty_proposal" },
+    ], { t: () => ({ ok: 1 }) });
+    assert.equal(events[0]!.reason, "invalid_proposal");
+    assert.deepEqual(events[0]!.observation, { invalid_reason: "invalid_tool_arguments_json", stop_message: null });
+    assert.equal(events.find((e) => e.reason === "empty_proposal")?.stage, "propose");
+  });
+});
+
+describe("the engine enforces limits itself (spec-v0.3 §5.2)", () => {
+  it("a host step cap ends the run with a visible limit_exceeded, not a silent stop", async () => {
+    const a = agent({ tools: [tool("t")] });
+    const { events } = await run(a, [call("t"), call("t"), call("t")], { t: () => ({ ok: 1 }) }, { iterations: 2 });
+    assert.equal(events.filter((e) => e.stage === "execute").length, 2);
+    assert.deepEqual(
+      { stage: events.at(-1)!.stage, verdict: events.at(-1)!.verdict, reason: events.at(-1)!.reason },
+      { stage: "authorize", verdict: "deny", reason: "limit_exceeded" },
+    );
+  });
+
+  it("without a host cap the harness max_steps governs", async () => {
+    const a = agent({ tools: [tool("t")], limits: { max_steps: 1 } });
+    const queue = [call("t"), call("t")];
+    const rt = new FaustRuntime({ agent: a, propose: async () => queue.shift() ?? { type: "stop" }, tools: { t: () => ({ ok: 1 }) } });
+    await rt.runLoop();
+    assert.equal(rt.events.filter((e) => e.stage === "execute").length, 1);
+    assert.equal(rt.events.at(-1)!.reason, "limit_exceeded");
+  });
 });
 
 describe("harness hash (spec-v0.3 §12)", () => {
