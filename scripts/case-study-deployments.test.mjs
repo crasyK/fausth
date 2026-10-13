@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   answerEnvelope,
+  declaredUserChannelTools,
   materializeAttemptDeployment,
   materializeKitDeployment,
   resolvePytestCommands,
@@ -324,16 +325,37 @@ describe("user channel bindings (D14)", () => {
     }
   });
 
-  // The CLI resolves user-channel files next to --deployment only once it passes
-  // deploymentPath to the adapter registry (integrator wiring on fix/contract).
-  const cliPassesDeploymentPath = /deploymentPath:\s*depFile/.test(
-    readFileSync(join(root, "engines/ts/src/cli.ts"), "utf8"),
-  );
-  it(
-    "the engine CLI answers user.ask in order from the generated binding",
-    { skip: cliPassesDeploymentPath ? false : "engine CLI does not pass deploymentPath to the registry yet" },
-    () => {
-      const { attemptDir, deploymentPath } = tauAttempt("cli");
+  /**
+   * τ counterbalanced harness with its user-facing tools declared on the user
+   * channel (contract v0.3 §8.3/§9), copied outside the repo so the test does not
+   * depend on when the case-study harnesses are migrated.
+   */
+  function userChannelHarness() {
+    const h = join(dir, "harness-v03");
+    mkdirSync(h, { recursive: true });
+    let yml = readFileSync(join(root, "case-studies/tau-bench/harnesses/counterbalanced/agent.yml"), "utf8");
+    for (const tool of ["user.ask", "user.correct"]) {
+      yml = yml.replace(new RegExp(`(\\n  - id: ${tool.replace(".", "\\.")}\\n)(?!    channel:)`), `$1    channel: user\n`);
+    }
+    writeFileSync(join(h, "agent.yml"), yml);
+    return h;
+  }
+
+  it("the engine CLI answers user.ask in order from the generated binding", () => {
+      const harness = userChannelHarness();
+      const attemptDir = join(dir, "cli");
+      const { path: deploymentPath } = materializeAttemptDeployment({
+        basePath: tauDep,
+        attemptDir,
+        userChannel: null,
+        mode: "recorded",
+        taskYml,
+        taskAbsDir,
+        taskId: "retail-000",
+        declaredUserTools: declaredUserChannelTools(harness),
+        toolDefs: { "user.ask": askDef },
+        maxCalls: 4,
+      });
       const trace = join(attemptDir, "model.jsonl");
       writeFileSync(
         trace,
@@ -355,7 +377,7 @@ describe("user channel bindings (D14)", () => {
             "tsx",
             "src/cli.ts",
             "run",
-            join(root, "case-studies/tau-bench/harnesses/counterbalanced"),
+            harness,
             "--deployment",
             deploymentPath,
             "--workspace",
@@ -377,9 +399,12 @@ describe("user channel bindings (D14)", () => {
           .filter((e) => e.stage === "execute" && e.tool === "user.ask" && e.verdict === "allow")
           .map((e) => e.result?.answer);
         assert.deepEqual(answers, ["yes", "yes please"]);
+        // user.correct is a checkpoint on the user channel: answered by the recorded
+        // auto-correct script, never by a native.
+        const dep = YAML.parse(readFileSync(deploymentPath, "utf8"));
+        assert.equal(dep.bindings["user.correct"].user.source, "recorded");
       } finally {
         cleanupWorkspace({ worktree: ws.worktree, root: join(dir, "ws-root") });
       }
-    },
-  );
+  });
 });
