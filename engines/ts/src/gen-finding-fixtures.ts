@@ -7,7 +7,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FaustRuntime, eventsToJsonl } from "./runtime.js";
 import { toCanonicalIrJson } from "./load.js";
-import type { AgentIR, ModelProposal, RecordedToolCall, ToolHandler } from "./types.js";
+import type { AgentIR, ModelProposal, RecordedToolCall } from "./types.js";
+import type { ToolHandler } from "./runtime.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 

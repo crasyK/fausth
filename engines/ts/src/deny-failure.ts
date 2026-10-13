@@ -1,12 +1,17 @@
+import { sortCodePoints } from "./canonical.js";
 import { evalPredicate, getPath, isMissing } from "./predicates.js";
 import type {
   CounterbalanceCheckpointPolicy,
   DenyFailure,
   DenyFailureItem,
   DenyFailureUnblock,
+  HarnessPatchCode,
   Predicate,
   Snapshot,
+  SpawnDimension,
 } from "./types.js";
+
+/** Structured deny signals (spec-v0.3 §13.3). No prose ever enters the event log. */
 
 function leafRequireConstraint(p: Predicate): Record<string, unknown> {
   if ("eq" in p) return { eq: p.eq };
@@ -55,15 +60,14 @@ export function buildPredicateFailure(
   for (const p of failingPredicates(pred, snap)) {
     if (!("path" in p)) continue;
     const path = p.path;
-    const key = path.startsWith("state.") ? path.slice("state.".length) : path;
     const current = getPath(snap, path);
     const item: DenyFailureItem = {
       path,
       current: isMissing(current) ? null : current,
       require: leafRequireConstraint(p),
     };
-    if ("eq" in p) {
-      const unblock = lookupUnblock(key, p.eq, checkpoints);
+    if ("eq" in p && path.startsWith("state.")) {
+      const unblock = lookupUnblock(path.slice("state.".length), p.eq, checkpoints);
       if (unblock) item.unblock = unblock;
     }
     failed.push(item);
@@ -72,35 +76,79 @@ export function buildPredicateFailure(
 }
 
 export function buildMissingPriorToolsFailure(missing: string[]): DenyFailure {
-  return { kind: "missing_prior_tools", missing_prior_tools: [...missing].sort() };
+  return { kind: "missing_prior_tools", missing_prior_tools: sortCodePoints(missing) };
 }
 
 export function buildMissingPriorAnyOfFailure(options: string[]): DenyFailure {
-  return { kind: "missing_prior_any_of", options: [...options].sort() };
+  return { kind: "missing_prior_any_of", options: sortCodePoints(options) };
 }
 
 export function buildCheckpointKeyFailure(key: string): DenyFailure {
   return { kind: "checkpoint_key", checkpoint_key: key };
 }
 
-/** Optional prose for live model tool results; not emitted in event logs. */
+export function buildStateKeyFailure(key: string): DenyFailure {
+  return { kind: "state_key", state_key: key };
+}
+
+export function buildNonCanonicalFailure(path: string): DenyFailure {
+  return { kind: "non_canonical", path };
+}
+
+export function buildSpawnFailure(
+  code: "not_allowed" | "escalation" | "malformed",
+  dimension?: SpawnDimension,
+): DenyFailure {
+  return dimension ? { kind: "spawn", code, dimension } : { kind: "spawn", code };
+}
+
+export function buildHarnessPatchFailure(code: HarnessPatchCode): DenyFailure {
+  return { kind: "harness_patch", code };
+}
+
+/** Optional prose for live model tool results (hosts only); never emitted in event logs. */
 export function renderDenyFailureProse(failure: DenyFailure): string | null {
-  if (failure.kind === "missing_prior_tools") {
-    return `Call ${failure.missing_prior_tools.join(", ")} first.`;
+  switch (failure.kind) {
+    case "missing_prior_tools":
+      return `Call ${failure.missing_prior_tools.join(", ")} first.`;
+    case "missing_prior_any_of":
+      return `Call one of: ${failure.options.join(", ")} first.`;
+    case "checkpoint_key":
+      return `Only the owning user checkpoint may set '${failure.checkpoint_key}'.`;
+    case "state_key":
+      return `State key '${failure.state_key}' is not declared by this harness.`;
+    case "non_canonical":
+      return `Value at ${failure.path} is not canonical JSON (integers only, no floats).`;
+    case "malformed_envelope":
+      return "The tool returned a malformed result envelope.";
+    case "channel_unbound":
+      return "No user channel is available on this host for that tool.";
+    case "transcript":
+      return `Recorded transcript ${failure.code} at call ${failure.call_seq}.`;
+    case "host_error":
+      return "The host failed to execute the tool.";
+    case "observation_failed":
+      return "The effect could not be observed.";
+    case "judge":
+      return failure.code === "unavailable" ? "No judge is available." : "The judge result was invalid.";
+    case "spawn":
+      return failure.code === "escalation"
+        ? `Spawn would widen ${failure.dimension ?? "capabilities"}.`
+        : failure.code === "not_allowed"
+          ? "Spawning is not allowed by this harness."
+          : "Malformed spawn packet.";
+    case "harness_patch":
+      return `Harness patch rejected (${failure.code}).`;
+    case "predicate": {
+      const parts = failure.failed.map((f) => {
+        const req = JSON.stringify(f.require);
+        const cur = f.current === null ? "missing" : JSON.stringify(f.current);
+        const unblock = f.unblock
+          ? ` Call ${f.unblock.tool} with set ${JSON.stringify({ [f.unblock.set_key]: f.unblock.set_value })}.`
+          : "";
+        return `${f.path} requires ${req} (currently ${cur}).${unblock}`;
+      });
+      return parts.length > 0 ? parts.join(" ") : null;
+    }
   }
-  if (failure.kind === "missing_prior_any_of") {
-    return `Call one of: ${failure.options.join(", ")} first.`;
-  }
-  if (failure.kind === "checkpoint_key") {
-    return `Checkpoint tool may not set '${failure.checkpoint_key}'.`;
-  }
-  const parts = failure.failed.map((f) => {
-    const req = JSON.stringify(f.require);
-    const cur = f.current === null ? "missing" : JSON.stringify(f.current);
-    const unblock = f.unblock
-      ? ` Call ${f.unblock.tool} with set ${JSON.stringify({ [f.unblock.set_key]: f.unblock.set_value })}.`
-      : "";
-    return `${f.path} requires ${req} (currently ${cur}).${unblock}`;
-  });
-  return parts.length > 0 ? parts.join(" ") : null;
 }
