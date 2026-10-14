@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = [
   "PyYAML>=6.0",
   "jsonschema>=4.23",
-  "cryptography>=42.0,<46",
+  "cryptography>=42.0,<51",
 ]
 
 [project.optional-dependencies]
