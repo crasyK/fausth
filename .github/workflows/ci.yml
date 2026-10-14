@@ -7,6 +7,12 @@ on:
 
 # Every check is its own job or an independent step (`if: !cancelled()`), so one
 # failure never hides another: replay, smoke and recorded matrices all report.
+
+# The Python twin is the repo's engines/py (installed with `pip install -e` in each job that
+# needs it); parity.mjs / fuzz-ir.mjs refuse to guess an interpreter, so name it explicitly.
+env:
+  FAUSTH_PYTHON: python
+
 jobs:
   ts-unit:
     runs-on: ubuntu-latest
