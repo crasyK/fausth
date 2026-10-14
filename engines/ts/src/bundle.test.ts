@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertSafeBundleEntryName,
   BundleError,
   BUNDLE_FORMAT_V01,
   BUNDLE_FORMAT_V02,
@@ -321,7 +322,7 @@ describe("bundle v0.2", () => {
 });
 
 describe("bundle signatures", () => {
-  it("unsigned coding pack stays 15765 bytes", () => {
+  it("unsigned coding pack stays 16003 bytes", () => {
     const outDir = mkdtempSync(join(tmpdir(), "fausth-unsigned-size-"));
     const { out, signed } = packHarness(
       codingHarness,
@@ -329,8 +330,9 @@ describe("bundle signatures", () => {
     );
     assert.equal(signed, false);
     // examples/coding-counterbalance changed for the v0.3 contract (user channel, effects,
-    // instinct_text, KIT ids, smoke golden); update deliberately when that example changes.
-    assert.equal(readFileSync(out).byteLength, 15765);
+    // instinct_text, KIT ids, smoke golden) and its recorded user answers
+    // (user.answers.jsonl) are now packed; update deliberately when that example changes.
+    assert.equal(readFileSync(out).byteLength, 16003);
     assert.equal("signature" in JSON.parse(readFileSync(out, "utf8")), false);
     rmSync(outDir, { recursive: true, force: true });
   });
@@ -691,6 +693,40 @@ describe("bundle v0.3 module connectors (EDGE-11)", () => {
       assert.ok(bundle.files["agent.yml"]!.includes("\r\n"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("bundle recorded user answers (D14)", () => {
+  const supportAsk = join(root, "examples/support-bot-ask");
+
+  it("admits user.answers.jsonl in every format's allowlist (and nothing like it)", () => {
+    for (const fmt of [BUNDLE_FORMAT_V01, BUNDLE_FORMAT_V02, BUNDLE_FORMAT_V03]) {
+      assert.doesNotThrow(() => assertSafeBundleEntryName("user.answers.jsonl", fmt), fmt);
+      for (const bad of ["user.answers.json", "answers.jsonl", "user.answers.jsonl.bak", "x/user.answers.jsonl"]) {
+        assert.throws(() => assertSafeBundleEntryName(bad, fmt), BundleError, `${fmt} ${bad}`);
+      }
+    }
+  });
+
+  it("packs, verifies, unpacks and runs a recorded-user deployment from the bundle", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "fausth-user-answers-"));
+    try {
+      const { out, files } = packHarness(supportAsk, join(outDir, "ask.fausth.json"));
+      assert.ok(files.includes("user.answers.jsonl"));
+      const bundle = loadBundleFile(out);
+      assert.equal(
+        bundle.files["user.answers.jsonl"],
+        readFileSync(join(supportAsk, "user.answers.jsonl"), "utf8"),
+      );
+      const unpacked = join(outDir, "unpacked");
+      unpackBundle(out, unpacked);
+      assert.ok(existsSync(join(unpacked, "user.answers.jsonl")));
+      const result = await withHarnessRef(out, (dir) => testHarness(dir, { skipFixtures: true }));
+      assert.equal(result.bindings_ok, true, result.errors.join("; "));
+      assert.equal(result.smoke_ok, true, result.errors.join("; "));
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
     }
   });
 });

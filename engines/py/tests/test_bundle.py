@@ -185,7 +185,7 @@ class BundleSignatureTests(unittest.TestCase):
             r = pack_harness(str(CODING), str(tmp / "coding.fausth.json"))
             self.assertFalse(r["signed"])
             data = Path(r["out"]).read_bytes()
-            self.assertEqual(len(data), 15463)
+            self.assertEqual(len(data), 16003)  # byte parity with TS bundle.test.ts
             self.assertNotIn("signature", json.loads(data.decode("utf-8")))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

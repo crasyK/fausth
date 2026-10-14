@@ -414,6 +414,8 @@ const PACK_INCLUDE = [
   "README.md",
   "smoke.model.jsonl",
   "smoke.expected.jsonl",
+  // Recorded user-channel answers (D14) — a recorded deployment needs them to run.
+  "user.answers.jsonl",
   ...DEPLOYMENT_CANDIDATES,
 ];
 

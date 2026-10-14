@@ -42,16 +42,18 @@ BUNDLE_MAX_TOTAL_BYTES = 8_388_608
 BUNDLE_MAX_ENTRY_NAME = 200
 
 # All patterns are applied with fullmatch (``$`` would accept a trailing newline).
+#: ``user.answers.jsonl`` carries recorded user-channel answers (D14, spec-v0.3 §15.2).
+#: Each pattern must stay identical to schema/fausth-harness-bundle.v0.x.json ``propertyNames.pattern``.
 ALLOWED_FILE_RE_V01 = re.compile(
-    r"(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml)"
+    r"(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|user\.answers\.jsonl|"
+    r"deployment\.[A-Za-z0-9._-]+\.ya?ml)"
 )
 ALLOWED_FILE_RE_V02 = re.compile(
-    r"(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|"
-    r"connectors\.(yml|yaml|json)|connectors/[A-Za-z0-9._-]+\.(yml|yaml|json))"
+    r"(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|user\.answers\.jsonl|"
+    r"deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors/[A-Za-z0-9._-]+\.(yml|yaml|json))"
 )
-#: Must stay identical to schema/fausth-harness-bundle.v0.3.json ``propertyNames.pattern``.
 ALLOWED_FILE_RE_V03 = re.compile(
-    r"(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|mcp\.recorded\.jsonl|"
+    r"(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|user\.answers\.jsonl|mcp\.recorded\.jsonl|"
     r"module\.recorded\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|"
     r"connectors/[A-Za-z0-9._-]+\.(yml|yaml|json)|connectors/mcp/[A-Za-z0-9._-]+\.json|"
     r"connectors/module/[A-Za-z0-9._-]+\.(json|yml|yaml|mjs))"

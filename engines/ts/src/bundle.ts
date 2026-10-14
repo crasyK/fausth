@@ -120,15 +120,20 @@ export type BundleLoadOptions = {
 
 export type VerifiedBundle = { bundle: HarnessBundle; trust: BundleTrust };
 
+/**
+ * Allowlists (closed). `user.answers.jsonl` carries recorded user-channel answers
+ * (D14, spec-v0.3 §15.2) so a recorded deployment stays runnable from the bundle.
+ * Each must stay identical to schema/fausth-harness-bundle.v0.x.json `propertyNames.pattern`.
+ */
 const ALLOWED_FILE_RE_V01 =
-  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml)$/;
+  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|user\.answers\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml)$/;
 
 const ALLOWED_FILE_RE_V02 =
-  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors\/[A-Za-z0-9._-]+\.(yml|yaml|json))$/;
+  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|user\.answers\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors\/[A-Za-z0-9._-]+\.(yml|yaml|json))$/;
 
 /** Must stay identical to schema/fausth-harness-bundle.v0.3.json `propertyNames.pattern`. */
 export const ALLOWED_FILE_RE_V03 =
-  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|mcp\.recorded\.jsonl|module\.recorded\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors\/[A-Za-z0-9._-]+\.(yml|yaml|json)|connectors\/mcp\/[A-Za-z0-9._-]+\.json|connectors\/module\/[A-Za-z0-9._-]+\.(json|yml|yaml|mjs))$/;
+  /^(agent\.(yml|yaml|json)|README\.md|smoke\.(model|expected)\.jsonl|user\.answers\.jsonl|mcp\.recorded\.jsonl|module\.recorded\.jsonl|deployment\.[A-Za-z0-9._-]+\.ya?ml|connectors\.(yml|yaml|json)|connectors\/[A-Za-z0-9._-]+\.(yml|yaml|json)|connectors\/mcp\/[A-Za-z0-9._-]+\.json|connectors\/module\/[A-Za-z0-9._-]+\.(json|yml|yaml|mjs))$/;
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 

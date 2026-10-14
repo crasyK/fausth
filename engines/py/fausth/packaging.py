@@ -39,6 +39,8 @@ PACK_INCLUDE = [
     "README.md",
     "smoke.model.jsonl",
     "smoke.expected.jsonl",
+    # Recorded user-channel answers (D14) — same list as TS packaging.ts (pack byte parity).
+    "user.answers.jsonl",
     *DEPLOYMENT_CANDIDATES,
 ]
 

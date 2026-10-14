@@ -401,16 +401,42 @@ def _validator_for(effective: dict[str, Any]) -> Any:
 
 
 def validate_against_schema(schema: Any, data: Any) -> tuple[bool, list[str]]:
-    """Validate ``data`` against a tool schema. Empty/missing schema → ok."""
-    effective = _effective_schema(schema)
-    if effective is None:
+    """Validate ``data`` against a tool schema with spec-v0.3 semantics (TS
+    ``validateAgainstSchema``): standard JSON Schema 2020-12, no injected defaults, ``format``
+    not asserted, top-level ``$id``/``$schema`` ignored. Empty/missing schema → ok."""
+    if not isinstance(schema, dict) or len(schema) == 0:
         return True, []
-    validator = _validator_for(effective)
-    errors = sorted(validator.iter_errors(data), key=lambda e: [str(p) for p in e.path])
+    effective = {k: v for k, v in schema.items() if k not in ("$id", "$schema")}
+    try:
+        validator = _compiled_standard(json.dumps(effective, sort_keys=True, ensure_ascii=False, allow_nan=False))
+        errors = sorted(validator.iter_errors(data), key=lambda e: [str(p) for p in e.path])
+    except Exception as e:  # noqa: BLE001
+        return False, [f"schema does not compile: {e}"]
     if not errors:
         return True, []
-    msgs = []
-    for e in errors:
-        path = "/" + "/".join(str(p) for p in e.path) if e.path else "/"
-        msgs.append(f"{path} {e.message}")
-    return False, msgs
+    return False, [("/" + "/".join(str(p) for p in e.path) if e.path else "/") + f" {e.message}" for e in errors]
+
+
+def validate_standard(schema: Any, data: Any) -> tuple[bool, bool]:
+    """Spec-v0.3 tool-schema check (TS ``validateAgainstSchema``): standard JSON Schema 2020-12,
+    no injected defaults, ``format`` not asserted, top-level ``$id``/``$schema`` ignored.
+    Returns ``(ok, compile_error)``; never raises."""
+    if not isinstance(schema, dict) or len(schema) == 0:
+        return True, False
+    effective = {k: v for k, v in schema.items() if k not in ("$id", "$schema")}
+    try:
+        key = json.dumps(effective, sort_keys=True, ensure_ascii=False, allow_nan=False)
+        validator = _compiled_standard(key)
+    except Exception:  # noqa: BLE001
+        return False, True
+    try:
+        for _ in validator.iter_errors(data):
+            return False, False
+    except Exception:  # noqa: BLE001 — bad regex / unresolvable ref = schema does not compile
+        return False, True
+    return True, False
+
+
+@lru_cache(maxsize=512)
+def _compiled_standard(key: str) -> Any:
+    return AjvLikeValidator(json.loads(key))

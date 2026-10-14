@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fausth.dev/schema/counterbalance-contract.v0.1.json",
-  "title": "Counterbalance Contract v0.1",
+  "title": "Counterbalance Contract — executable IR (spec ids v0.1, v0.2, v0.3)",
+  "description": "The one executable harness IR shape. Normative text: docs/spec-v0.3.md (§2). The agent/world/exchange authoring shape (schema/counterbalance-contract.v0.2.json) is a draft and is not loadable. Structural rules that JSON Schema cannot express (declared references, scopes, canonical values, predicate roots) are enforced by the validators (spec-v0.3 §2.6).",
   "type": "object",
   "required": [
     "spec",
@@ -13,7 +14,11 @@
   "properties": {
     "spec": {
       "type": "string",
-      "const": "counterbalance-contract/v0.1"
+      "enum": [
+        "counterbalance-contract/v0.1",
+        "counterbalance-contract/v0.2",
+        "counterbalance-contract/v0.3"
+      ]
     },
     "name": {
       "type": "string",
@@ -41,28 +46,11 @@
       }
     },
     "limits": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "max_steps": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "max_tool_calls": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "timeout_ms": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "continue_after_deny": {
-          "type": "boolean"
-        }
-      }
+      "$ref": "#/$defs/limits"
     },
     "safe_state": {
-      "type": "object"
+      "type": "object",
+      "description": "Deprecated alias of fallback_state."
     },
     "fallback_state": {
       "type": "object"
@@ -79,7 +67,8 @@
           "items": {
             "type": "string",
             "minLength": 1
-          }
+          },
+          "description": "Absent = every declared tool is permitted; [] = none (D5). Must list declared tools only."
         },
         "filesystem": {
           "type": "object",
@@ -104,23 +93,34 @@
         "secrets": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Labeled secret paths/values; deny writes containing them when deny_write_contains is true.",
+          "description": "World-side secret declarations enforced by host world adapters (spec-v0.3 §4.3); declared values are redacted from world feedback (§14).",
           "properties": {
             "paths": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 }
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             },
             "values": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 }
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             },
-            "deny_write_contains": { "type": "boolean" }
+            "deny_write_contains": {
+              "type": "boolean"
+            }
           }
         },
         "protected_paths": {
           "type": "array",
-          "description": "Paths that must keep baseline content (absence of change).",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Paths whose baseline content must not change (host-enforced, spec-v0.3 §4.3)."
         }
       }
     },
@@ -129,7 +129,8 @@
       "additionalProperties": false,
       "properties": {
         "allow": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Spawn is denied unless exactly true (D6)."
         },
         "tighten_only": {
           "type": "boolean"
@@ -140,13 +141,11 @@
       }
     },
     "counterbalance": {
-      "type": "object",
-      "description": "Executable Counterbalance bridge (sequences, invalidate_after, completion, checkpoints). Capability surface = tools list; see docs/spec-v0.2.md.",
-      "additionalProperties": true
+      "$ref": "#/$defs/counterbalance"
     },
     "mutable": {
       "type": "array",
-      "description": "Cells the agent may propose edits to (never security/checkpoints).",
+      "uniqueItems": true,
       "items": {
         "type": "string",
         "enum": [
@@ -155,68 +154,18 @@
           "instincts"
         ]
       },
-      "uniqueItems": true
+      "description": "Agent-side cells the agent may edit (never security)."
     },
     "instinct_text": {
       "type": "string",
-      "description": "Optional instinct disposition text; editable only when mutable includes instincts."
+      "description": "Harness-authored disposition text; hosts include it verbatim in the model's system context."
     },
     "overlays": {
       "type": "array",
-      "description": "Model-adaptive scaffolding overlays (narrow-only).",
       "items": {
-        "type": "object",
-        "required": [
-          "when_model"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "when_model": {
-            "oneOf": [
-              {
-                "type": "string",
-                "minLength": 1
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "minItems": 1
-              }
-            ]
-          },
-          "tools": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "limits": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "max_steps": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "max_tool_calls": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "timeout_ms": {
-                "type": "integer",
-                "minimum": 1
-              }
-            }
-          },
-          "prompt_hint": {
-            "type": "string"
-          }
-        }
-      }
+        "$ref": "#/$defs/overlay"
+      },
+      "description": "Model-adaptive, narrow-only overlays resolved by the host (spec-v0.3 §4.4)."
     }
   },
   "$defs": {
@@ -384,13 +333,13 @@
         }
       ]
     },
-    "verdict": {
+    "otherwise": {
       "type": "string",
       "enum": [
-        "allow",
         "deny",
         "safe_state"
-      ]
+      ],
+      "description": "Fallback verdict when the check fails. `allow` is not allowed: a failed check never counts as success."
     },
     "gate": {
       "type": "object",
@@ -409,7 +358,7 @@
           "$ref": "#/$defs/predicate"
         },
         "otherwise": {
-          "$ref": "#/$defs/verdict"
+          "$ref": "#/$defs/otherwise"
         }
       }
     },
@@ -425,15 +374,15 @@
         "kind": {
           "const": "effect"
         },
-        "observe": {
-          "type": "string",
-          "minLength": 1
-        },
         "require": {
           "$ref": "#/$defs/predicate"
         },
         "otherwise": {
-          "$ref": "#/$defs/verdict"
+          "$ref": "#/$defs/otherwise"
+        },
+        "observe": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -452,7 +401,7 @@
           "$ref": "#/$defs/predicate"
         },
         "otherwise": {
-          "$ref": "#/$defs/verdict"
+          "$ref": "#/$defs/otherwise"
         }
       }
     },
@@ -471,7 +420,26 @@
           "$ref": "#/$defs/predicate"
         },
         "otherwise": {
-          "$ref": "#/$defs/verdict"
+          "$ref": "#/$defs/otherwise"
+        }
+      }
+    },
+    "verifyOutput": {
+      "type": "object",
+      "required": [
+        "kind",
+        "require"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "output"
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/otherwise"
         }
       }
     },
@@ -487,18 +455,18 @@
         "kind": {
           "const": "judge"
         },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        },
+        "otherwise": {
+          "$ref": "#/$defs/otherwise"
+        },
         "model_from": {
           "type": "string"
         },
         "rubric": {
           "type": "string",
           "minLength": 1
-        },
-        "require": {
-          "$ref": "#/$defs/predicate"
-        },
-        "otherwise": {
-          "$ref": "#/$defs/verdict"
         }
       }
     },
@@ -512,6 +480,9 @@
         },
         {
           "$ref": "#/$defs/verifyAbsence"
+        },
+        {
+          "$ref": "#/$defs/verifyOutput"
         },
         {
           "$ref": "#/$defs/verifyJudge"
@@ -535,6 +506,14 @@
         "read_only": {
           "type": "boolean"
         },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "world",
+            "user"
+          ],
+          "description": "D14: `user` tools are answered by the host user channel (recorded / simulator / human), never synthesized. Default `world`."
+        },
         "input": {
           "type": "object"
         },
@@ -545,6 +524,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/verify"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
           }
         }
       }
@@ -563,6 +548,9 @@
             "verify_effect_failed",
             "verify_evidence_failed",
             "verify_absence_failed",
+            "verify_output_failed",
+            "verify_judge_invalid",
+            "verify_judge_failed",
             "gate_denied"
           ]
         },
@@ -590,6 +578,363 @@
           "enum": [
             "terminal_failure"
           ]
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_tool_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "continue_after_deny": {
+          "type": "boolean"
+        },
+        "max_observation_chars": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "require_prior_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "require_prior_any_of": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "require_state": {
+          "$ref": "#/$defs/predicate"
+        }
+      }
+    },
+    "invalidateAfter": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "memory_keys"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "minLength": 1
+            },
+            "memory_keys": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ttl_steps",
+            "memory_keys"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ttl_steps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "memory_keys": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          }
+        }
+      ]
+    },
+    "completion": {
+      "type": "object",
+      "required": [
+        "tool"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "require": {
+          "$ref": "#/$defs/predicate"
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": [
+        "tool",
+        "allow_set_keys"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allow_set_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "memoryProvenanceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "current",
+            "stale",
+            "contradicted",
+            "unknown"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "user",
+            "world",
+            "agent-inference"
+          ]
+        },
+        "updated_at_step": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "interventionBudget": {
+      "type": "object",
+      "required": [
+        "max_activations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_activations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "window": {
+          "type": "string",
+          "enum": [
+            "run",
+            "host_day"
+          ]
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "cron",
+            "event",
+            "human"
+          ]
+        },
+        "every_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "counterbalance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Executable Counterbalance bridge (docs/spec-v0.3.md §8). Closed at every level.",
+      "properties": {
+        "sequences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sequence"
+          }
+        },
+        "invalidate_after": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/invalidateAfter"
+          }
+        },
+        "completion": {
+          "$ref": "#/$defs/completion"
+        },
+        "checkpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/checkpoint"
+          }
+        },
+        "orientation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "emit_each_step": {
+              "type": "boolean"
+            }
+          }
+        },
+        "output_verifies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verifyOutput"
+          }
+        },
+        "memory_provenance": {
+          "type": "object",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/memoryProvenanceEntry"
+          }
+        },
+        "intervention_budget": {
+          "$ref": "#/$defs/interventionBudget"
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trigger"
+          }
+        },
+        "memory_notes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "overlay": {
+      "type": "object",
+      "required": [
+        "when_model"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "when_model": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          ]
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_steps": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_tool_calls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "prompt_hint": {
+          "type": "string"
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": [
+        "set"
+      ],
+      "additionalProperties": false,
+      "description": "Declared state effect: when `when` holds on {action, state, result}, `set` joins the call's transition (spec-v0.3 §6.3).",
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/predicate"
+        },
+        "set": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          }
         }
       }
     }

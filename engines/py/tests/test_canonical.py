@@ -63,12 +63,12 @@ def test_integer_like_keys_sort_lexicographically():
     assert canonical_json({"9": 1, "10": 2, "a": 3}) == '{"10":2,"9":1,"a":3}'
 
 
-def test_surrogate_pairs_are_joined_and_lone_surrogates_escaped():
+def test_surrogate_pairs_are_joined_and_lone_surrogates_rejected():
     assert canonical_json({"k": "😀"}) == '{"k":"😀"}'
-    assert canonical_json({"k": "x\ud83d"}) == '{"k":"x\\ud83d"}'
     assert combine_surrogates("😀") == "\U0001F600"
-    # lone surrogates no longer break hashing
-    assert len(state_hash({"k": "\udc00"})) == 64
+    # spec-v0.3 §1: strings must be well-formed Unicode; TS canonicalJson throws the same text.
+    with pytest.raises(ValueError, match=r"Non-canonical value at \$\.k: string is not well-formed Unicode"):
+        canonical_json({"k": "x\ud83d"})
 
 
 def test_crlf_and_control_characters_escape_like_json_stringify():

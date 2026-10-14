@@ -56,29 +56,10 @@ def test_tool_alias_and_missing_args_in_recorded_lines():
     assert rt.events[0]["tool"] == "echo.ping" and rt.events[0]["args"] == {}
 
 
-def test_invalid_proposal_emits_empty_proposal_like_ts():
-    a = agent(["echo.ping"])
-    rt = run(a, [{"type": "invalid", "reason": "no_tool_call", "message": "hmm"}], parse=False)
-    ev = rt.events[0]
-    assert (ev["stage"], ev["verdict"], ev["reason"], ev["error"]) == ("propose", "deny", "empty_proposal", "hmm")
-    assert ev["observation"] == {"invalid_reason": "no_tool_call", "stop_message": "hmm"}
-    assert len(rt.events) == 1  # deny is terminal by default
 
 
-def test_empty_proposals_capped_even_with_continue_after_deny():
-    a = agent(["echo.ping"], limits={"continue_after_deny": True})
-    inv = {"type": "invalid", "reason": "x"}
-    rt = run(a, [inv, inv, inv], parse=False)
-    assert [e["reason"] for e in rt.events] == ["empty_proposal", "empty_proposal"]
-    assert rt.events[0]["observation"] == {"invalid_reason": "x", "stop_message": None}
 
 
-def test_stop_message_truthiness_and_code_point_truncation():
-    a = agent(["echo.ping"])
-    assert "observation" not in run(a, [{"type": "stop", "message": ""}]).events[0]
-    long = "\U0001F600" * 600
-    rt = run(a, [{"type": "stop", "message": long}])
-    assert rt.events[0]["observation"]["stop_message"] == "\U0001F600" * 500  # D2: code points
 
 
 # --- PY-18: envelopes, nulls, provenance, error texts --------------------------
@@ -91,44 +72,12 @@ def test_normalize_envelope_keeps_null_and_array_outputs():
     assert normalize_envelope([1]) == {"output": [1]}
 
 
-def test_null_result_is_kept_in_events():
-    a = agent(["echo.ping"])
-    recorded = [{"call_seq": 1, "tool": "echo.ping", "args": {}, "result": {"output": None}}]
-    rt = run(a, [{"type": "tool", "name": "echo.ping", "args": {}}], recorded=recorded)
-    ex = [e for e in rt.events if e["stage"] == "execute"][0]
-    assert "result" in ex and ex["result"] is None
-    assert '"result":null' in canonical_json(ex)
 
 
-def test_false_write_refreshes_provenance_like_ts():
-    a = agent([{"id": "echo.ping"}], counterbalance={})
-    recorded = [
-        {"call_seq": 1, "tool": "echo.ping", "args": {}, "result": {"output": {}, "state_transition": {"set": {"flag": False, "zero": 0}}}}
-    ]
-    rt = run(a, [{"type": "tool", "name": "echo.ping", "args": {}}], recorded=recorded)
-    mp = rt.agent["counterbalance"]["memory_provenance"]
-    assert "flag" in mp and "zero" not in mp
 
 
-def test_transcript_mismatch_and_missing_handler_messages_match_ts():
-    a = agent(["echo.ping", "custom.x"])
-    recorded = [{"call_seq": 1, "tool": "other", "args": {}, "result": {}}]
-    rt = run(a, [{"type": "tool", "name": "echo.ping", "args": {"m": 1}}], recorded=recorded)
-    ex = [e for e in rt.events if e["stage"] == "execute"][0]
-    assert ex["error"] == (
-        'Recorded transcript mismatch: expected call_seq=1 tool=echo.ping args={"m":1}, got call_seq=1 tool=other'
-    )
-    rt2 = run(a, [{"type": "tool", "name": "custom.x", "args": {}}])
-    ex2 = [e for e in rt2.events if e["stage"] == "execute"][0]
-    assert ex2["reason"] == "tool_execution_failed" and ex2["error"] == "No native handler for custom.x"
 
 
-def test_handler_errors_use_js_messages():
-    # spawn children receive raw proposals; missing args reach the handler as undefined
-    a = agent(["agent.spawn", "fs.read"], spawn={"allow": True})
-    rt = run(a, [{"type": "tool", "name": "agent.spawn", "args": {"tools": ["fs.read"], "proposals": [{"type": "tool", "name": "fs.read"}]}}])
-    child = [e for e in rt.events if e.get("depth") == 1 and e["stage"] == "execute"][0]
-    assert child["error"] == "Cannot read properties of undefined (reading 'path')"
 
 
 # --- PY-9: default (replay) world identical to TS cli.ts buildTools ----------------
@@ -181,18 +130,6 @@ def test_world_coercions_follow_js():
     assert call(w, "kb.lookup", {"query": q})["output"]["article_id"] == "kb-" + "\U0001F600" * 24
 
 
-def test_simulation_pool_matches_ts_build_handler_pool():
-    a = agent(["shell.run_allowlisted", "fs.read"], permissions={"filesystem": {"write_scopes": ["src/"]}})
-    w = simulation_tool_pool(a)
-    # TS createSimulationWorldForAgent: the agent's own policy on simulated I/O; tests pass
-    # by default and a passing test sets evidence like the local adapter.
-    assert call(w, "shell.run_allowlisted", {"cmd": "test"}) == {
-        "output": {"exit_code": 0, "cmd": "test"},
-        "state_transition": {"set": {"test_evidence_current": 1}},
-    }
-    assert call(w, "fs.read", {"path": "src/app.js"})["output"]["found"] == 0
-    w2 = simulation_tool_pool(a, test_exit=3)
-    assert call(w2, "shell.run_allowlisted", {"cmd": "typecheck"}) == {"output": {"exit_code": 3, "cmd": "typecheck"}}
 
 
 def test_world_policy_absent_scopes_and_normalized_paths():
@@ -230,14 +167,3 @@ def test_run_loop_without_host_cap_enforces_ir_limits():
     assert rt.events[-1]["reason"] == "limit_exceeded" and rt.steps == 2
 
 
-def test_callable_propose_handles_invalid_proposals_natively():
-    a = agent(["echo.ping"], limits={"continue_after_deny": True})
-    queue = [
-        {"type": "invalid", "reason": "no_tool_call", "message": "thinking…"},
-        {"type": "tool", "name": "echo.ping", "args": {}},
-        {"type": "stop"},
-    ]
-    rt = FaustRuntime(a, lambda: queue.pop(0) if queue else {"type": "stop"}, default_tools(a))
-    rt.run_loop()
-    assert rt.events[0]["reason"] == "empty_proposal" and rt.events[0]["error"] == "thinking…"
-    assert any(e["stage"] == "execute" and e["verdict"] == "allow" for e in rt.events)

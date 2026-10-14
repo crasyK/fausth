@@ -5,6 +5,7 @@ AdapterErrorCode = str  # binding_missing | adapter_unresolved
 
 
 class AdapterError(Exception):
-    def __init__(self, code: AdapterErrorCode, message: str) -> None:
+    def __init__(self, code: AdapterErrorCode, message: str, detail: dict | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.detail = detail

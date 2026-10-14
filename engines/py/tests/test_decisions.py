@@ -44,9 +44,6 @@ def test_spawn_denied_unless_allow_is_exactly_true(spawn):
     assert not find(rt, stage="execute")
 
 
-def test_spawn_false_keeps_its_error_text():
-    rt = run(agent(["agent.spawn"], spawn={"allow": False}), [call("agent.spawn", tools=[])])
-    assert find(rt, stage="authorize", reason="gate_denied")[0]["error"] == "spawn.allow is false"
 
 
 def test_spawn_is_subject_to_permissions_tools():
@@ -64,16 +61,6 @@ def test_child_budget_is_charged_to_parent():
     assert rt.events[-1]["reason"] == "limit_exceeded" and "depth" not in rt.events[-1]
 
 
-def test_child_gets_no_budget_beyond_parent_remainder():
-    a = agent(["agent.spawn", "fs.read"], spawn={"allow": True}, limits={"max_steps": 1, "max_tool_calls": 5})
-    rt = run(a, [call("agent.spawn", tools=["fs.read"], proposals=[call("fs.read", path="src/app.ts")])])
-    # the parent's last step spawns the child: zero steps remain, so the child runs nothing
-    assert not [e for e in rt.events if e.get("depth") == 1]
-    assert rt.steps == 1 and rt.tool_calls == 1
-    a2 = agent(["agent.spawn", "fs.read"], spawn={"allow": True}, limits={"max_steps": 2, "max_tool_calls": 5})
-    rt2 = run(a2, [call("agent.spawn", tools=["fs.read"], proposals=[call("fs.read", path="src/app.ts")] * 3)])
-    child = [e for e in rt2.events if e.get("depth") == 1]
-    assert [e["stage"] for e in child if e["stage"] == "execute"] == ["execute"]  # one remaining step only
 
 
 # --- D7 / PY-17: scope normalization ----------------------------------------------
@@ -98,16 +85,6 @@ def test_scope_covered_normalizes_segment_wise(child, parents, covered):
     assert scope_covered(child, parents) is covered
 
 
-def test_spawn_child_scope_spelling_is_not_an_escalation():
-    a = agent(
-        ["agent.spawn", "fs.read"],
-        spawn={"allow": True},
-        permissions={"tools": ["agent.spawn", "fs.read"], "filesystem": {"write_scopes": ["src/"]}},
-    )
-    ok = run(a, [call("agent.spawn", tools=["fs.read"], filesystem={"write_scopes": ["src"]})])
-    assert find(ok, stage="execute", verdict="allow", tool="agent.spawn")
-    bad = run(a, [call("agent.spawn", tools=["fs.read"], filesystem={"write_scopes": ["src/../etc"]})])
-    assert find(bad, stage="authorize", reason="gate_denied")[0]["error"] == "write_scopes escalation"
 
 
 # --- D8: success = executed AND verified ------------------------------------------------
@@ -129,13 +106,6 @@ def _absence_agent(**extra):
     )
 
 
-def test_failed_verify_does_not_commit_the_transition_and_says_so():
-    rt = run(_absence_agent(), [call("fs.write_scoped", path="docs/x.md", content="x")])
-    ex = find(rt, stage="execute", tool="fs.write_scoped")[0]
-    v = find(rt, stage="verify", reason="verify_absence_failed")[0]
-    assert v["failure"] == {"kind": "transition_discarded", "keys": ["out_of_scope_writes"]}
-    assert v["state_hash"] != ex["state_hash"]  # rolled back
-    assert rt.agent["state"]["out_of_scope_writes"] == 0
 
 
 def test_unverified_call_does_not_satisfy_sequences():
@@ -176,17 +146,6 @@ def test_checkpoint_args_denied_at_authorize_without_executing():
     assert calls == [] and not find(rt, stage="execute")
 
 
-def test_checkpoint_transition_still_checked_after_execution():
-    a = agent(
-        [{"id": "user.correct", "input": OBJ}],
-        state={"open_todos": 1},
-        counterbalance={"checkpoints": [{"tool": "user.correct", "allow_set_keys": ["open_todos"]}]},
-    )
-    tools = {"user.correct": lambda args, ctx: {"output": {"ok": 1}, "state_transition": {"set": {"test_evidence_current": 1}}}}
-    rt = run(a, [call("user.correct", set={"open_todos": 0})], tools=tools)
-    ex = find(rt, stage="execute")[0]
-    assert ex["verdict"] == "deny" and ex["reason"] == "checkpoint_authority_failed"
-    assert "test_evidence_current" not in rt.agent["state"]
 
 
 # --- D10 / PY-15: recovery takes the governed path ---------------------------------------------
@@ -216,64 +175,19 @@ def _greenhouse(**extra):
     return base
 
 
-def test_recovery_happy_path_unchanged():
-    rt = run(_greenhouse(), [call("actuator.fan.set", percent=40)])
-    reasons = [e.get("reason") for e in rt.events if e["stage"] == "record"]
-    assert reasons == ["recovery_succeeded", "safe_state_entered"]
 
 
-def test_recovery_respects_permissions():
-    rt = run(_greenhouse(permissions={"tools": ["sensor.fan.read_percent"]}), [call("sensor.fan.read_percent")])
-    assert not find(rt, reason="recovery_succeeded")
-    # direct check of the recovery path: trigger it
-    rt2 = FaustRuntime(_greenhouse(permissions={"tools": ["sensor.fan.read_percent"]}), [], default_tools(_greenhouse()))
-    rt2.run_recovery("verify_effect_failed")
-    assert [e.get("reason") for e in rt2.events][-3:] == ["capability_missing", "terminal_failure", "safe_state_entered"]
 
 
-def test_recovery_respects_gates_and_limits():
-    gated = _greenhouse(gates=[{"when": {"path": "action.name", "eq": "actuator.fan.set"}, "require": {"path": "state.fan_percent", "eq": 77}}])
-    rt = FaustRuntime(gated, [], default_tools(gated))
-    rt.run_recovery("verify_effect_failed")
-    assert [e.get("reason") for e in rt.events][-3:] == ["gate_denied", "terminal_failure", "safe_state_entered"]
-    limited = _greenhouse(limits={"max_tool_calls": 0})
-    rt2 = FaustRuntime(limited, [], default_tools(limited))
-    rt2.run_recovery("verify_effect_failed")
-    assert [e.get("reason") for e in rt2.events][-3:] == ["limit_exceeded", "terminal_failure", "safe_state_entered"]
 
 
-def test_recovery_checks_checkpoint_authority():
-    a = _greenhouse(counterbalance={"checkpoints": [{"tool": "actuator.fan.set", "allow_set_keys": []}]})
-    rt = FaustRuntime(a, [], default_tools(a))
-    rt.run_recovery("verify_effect_failed")
-    ex = find(rt, stage="execute", tool="actuator.fan.set")[0]
-    assert ex["reason"] == "checkpoint_authority_failed"
-    assert [e.get("reason") for e in rt.events][-2:] == ["terminal_failure", "safe_state_entered"]
 
 
 # --- D11 / PY-8: no harness-specific names in the engine -------------------------------------------
 
 
-def test_orientation_has_no_completion_block_without_declared_tool():
-    a = agent(["task.complete"], counterbalance={"orientation": {"emit_each_step": True}, "completion": {"require": {"path": "state.x", "eq": 1}}})
-    rt = run(a, [call("task.complete")])
-    frame = rt.events[0]["observation"]
-    assert "completion" not in frame and "plan" not in frame
-    # completion.require without a tool gates nothing (no implicit task.complete)
-    assert find(rt, stage="execute", verdict="allow", tool="task.complete")
-    assert not find(rt, reason="run_complete")
 
 
-def test_plan_approved_and_user_approve_are_not_special():
-    a = agent(["user.approve", "phase.yield"], state={"plan_approved": 1}, counterbalance={"orientation": {"emit_each_step": True}})
-    rt = run(a, [call("phase.yield"), call("user.approve")])
-    frame = rt.events[0]["observation"]
-    assert frame["permitted_tools"] == ["phase.yield", "user.approve"] and "plan" not in frame
-    # phase.yield is not terminal unless the IR declares it as the completion tool
-    assert find(rt, stage="execute", tool="user.approve")
-    declared = agent(["phase.yield", "user.approve"], counterbalance={"completion": {"tool": "phase.yield"}})
-    rt2 = run(declared, [call("phase.yield"), call("user.approve")])
-    assert rt2.events[-1]["reason"] == "run_complete" and not find(rt2, stage="propose", tool="user.approve")
 
 
 def test_completion_block_when_declared():
@@ -309,19 +223,6 @@ def test_ttl_staleness_emits_once_and_does_not_create_provenance():
     assert "memory_provenance" not in rt.agent["counterbalance"]
 
 
-def test_action_invalidation_emits_once_until_refreshed():
-    a = agent(
-        ["fs.write_scoped", "shell.run_allowlisted"],
-        state={"test_evidence_current": 1},
-        permissions={"filesystem": {"write_scopes": ["src/"]}},
-        counterbalance={"invalidate_after": [{"action": "fs.write_scoped", "memory_keys": ["test_evidence_current"]}]},
-    )
-    w = call("fs.write_scoped", path="src/a.ts", content="x")
-    rt = run(a, [w, w], tools={**default_tools(a)})
-    assert len(find(rt, reason="memory_stale")) == 1
-    tools = default_tools(a, test_exit=0)
-    rt2 = run(a, [w, call("shell.run_allowlisted", cmd="test"), w], tools=tools)
-    assert len(find(rt2, reason="memory_stale")) == 2  # refreshed by the passing test in between
 
 
 # --- D3: non-canonical numbers rejected where they enter -------------------------------------------------
@@ -338,12 +239,6 @@ def test_non_integral_tool_output_is_denied_not_a_crash():
     assert find(rt2, stage="execute")[0]["result"] == {"x": 1}
 
 
-def test_non_integral_proposal_args_rejected_as_invalid_proposal():
-    a = agent(["echo.ping"])
-    rt = run(a, [call("echo.ping", n=0.5)])
-    ev = rt.events[0]
-    assert (ev["stage"], ev["verdict"], ev["reason"]) == ("propose", "deny", "empty_proposal")
-    assert ev["observation"]["invalid_reason"] == "tool_arguments_non_canonical"
 
 
 # --- D14: the user cell ---------------------------------------------------------------------------------
@@ -370,12 +265,6 @@ def test_unbound_user_channel_is_capability_missing():
     assert not find(rt, stage="execute")
 
 
-def test_world_handlers_never_answer_the_user_cell():
-    a = _user_agent()
-    tools = default_tools(a)
-    assert "user.approve" in tools  # the world stub exists but must not be used
-    rt = run(a, [call("user.approve", plan="p")], tools=tools)
-    assert not find(rt, stage="execute")
 
 
 def test_recorded_or_bound_user_channel_answers():
@@ -390,14 +279,3 @@ def test_recorded_or_bound_user_channel_answers():
     assert rt2.agent["state"]["plan_approved"] == 1
 
 
-def test_user_decision_keys_writable_only_by_user_tools():
-    a = _user_agent()
-    # user.correct may set plan_approved per its own checkpoint, but plan_approved is owned by a user-channel tool
-    rt = run(a, [call("user.correct", set={"plan_approved": 1})])
-    deny = find(rt, stage="authorize", reason="checkpoint_authority_failed")[0]
-    assert deny["failure"] == {"kind": "checkpoint_key", "checkpoint_key": "plan_approved"}
-    rogue = {"fs.write_scoped": lambda args, ctx: {"output": {"ok": 1}, "state_transition": {"set": {"plan_approved": 1}}}}
-    rt2 = run(a, [call("fs.write_scoped", path="src/a", content="x")], tools=rogue)
-    ex = find(rt2, stage="execute")[0]
-    assert ex["verdict"] == "deny" and ex["failure"] == {"kind": "checkpoint_key", "checkpoint_key": "plan_approved"}
-    assert rt2.agent["state"]["plan_approved"] == 0

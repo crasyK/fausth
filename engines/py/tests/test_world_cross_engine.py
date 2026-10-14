@@ -71,7 +71,7 @@ def _requests():
         for world in ("replay", "simulation"):
             a = dict(agent)
             if world == "simulation":
-                a = {**agent, "tools": [{"id": c["tool"]} for c in CALLS if c["tool"] not in ("echo.ping", "user.ask")]}
+                a = {**agent, "tools": [{"id": c["tool"]} for c in CALLS if c["tool"] not in ("echo.ping", "user.ask", "user.approve")]}  # user cell: no world binding (D14)
             reqs.append({"id": f"{name}/{world}", "kind": "world", "world": world, "agent": a, "calls": CALLS})
     return "\n".join(json.dumps(r) for r in reqs) + "\n"
 

@@ -347,16 +347,6 @@ NATIVE_TO_TOOL: dict[str, str] = {
     "sim.shell": "shell.run_allowlisted",
     "local.shell": "shell.run_allowlisted",
     "shell.run_allowlisted": "shell.run_allowlisted",
-    "stub.approve": "user.approve",
-    "sim.approve": "user.approve",
-    "local.user_approve": "user.approve",
-    "local.user_approve_auto": "user.approve",
-    "user.approve": "user.approve",
-    "stub.user_correct": "user.correct",
-    "sim.user_correct": "user.correct",
-    "local.user_correct": "user.correct",
-    "local.user_correct_auto": "user.correct",
-    "user.correct": "user.correct",
     "stub.task_complete": "task.complete",
     "sim.task_complete": "task.complete",
     "local.task_complete": "task.complete",
@@ -443,7 +433,13 @@ class ToolSet(dict):
 
 #: Natives removed because they answered the user cell from the acting model's own
 #: args (D14). Kept as a closed list only to produce an actionable error.
-REMOVED_USER_NATIVES = frozenset({"stub.ask", "user.ask", "local.user_ask", "local.user_ask_auto"})
+REMOVED_USER_NATIVES = frozenset(
+    {
+        "stub.ask", "user.ask", "local.user_ask", "local.user_ask_auto",
+        "stub.approve", "sim.approve", "user.approve", "local.user_approve", "local.user_approve_auto",
+        "stub.user_correct", "sim.user_correct", "user.correct", "local.user_correct", "local.user_correct_auto",
+    }
+)
 
 
 def _binding_natives(deployment: Any) -> list[str]:

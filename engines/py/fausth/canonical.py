@@ -314,7 +314,11 @@ def _type_name(v: Any) -> str:
 
 def assert_integer_deep(value: Any, path: str = "$") -> None:
     """Raise ``ValueError`` unless ``value`` is canonical (mirrors TS assertIntegerDeep)."""
-    if value is None or isinstance(value, (bool, str)):
+    if value is None or isinstance(value, bool):
+        return
+    if isinstance(value, str):
+        if any(0xD800 <= ord(ch) <= 0xDFFF for ch in combine_surrogates(value)):
+            raise ValueError(f"Non-canonical value at {path}: string is not well-formed Unicode")
         return
     if isinstance(value, int):
         if value < INT53_MIN or value > INT53_MAX:
@@ -334,6 +338,8 @@ def assert_integer_deep(value: Any, path: str = "$") -> None:
         return
     if isinstance(value, dict):
         for k in js_keys(value):
+            if isinstance(k, str) and any(0xD800 <= ord(ch) <= 0xDFFF for ch in combine_surrogates(k)):
+                raise ValueError(f"Non-canonical value at {path}: key is not well-formed Unicode")
             assert_integer_deep(value[k], f"{path}.{k}")
         return
     raise ValueError(f"Unsupported type at {path}: {_type_name(value)}")

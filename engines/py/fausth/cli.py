@@ -89,7 +89,17 @@ def cmd_validate(target: str) -> int:
             agent = ref.embedded_resolved["agent"]
             ok, errors, warnings = validate_agent(agent)
         else:
-            ok, agent, errors, warnings = validate_agent_path(ref.harness_dir)
+            hd = Path(ref.harness_dir)
+            if (hd / "agent.yml").exists() or (hd / "agent.json").exists():
+                # TS cmdValidate: validate the resolved harness (connector tools linked).
+                try:
+                    agent = resolve_harness(hd)["agent"]
+                except ConnectorError as e:
+                    print(str(e), file=sys.stderr)
+                    return 1
+                ok, errors, warnings = validate_agent(agent)
+            else:
+                ok, agent, errors, warnings = validate_agent_path(ref.harness_dir)
         if not ok:
             print("\n".join(errors), file=sys.stderr)
             return 1
