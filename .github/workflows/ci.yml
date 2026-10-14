@@ -108,7 +108,7 @@ jobs:
           python-version: "3.12"
       - run: pnpm install
       - run: pip install -e "engines/py[dev]"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: live/cache/swe
           key: swe-mirrors-${{ hashFiles('case-studies/swe-bench/tasks/pallets__flask-4045/task.yml') }}
