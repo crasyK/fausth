@@ -1,63 +1,13 @@
 {
   "seed": 42,
   "n": 48,
-  "agree": 40,
-  "disagree": 8,
+  "agree": 48,
+  "disagree": 0,
   "crashes": 0,
   "expected_verdict_misses": {
-    "ts": [
-      "fuzz-001",
-      "fuzz-007",
-      "fuzz-013",
-      "fuzz-019",
-      "fuzz-025",
-      "fuzz-031",
-      "fuzz-037",
-      "fuzz-043"
-    ],
+    "ts": [],
     "py": []
   },
-  "pass": false,
-  "mismatches": [
-    {
-      "id": "fuzz-001",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-007",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-013",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-019",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-025",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-031",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-037",
-      "ts": true,
-      "py": false
-    },
-    {
-      "id": "fuzz-043",
-      "ts": true,
-      "py": false
-    }
-  ]
+  "pass": true,
+  "mismatches": []
 }

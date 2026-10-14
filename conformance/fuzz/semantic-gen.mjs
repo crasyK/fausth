@@ -74,21 +74,34 @@ const cases = [
   { id: "py17-dotdot-escape-denied", finding: "PY-17", decision: "D7", kind: "run",
     agent: agent(["agent.spawn", "fs.read"], { spawn: { allow: true }, permissions: { filesystem: { write_scopes: ["src/"] } } }),
     model_lines: [call("agent.spawn", { tools: ["fs.read"], filesystem: { write_scopes: ["src/../etc"] } })],
-    expect: { contains: [{ stage: "authorize", verdict: "deny", reason: "gate_denied", error: "write_scopes escalation" }] } },
+    expect: { contains: [{ stage: "authorize", verdict: "deny", reason: "gate_denied", failure: { kind: "spawn", code: "escalation", dimension: "write_scopes" } }] } },
   // --- SPEC-16: undeclared permission ---------------------------------------------------
   { id: "spec16-undeclared-permission-invalid", finding: "SPEC-16", kind: "validate",
     agent: { spec: "counterbalance-contract/v0.1", name: "x", state: {}, tools: [{ id: "fs.read" }], permissions: { tools: ["fs.read", "shell.unrestricted"] } },
     expect: { ok: false } },
   // --- D8: success = executed AND verified ---------------------------------------------------
+  // A call whose verify failed is not a success: it neither commits its declared effect nor
+  // satisfies a later sequence (spec-v0.3 §6.4–6.5).
   { id: "d8-verify-failure-discards-transition", decision: "D8", kind: "run",
-    agent: agent([{ id: "fs.write_scoped", verify: [{ kind: "absence", require: { path: "result.out_of_scope", eq: 0 }, otherwise: "deny" }] }],
-      { state: { out_of_scope_writes: 0 }, permissions: { filesystem: { write_scopes: ["src/"] } } }),
-    model_lines: [call("fs.write_scoped", { path: "docs/x.md", content: "x" })],
-    expect: { contains: [{ stage: "verify", reason: "verify_absence_failed", failure: { kind: "transition_discarded", keys: ["out_of_scope_writes"] } }] } },
+    agent: agent([
+      { id: "fs.write_scoped", verify: [{ kind: "absence", require: { path: "result.out_of_scope", eq: 0 }, otherwise: "deny" }],
+        effects: [{ when: { path: "result.out_of_scope", eq: 1 }, set: { out_of_scope_writes: 1 } }] },
+      "echo.ping",
+    ], {
+      state: { out_of_scope_writes: 0 },
+      limits: { continue_after_deny: true },
+      permissions: { filesystem: { write_scopes: ["src/"] } },
+      counterbalance: { sequences: [{ id: "write-first", action: "echo.ping", require_prior_tools: ["fs.write_scoped"] }] },
+    }),
+    model_lines: [call("fs.write_scoped", { path: "docs/x.md", content: "x" }), call("echo.ping")],
+    expect: { contains: [
+      { stage: "verify", verdict: "deny", reason: "verify_absence_failed" },
+      { stage: "authorize", verdict: "deny", reason: "sequence_requirement_failed", tool: "echo.ping" },
+    ] } },
   // --- D9: checkpoint authority before execution -------------------------------------------------
   { id: "d9-checkpoint-at-authorize", decision: "D9", kind: "run",
-    agent: agent(["user.correct"], { state: { open_todos: 1, plan_approved: 0 }, counterbalance: { checkpoints: [{ tool: "user.correct", allow_set_keys: ["open_todos"] }] } }),
-    model_lines: [call("user.correct", { set: { plan_approved: 1 } })],
+    agent: agent(["echo.ping"], { state: { open_todos: 1, plan_approved: 0 }, counterbalance: { checkpoints: [{ tool: "echo.ping", allow_set_keys: ["open_todos"] }] } }),
+    model_lines: [call("echo.ping", { set: { plan_approved: 1 } })],
     expect: { contains: [{ stage: "authorize", verdict: "deny", reason: "checkpoint_authority_failed" }], absent: [{ stage: "execute" }] } },
   // --- D10: recovery takes the governed path ---------------------------------------------------------
   { id: "d10-recovery-respects-permissions", decision: "D10", finding: "PY-15", kind: "run",
@@ -142,7 +155,7 @@ const cases = [
   // --- PY-6: invalid proposals ---------------------------------------------------------------------------
   { id: "py6-invalid-proposal", finding: "PY-6", kind: "run", raw_proposals: true,
     agent: agent(["echo.ping"]), model_lines: [{ type: "invalid", reason: "no_tool_call", message: "hmm" }],
-    expect: { contains: [{ stage: "propose", verdict: "deny", reason: "empty_proposal", observation: { invalid_reason: "no_tool_call", stop_message: "hmm" } }] } },
+    expect: { contains: [{ stage: "propose", verdict: "deny", reason: "invalid_proposal", observation: { invalid_reason: "no_tool_call", stop_message: "hmm" } }] } },
   { id: "py6-tool-alias", finding: "PY-6", kind: "run",
     agent: agent(["echo.ping"]), model_lines: [{ type: "tool", tool: "echo.ping" }],
     expect: { contains: [{ stage: "execute", verdict: "allow", tool: "echo.ping" }] } },

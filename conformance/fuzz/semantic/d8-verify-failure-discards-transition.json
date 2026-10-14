@@ -25,15 +25,47 @@
             },
             "otherwise": "deny"
           }
+        ],
+        "effects": [
+          {
+            "when": {
+              "path": "result.out_of_scope",
+              "eq": 1
+            },
+            "set": {
+              "out_of_scope_writes": 1
+            }
+          }
         ]
+      },
+      {
+        "id": "echo.ping",
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
       }
     ],
+    "limits": {
+      "continue_after_deny": true
+    },
     "permissions": {
       "filesystem": {
         "write_scopes": [
           "src/"
         ]
       }
+    },
+    "counterbalance": {
+      "sequences": [
+        {
+          "id": "write-first",
+          "action": "echo.ping",
+          "require_prior_tools": [
+            "fs.write_scoped"
+          ]
+        }
+      ]
     }
   },
   "model_lines": [
@@ -44,19 +76,25 @@
         "path": "docs/x.md",
         "content": "x"
       }
+    },
+    {
+      "type": "tool",
+      "name": "echo.ping",
+      "args": {}
     }
   ],
   "expect": {
     "contains": [
       {
         "stage": "verify",
-        "reason": "verify_absence_failed",
-        "failure": {
-          "kind": "transition_discarded",
-          "keys": [
-            "out_of_scope_writes"
-          ]
-        }
+        "verdict": "deny",
+        "reason": "verify_absence_failed"
+      },
+      {
+        "stage": "authorize",
+        "verdict": "deny",
+        "reason": "sequence_requirement_failed",
+        "tool": "echo.ping"
       }
     ]
   }

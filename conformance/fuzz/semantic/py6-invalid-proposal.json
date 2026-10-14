@@ -30,7 +30,7 @@
       {
         "stage": "propose",
         "verdict": "deny",
-        "reason": "empty_proposal",
+        "reason": "invalid_proposal",
         "observation": {
           "invalid_reason": "no_tool_call",
           "stop_message": "hmm"

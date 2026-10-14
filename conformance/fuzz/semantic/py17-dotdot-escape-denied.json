@@ -57,7 +57,11 @@
         "stage": "authorize",
         "verdict": "deny",
         "reason": "gate_denied",
-        "error": "write_scopes escalation"
+        "failure": {
+          "kind": "spawn",
+          "code": "escalation",
+          "dimension": "write_scopes"
+        }
       }
     ]
   }

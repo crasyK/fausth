@@ -2,7 +2,7 @@
 /**
  * Prove TS ↔ Python signed packs are byte-identical for the same Ed25519 seed,
  * and that verify / unpack succeed on both engines. Also asserts unsigned coding
- * pack remains 15463 bytes.
+ * pack remains 16003 bytes (TS bundle.test.ts pin).
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -93,10 +93,10 @@ try {
     { cwd: join(root, "engines/ts"), stdio: "pipe", windowsHide: true },
   );
   const unsignedBytes = readFileSync(unsignedOut);
-  if (unsignedBytes.length !== 15463) {
-    throw new Error(`unsigned coding pack size ${unsignedBytes.length} != 15463`);
+  if (unsignedBytes.length !== 16003) {
+    throw new Error(`unsigned coding pack size ${unsignedBytes.length} != 16003`);
   }
-  console.log("OK unsigned coding pack 15463 bytes");
+  console.log("OK unsigned coding pack 16003 bytes");
 
   const seedPath = join(tmp, "seed.hex");
   writeFileSync(seedPath, seedHexFromNode() + "\n", "utf8");

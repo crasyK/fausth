@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { FaustRuntime, eventsToJsonl } from "../../../engines/ts/src/runtime.js";
+import { buildReplayWorld } from "../../../engines/ts/src/replay.js";
 import { canonicalJson } from "../../../engines/ts/src/canonical.js";
 import { parseRecordedModelLine } from "../../../engines/ts/src/adapters/recorded.js";
 import { resolveToolsFromDeployment, NATIVE_TO_TOOL } from "../../../engines/ts/src/adapters/registry.js";
@@ -38,68 +39,9 @@ const root = join(here, "../../..");
 const require = createRequire(join(root, "engines/ts/package.json"));
 const { parse: parseYaml } = require("yaml") as { parse: (s: string) => unknown };
 
-// --- replay world: a verbatim copy of cli.ts `buildTools` (guarded below) ---------
-const BUILD_TOOLS_SOURCE = `function buildTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealthy?: number }) {
-  const files: Record<string, string> = {
-    "src/app.ts": "export {}",
-    "src/app.js": 'export function greet(){ return "hello"; }\\n',
-  };
-  const secrets = agent.permissions?.secrets;
-  if (secrets?.paths) {
-    for (const p of secrets.paths) {
-      if (files[p] === undefined) files[p] = "sk-fixture-secret-0001";
-    }
-  }
-  for (const p of agent.permissions?.protected_paths ?? []) {
-    if (files[p] === undefined) {
-      files[p] = 'export function greet(){ return "hello"; }\\n';
-    }
-  }
-  return {
-    ...createGreenhouseTools({
-      temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
-      fan_percent: Number(agent.state.fan_percent ?? 0),
-      sensor_healthy: overrides?.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
-    }),
-    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit, files })),
-    ...createSpawnTool(agent.permissions?.tools ?? []),
-  };
-}`;
-
-function assertBuildToolsInSync(): void {
-  const cli = readFileSync(join(root, "engines/ts/src/cli.ts"), "utf8").replace(/\r\n/g, "\n");
-  if (!cli.includes(BUILD_TOOLS_SOURCE)) {
-    throw new Error(
-      "ts-runner: engines/ts/src/cli.ts buildTools() changed — update BUILD_TOOLS_SOURCE / replayTools in conformance/fuzz/runners/ts-runner.ts",
-    );
-  }
-}
-
-function replayTools(agent: AgentIR, overrides?: { testExit?: number; sensorHealthy?: number }) {
-  const files: Record<string, string> = {
-    "src/app.ts": "export {}",
-    "src/app.js": 'export function greet(){ return "hello"; }\n',
-  };
-  const secrets = agent.permissions?.secrets;
-  if (secrets?.paths) {
-    for (const p of secrets.paths) {
-      if (files[p] === undefined) files[p] = "sk-fixture-secret-0001";
-    }
-  }
-  for (const p of agent.permissions?.protected_paths ?? []) {
-    if (files[p] === undefined) {
-      files[p] = 'export function greet(){ return "hello"; }\n';
-    }
-  }
-  return {
-    ...createGreenhouseTools({
-      temperature_decidegrees: Number(agent.state.temperature_decidegrees ?? 250),
-      fan_percent: Number(agent.state.fan_percent ?? 0),
-      sensor_healthy: overrides?.sensorHealthy ?? Number(agent.state.sensor_healthy ?? 1),
-    }),
-    ...createCodingTools(codingWorldFromAgent(agent, { testExit: overrides?.testExit, files })),
-    ...createSpawnTool(agent.permissions?.tools ?? []),
-  };
+// --- replay world: the normative replay host's world (engines/ts/src/replay.ts) ---------
+function replayTools(agent: AgentIR) {
+  return buildReplayWorld(agent);
 }
 
 /** Deployment pool (registry buildHandlerPool) via an identity binding for every known tool. */
@@ -176,7 +118,6 @@ async function handle(req: Record<string, unknown>): Promise<Record<string, unkn
 }
 
 async function main(): Promise<void> {
-  assertBuildToolsInSync();
   const input = readFileSync(0, "utf8");
   const out: string[] = [];
   for (const line of input.split("\n")) {

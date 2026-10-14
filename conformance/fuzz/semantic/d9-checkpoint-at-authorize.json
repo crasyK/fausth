@@ -12,7 +12,7 @@
     },
     "tools": [
       {
-        "id": "user.correct",
+        "id": "echo.ping",
         "input": {
           "type": "object",
           "additionalProperties": true
@@ -22,7 +22,7 @@
     "counterbalance": {
       "checkpoints": [
         {
-          "tool": "user.correct",
+          "tool": "echo.ping",
           "allow_set_keys": [
             "open_todos"
           ]
@@ -33,7 +33,7 @@
   "model_lines": [
     {
       "type": "tool",
-      "name": "user.correct",
+      "name": "echo.ping",
       "args": {
         "set": {
           "plan_approved": 1

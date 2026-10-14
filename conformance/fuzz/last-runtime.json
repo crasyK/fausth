@@ -1,69 +1,8 @@
 {
   "seed": 20261012,
-  "n": 400,
-  "same": 255,
-  "differ": 145,
-  "pass": false,
-  "first": [
-    {
-      "id": "rt-0000",
-      "byte": 1909,
-      "ts": "{\"reason\":\"phase_yielded\",\"seq\":11,\"stage\":\"record\",\"state_hash\":\"23dec243eeb6290b9df8275116e6ba8532a41fe23e54da6fafa4038431681919\",\"tool\":\"phase.yield\",\"ts_logical\":11,\"verdict\":\"allow\"}",
-      "py": "{\"args\":{\"path\":\"src\"},\"seq\":11,\"stage\":\"propose\",\"state_hash\":\"23dec243eeb6290b9df8275116e6ba8532a41fe23e54da6fafa4038431681919\",\"tool\":\"fs.read\",\"ts_logical\":11}"
-    },
-    {
-      "id": "rt-0001",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{},\"permitted_tools\":[\"answer.send\",\"fs.write_scoped\",\"harness.propose_skills_patch\",\"refund.request\"],\"plan\":{\"approved\":0},\"sequence_blockers\":[],\"tools\":[\"answer.send\",\"fs.write_scoped\",\"harness.propose",
-      "py": "{\"observation\":{\"freshness\":{},\"permitted_tools\":[\"answer.send\",\"fs.write_scoped\",\"harness.propose_skills_patch\",\"refund.request\"],\"sequence_blockers\":[],\"tools\":[\"answer.send\",\"fs.write_scoped\",\"harness.propose_skills_patch\",\"refund.request\"]},\"seq\":1,\"stage\":\"orient\",\"state_hash\":\"b4a6ee549f917eca"
-    },
-    {
-      "id": "rt-0002",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{},\"permitted_tools\":[\"agent.spawn\",\"fs.list\",\"fs.write_scoped\",\"shell.run_allowlisted\",\"user.approve\"],\"plan\":{\"approved\":0},\"sequence_blockers\":[{\"action\":\"agent.spawn\",\"missing_prior_tools\":[\"fs.list\"]}",
-      "py": "{\"observation\":{\"freshness\":{},\"permitted_tools\":[\"agent.spawn\",\"fs.list\",\"fs.write_scoped\",\"shell.run_allowlisted\",\"user.approve\"],\"sequence_blockers\":[{\"action\":\"agent.spawn\",\"missing_prior_tools\":[\"fs.list\"]}],\"tools\":[\"agent.spawn\",\"fs.list\",\"fs.write_scoped\",\"shell.run_allowlisted\",\"user.approv"
-    },
-    {
-      "id": "rt-0004",
-      "byte": 216,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{\"kb_cited\":40,\"temperature_decidegrees\":0},\"permitted_tools\":[\"answer.send\",\"fs.read\",\"harness.propose_skills_patch\",\"harness.reflect_skills\",\"phase.yield\",\"sensor.temperature.read\",\"user.ask\"],\"sequence_",
-      "py": "{\"observation\":{\"freshness\":{\"kb_cited\":40,\"temperature_decidegrees\":0},\"permitted_tools\":[\"answer.send\",\"fs.read\",\"harness.propose_skills_patch\",\"harness.reflect_skills\",\"phase.yield\",\"sensor.temperature.read\",\"user.ask\"],\"sequence_blockers\":[],\"tools\":[\"answer.send\",\"fs.read\",\"harness.propose_skil"
-    },
-    {
-      "id": "rt-0007",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{},\"permitted_tools\":[\"actuator.fan.set\",\"echo.ping\",\"sensor.fan.read_percent\"],\"sequence_blockers\":[{\"action\":\"echo.ping\",\"missing_prior_tools\":[\"actuator.fan.set\"]}],\"tools\":[\"actuator.fan.set\",\"echo.pin",
-      "py": "{\"observation\":{\"freshness\":{},\"permitted_tools\":[\"actuator.fan.set\",\"echo.ping\",\"sensor.fan.read_percent\"],\"sequence_blockers\":[{\"action\":\"echo.ping\",\"missing_prior_tools\":[\"actuator.fan.set\"]}],\"tools\":[\"actuator.fan.set\",\"echo.ping\",\"sensor.fan.read_percent\"]},\"seq\":1,\"stage\":\"orient\",\"state_hash"
-    },
-    {
-      "id": "rt-0008",
-      "byte": 196,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"user.ask\"},\"freshness\":{},\"permitted_tools\":[\"echo.ping\",\"human.handoff\",\"refund.request\",\"sensor.temperature.read\",\"user.ask\"],\"plan\":{\"approved\":0},\"sequence_blockers\":[{\"action\":\"refund.request\",\"missing_prior_any_of\":[\"human.hand",
-      "py": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"user.ask\"},\"freshness\":{},\"permitted_tools\":[\"echo.ping\",\"human.handoff\",\"refund.request\",\"sensor.temperature.read\",\"user.ask\"],\"sequence_blockers\":[{\"action\":\"refund.request\",\"missing_prior_any_of\":[\"human.handoff\",\"sensor.temperatu"
-    },
-    {
-      "id": "rt-0010",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{\"kb_cited\":250},\"permitted_tools\":[\"sensor.fan.read_percent\",\"task.complete\",\"user.correct\"],\"plan\":{\"approved\":1,\"next_tool\":\"phase.yield\",\"note\":\"Plan already approved — call phase.yield next. Do not ca",
-      "py": "{\"observation\":{\"freshness\":{\"kb_cited\":250},\"permitted_tools\":[\"sensor.fan.read_percent\",\"task.complete\",\"user.correct\"],\"sequence_blockers\":[{\"action\":\"sensor.fan.read_percent\",\"missing_prior_any_of\":[\"sensor.fan.read_percent\",\"user.correct\"]}],\"tools\":[\"sensor.fan.read_percent\",\"task.complete\",\"u"
-    },
-    {
-      "id": "rt-0018",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{},\"permitted_tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct\"],\"sequence_blockers\":[],\"tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct",
-      "py": "{\"observation\":{\"freshness\":{},\"permitted_tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct\"],\"sequence_blockers\":[],\"tools\":[\"sensor.fan.read_percent\",\"shell.run_allowlisted\",\"user.ask\",\"user.correct\"]},\"seq\":1,\"stage\":\"orient\",\"state_hash\":\"68918ac850ff2f82aa6071ac"
-    },
-    {
-      "id": "rt-0021",
-      "byte": 1247,
-      "ts": "{\"args\":{\"content\":\"sk-fixture-secret-0001\",\"path\":\"src/app.ts\"},\"observation\":{\"content\":\"\",\"found\":0,\"path\":\"undefined\"},\"reason\":\"verify_effect_failed\",\"seq\":6,\"stage\":\"verify\",\"state_hash\":\"201c7cfd1b9b031b7dfcf3738aebb7cfcf8504b4c01cd6452c9a002b9ee3d307\",\"tool\":\"fs.write_scoped\",\"ts_logical\":6,",
-      "py": "{\"args\":{\"content\":\"sk-fixture-secret-0001\",\"path\":\"src/app.ts\"},\"failure\":{\"keys\":[\"out_of_scope_writes\"],\"kind\":\"transition_discarded\"},\"observation\":{\"content\":\"\",\"found\":0,\"path\":\"undefined\"},\"reason\":\"verify_effect_failed\",\"seq\":6,\"stage\":\"verify\",\"state_hash\":\"3829d342fefb130f9c4fbe9bda4d20dd6"
-    },
-    {
-      "id": "rt-0022",
-      "byte": 17,
-      "ts": "{\"observation\":{\"completion\":{\"ready\":1,\"require_paths\":[],\"tool\":\"task.complete\"},\"freshness\":{},\"permitted_tools\":[\"answer.send\",\"custom.unbound\",\"echo.ping\",\"fs.list\",\"fs.read\",\"fs.write_scoped\",\"harness.decline_skills_patch\",\"harness.reflect_skills\"],\"sequence_blockers\":[],\"tools\":[\"answer.send\"",
-      "py": "{\"observation\":{\"freshness\":{},\"permitted_tools\":[\"answer.send\",\"custom.unbound\",\"echo.ping\",\"fs.list\",\"fs.read\",\"fs.write_scoped\",\"harness.decline_skills_patch\",\"harness.reflect_skills\"],\"sequence_blockers\":[],\"tools\":[\"answer.send\",\"custom.unbound\",\"echo.ping\",\"fs.list\",\"fs.read\",\"fs.write_scoped\""
-    }
-  ]
+  "n": 200,
+  "same": 200,
+  "differ": 0,
+  "pass": true,
+  "first": []
 }

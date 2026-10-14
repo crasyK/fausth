@@ -54,8 +54,10 @@ describe("KIT deployment materialization (SCR-4)", () => {
       templatePath: "case-studies/swe-bench/deployments/local-kit.yml",
     });
     const dep = YAML.parse(readFileSync(swe.abs, "utf8"));
-    assert.match(dep.world.commands.test[0], /pytest/);
-    assert.notEqual(dep.world.commands.test[0], "pytest");
+    // The SWE deployment runs the task's own runner (no literal pytest): left as declared.
+    const tpl = YAML.parse(readFileSync(join(root, "case-studies/swe-bench/deployments/local-kit.yml"), "utf8"));
+    assert.deepEqual(dep.world.commands, tpl.world.commands);
+    assert.ok(!Object.values(dep.world.commands).some((argv) => argv[0] === "pytest"));
   });
 
   it("is content-hash named and regenerated when the template changes (no stale cache on resume)", () => {
@@ -80,12 +82,32 @@ describe("user channel bindings (D14)", () => {
   let dir = "";
   before(() => {
     dir = mkdtempSync(join(tmpdir(), "fausth-uc-"));
+    legacyDep = join(dir, "legacy-tau-recorded.yml");
+    writeFileSync(
+      legacyDep,
+      [
+        "platform: legacy-tau-recorded",
+        "model: { transport: recorded, profile: fixture, models: [recorded-fixture] }",
+        'world: { shell_timeout_ms: 60000, commands: { tau: ["node", "tau.mjs", "from-request"] } }',
+        "bindings:",
+        "  tau.invoke: { native: local.tau_invoke }",
+        "  todo.complete: { native: local.todo_complete }",
+        "  user.ask: { native: local.user_ask_auto }",
+        "  task.complete: { native: local.task_complete }",
+        "  phase.yield: { native: local.phase_yield }",
+        "",
+      ].join("\n"),
+    );
   });
   after(() => rmSync(dir, { recursive: true, force: true }));
 
   const taskAbsDir = join(root, "case-studies/tau-bench/tasks/retail-000");
   const taskYml = YAML.parse(readFileSync(join(taskAbsDir, "task.yml"), "utf8"));
   const tauDep = "case-studies/tau-bench/deployments/local-recorded.yml";
+  // Pre-v0.3 shape (removed self-answering natives + task-scripted answers), written here so the
+  // rebinding logic is tested independently of how the case-study files evolve.
+  let legacyDep = "";
+  const legacyTaskYml = { ...taskYml, user_sim: { answers: ["yes", "yes please", "that is correct"] } };
   const askDef = {
     id: "user.ask",
     output: { type: "object", required: ["answer"], properties: { answer: { type: "string" } } },
@@ -108,11 +130,11 @@ describe("user channel bindings (D14)", () => {
   it("rebinds removed auto-answer natives to recorded scripted answers (engine JSONL, relative path)", () => {
     const attemptDir = join(dir, "a1");
     const r = materializeAttemptDeployment({
-      basePath: tauDep,
+      basePath: legacyDep,
       attemptDir,
       userChannel: null,
       mode: "live",
-      taskYml,
+      taskYml: legacyTaskYml,
       taskAbsDir,
       taskId: "retail-000",
       toolDefs: { "user.ask": askDef },
@@ -217,7 +239,7 @@ describe("user channel bindings (D14)", () => {
 
   it("leaves user tools unbound (deny) when no answers exist", () => {
     const r = materializeAttemptDeployment({
-      basePath: tauDep,
+      basePath: legacyDep,
       attemptDir: join(dir, "a6"),
       userChannel: null,
       mode: "recorded",
@@ -277,11 +299,11 @@ describe("user channel bindings (D14)", () => {
   function tauAttempt(name) {
     const attemptDir = join(dir, name);
     const r = materializeAttemptDeployment({
-      basePath: tauDep,
+      basePath: legacyDep,
       attemptDir,
       userChannel: null,
       mode: "recorded",
-      taskYml,
+      taskYml: legacyTaskYml,
       taskAbsDir,
       taskId: "retail-000",
       toolDefs: { "user.ask": askDef },
@@ -292,7 +314,7 @@ describe("user channel bindings (D14)", () => {
 
   it("the engine's user-channel adapter answers user.ask in order from the generated binding", () => {
     const { deploymentPath } = tauAttempt("adapter");
-    const ws = bootstrapWorkspace({ seed: join(taskAbsDir, "seed"), root: join(dir, "ws-root") });
+    const ws = bootstrapWorkspace({ seed: join(taskAbsDir, taskYml.seed?.dir ?? "seed"), root: join(dir, "ws-root") });
     try {
       const probe = `
         import { readFileSync } from "node:fs";
@@ -345,11 +367,11 @@ describe("user channel bindings (D14)", () => {
       const harness = userChannelHarness();
       const attemptDir = join(dir, "cli");
       const { path: deploymentPath } = materializeAttemptDeployment({
-        basePath: tauDep,
+        basePath: legacyDep,
         attemptDir,
         userChannel: null,
         mode: "recorded",
-        taskYml,
+        taskYml: legacyTaskYml,
         taskAbsDir,
         taskId: "retail-000",
         declaredUserTools: declaredUserChannelTools(harness),
@@ -360,14 +382,14 @@ describe("user channel bindings (D14)", () => {
       writeFileSync(
         trace,
         [
-          { type: "tool", name: "user.ask", args: { question: "Exchange both items?" } },
-          { type: "tool", name: "user.ask", args: { question: "Use credit_card_9513926?" } },
+          { type: "tool", name: "user.ask", args: { message: "Exchange both items?" } },
+          { type: "tool", name: "user.ask", args: { message: "Use credit_card_9513926?" } },
           { type: "stop" },
         ]
           .map((x) => JSON.stringify(x))
           .join("\n") + "\n",
       );
-      const ws = bootstrapWorkspace({ seed: join(taskAbsDir, "seed"), root: join(dir, "ws-root") });
+      const ws = bootstrapWorkspace({ seed: join(taskAbsDir, taskYml.seed?.dir ?? "seed"), root: join(dir, "ws-root") });
       try {
         const dump = join(attemptDir, "events.jsonl");
         const run = spawnSync(
@@ -392,17 +414,22 @@ describe("user channel bindings (D14)", () => {
           { cwd: join(root, "engines/ts"), encoding: "utf8" },
         );
         assert.equal(run.status, 0, run.stderr);
-        const answers = readFileSync(dump, "utf8")
+        const events = readFileSync(dump, "utf8")
           .split("\n")
           .filter(Boolean)
-          .map((l) => JSON.parse(l))
+          .map((l) => JSON.parse(l));
+        const answers = events
           .filter((e) => e.stage === "execute" && e.tool === "user.ask" && e.verdict === "allow")
           .map((e) => e.result?.answer);
-        assert.deepEqual(answers, ["yes", "yes please"]);
-        // user.correct is a checkpoint on the user channel: answered by the recorded
-        // auto-correct script, never by a native.
+        const trail = events.map((e) => [e.stage, e.verdict, e.tool, e.reason, e.failure?.kind].filter(Boolean).join(":"));
+        assert.deepEqual(answers, ["yes", "yes please"], trail.join(" | "));
+        // The user cell is answered by the user channel only: no removed self-answering native
+        // survives materialization (checkpoint scripts are covered by the test above).
         const dep = YAML.parse(readFileSync(deploymentPath, "utf8"));
-        assert.equal(dep.bindings["user.correct"].user.source, "recorded");
+        assert.equal(dep.bindings["user.ask"].user.source, "recorded");
+        for (const b of Object.values(dep.bindings)) {
+          assert.ok(!/(^|\.)user_(ask|approve|correct)(_auto)?$|^(stub|sim)\.(ask|approve|user_correct)$/.test(String(b?.native ?? "")));
+        }
       } finally {
         cleanupWorkspace({ worktree: ws.worktree, root: join(dir, "ws-root") });
       }
