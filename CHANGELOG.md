@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.4.0-alpha — 2026-10-14 (audit release)
+
+Every finding of the 2026-10-12 audit fixed. Details: `AUDIT-STATUS.md`, `case-studies/CLAIMS-STATUS.md`,
+release note `docs/archive/releases/RELEASE-v0.4.0-alpha.md`.
+
+### Contract (spec)
+- `docs/spec-v0.3.md` is normative (D1–D16). The validator accepts spec ids v0.1–v0.3 for the one executable IR and
+  closes the schema at every level, so a typo can no longer silently drop a rule. Every emitted reason code is specified.
+- D8: only executed-and-verified calls count as success. A verify failure discards the call's state transition.
+- D6: spawn is denied unless `spawn.allow: true`. Children are charged to the parent.
+- D9: checkpoint authority is checked at authorize, and only declared keys are writable.
+- D10: recovery goes through the governed path.
+- D11: no harness names in the engines. Tools declare `effects` instead.
+- D14: the user cell is a host user channel (`channel: user`; recorded / simulator / human); never self-answered.
+- Goldens re-derived from the spec, and 29 new `v03-*` fixtures (87 total).
+
+### Engines
+- TS: build and `tsc` clean. `bin` runs the current sources. Schemas are cached. Overlays may only narrow.
+  Metrics are honest, and boolean CLI flags work.
+- Python: a line-by-line port of the v0.3 runtime (`engines/py/fausth/engine.py`). YAML 1.2, standard JSON
+  Schema, code-point canonical JSON. Replay is 87/87 byte-identical to TS, and `parity.mjs` + IR fuzz are green.
+
+### Trust boundary
+- Signer trust store (`--trusted-keys`, `--require-trusted`) with exit codes 0/1/2/3. Bundle sources are re-resolved
+  against the embedded IR.
+- Env allowlists for MCP/module children, with cleanup. Bundle-shipped commands need explicit allowance.
+- Scopes, protected paths and symlinks are checked on normalized and real paths. All checks run before writes.
+- Typed transport errors (infra vs `request_rejected`). Per-call completion ids are recorded (cache-duplicate detection).
+- Bundles carry `user.answers.jsonl` (recorded user answers).
+
+### Case studies and scripts
+- τ-bench retail world ported faithfully. Safe `calculate` (no `Function()`). The hidden instruction goes only to a
+  user simulator. Seeds are deduplicated (−8.5M lines).
+- SWE grader follows upstream SWE-bench grading in per-task environments, validated on 25/25 tasks.
+  The old Track S "0%" is retracted as an invalid measurement.
+- Runner:
+  - workspaces contain only the seed;
+  - no gold data in prompts or host decisions;
+  - pass@1 everywhere, with paired statistics (clustered bootstrap, McNemar);
+  - full provenance, and no stale-artifact re-scoring.
+- CI runs script tests, recorded matrices, release and evidence checks as independent jobs.
+
+### Models
+- KIT defaults: `kit.glm-5.3-flash`, plus `kit.deepseek-v4-flash`. Retired ids fail fast.
+  Note: the gateway caches glm responses by request body.
+
 ## Unreleased
 
 ### Docs hygiene

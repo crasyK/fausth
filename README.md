@@ -4,7 +4,7 @@ Portable runtime for **agent harnesses**: declare tools, gates, and verify rules
 
 The model proposes. Fausth governs what may run and how the world must prove it worked.
 
-**Status:** [v0.3.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.3.0-alpha) · executable contract normative in [`docs/spec-v0.3.md`](docs/spec-v0.3.md) (one IR, spec ids `counterbalance-contract/v0.1`–`v0.3`; the v0.2 agent/world/exchange authoring shape is a non-loadable draft) · **not** production-safe
+**Status:** [v0.4.0-alpha](https://github.com/crasyK/fausth/releases/tag/v0.4.0-alpha) · executable contract normative in [`docs/spec-v0.3.md`](docs/spec-v0.3.md) (one IR, spec ids `counterbalance-contract/v0.1`–`v0.3`; the v0.2 agent/world/exchange authoring shape is a non-loadable draft) · **not** production-safe
 
 **Human map:** [`docs/README.md`](docs/README.md) · **Issues:** [github.com/crasyK/fausth/issues](https://github.com/crasyK/fausth/issues)
 
@@ -46,6 +46,22 @@ pnpm fausth -- pack examples/coding-counterbalance --out live/reports/out.fausth
 | Packaging roadmap (M4–M15) | [`docs/harness-packaging-roadmap.md`](docs/harness-packaging-roadmap.md) |
 | Spec & theory | [`docs/spec-v0.3.md`](docs/spec-v0.3.md) (normative) · [`docs/spec-v0.3-draft.md`](docs/spec-v0.3-draft.md) (open candidates) · [`docs/notion-hub/`](docs/notion-hub/) |
 | Known issues | [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md) |
+
+## What 0.4.0 proves (short)
+
+The audit release (2026-10-14): every finding of the 2026-10-12 audit fixed, both engines rebuilt on one
+normative spec.
+
+- **One normative contract.** [`docs/spec-v0.3.md`](docs/spec-v0.3.md) (decisions D1–D16): honest verdicts (a
+  verify-failed call never counts as success), tighten-only spawn, governed recovery, closed schemas, no
+  harness names in the engine, declared tool `effects`, a real **user channel** (recorded / simulator / human).
+- **Same tokens everywhere, proven.** TS and Python replay all 87 conformance fixtures byte-identically;
+  `scripts/parity.mjs` and the IR fuzzer agree across canonical JSON, YAML 1.2, schemas, worlds and 200 random runs.
+- **Trust boundary.** Signer trust store, env allowlists for child processes, protected-path and symlink-safe
+  scopes, no `Function()` on model input.
+- **Measurement you can rely on.** Case-study graders fixed and self-tested (SWE grader validated on 25/25 tasks),
+  gold leakage removed, paired statistics, invalid claims retracted — see
+  [`case-studies/CLAIMS-STATUS.md`](case-studies/CLAIMS-STATUS.md).
 
 ## What 0.3.0 proves (short)
 

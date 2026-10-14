@@ -256,7 +256,7 @@ export class McpStdioSession {
     await this.request("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "fausth", version: "0.3.0-alpha" },
+      clientInfo: { name: "fausth", version: "0.4.0-alpha" },
     });
     this.child.write({ jsonrpc: "2.0", method: "notifications/initialized" });
   }

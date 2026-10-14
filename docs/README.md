@@ -2,7 +2,7 @@
 
 Portable **harness runtime**: the model proposes; Fausth decides what may run and how the world must prove it worked. This is the human map of the repo.
 
-**Status:** `v0.3.0-alpha` · not production-safe.
+**Status:** `v0.4.0-alpha` · not production-safe.
 
 Chess is **not** in this repo. The chess laboratory is `/home/mark/research/chess-harness` and depends on Fausth as an editable Python package (`../fausth/engines/py`).
 
