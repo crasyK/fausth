@@ -1,0 +1,3 @@
+{"text": "Calling.", "tool_calls": [{"tool": "1", "args": {}}, {"tool": "__proto__", "args": {"constructor": 1}}]}
+{"text": "Done."}
+{"text": "Bye."}

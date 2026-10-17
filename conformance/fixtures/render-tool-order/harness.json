@@ -1,0 +1,61 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "render-tool-order",
+  "prompt": "",
+  "tools": {
+    "zeta": {
+      "description": "Tool zeta.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "1": {
+      "description": "Tool 1.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "Alpha": {
+      "description": "Tool Alpha.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "-": {
+      "description": "Tool -.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "__proto__": {
+      "description": "Tool __proto__.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "beta": {
+      "description": "Tool beta.",
+      "input": {
+        "type": "object"
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "brief",
+      "on": "session_start",
+      "run": "core_context",
+      "with": {
+        "text": "Be brief."
+      }
+    },
+    {
+      "id": "noted",
+      "on": "stop",
+      "run": "core_context",
+      "with": {
+        "text": "Noted."
+      }
+    }
+  ]
+}
