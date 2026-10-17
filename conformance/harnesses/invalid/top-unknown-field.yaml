@@ -1,0 +1,4 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+state: { legal_checked: 0 }

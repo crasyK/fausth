@@ -1,0 +1,7 @@
+# duplicate key inside tools
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  board_move: { description: move, input: { type: object } }
+  board_move: { description: again, input: {} }

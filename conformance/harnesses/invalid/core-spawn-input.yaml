@@ -1,0 +1,5 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  core_spawn: { input: { type: object } }

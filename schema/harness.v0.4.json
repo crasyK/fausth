@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness file (spec v0.4 draft)",
+  "description": "Structure of a resolved harness (spec sections 2, 3, 5.1, 6, 12). Engines also check what a schema cannot express: ids unique across tools and handlers, unique hook ids, hook references to declared handlers and tools, and that every embedded schema compiles.",
+  "type": "object",
+  "required": ["spec", "name", "prompt"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "const": "harness/0.4-draft" },
+    "name": { "type": "string", "minLength": 1 },
+    "prompt": { "type": "string" },
+    "tools": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id",
+        "anyOf": [{ "const": "core_spawn" }, { "not": { "pattern": "^core_" } }]
+      },
+      "properties": { "core_spawn": { "$ref": "#/$defs/spawn" } },
+      "additionalProperties": { "$ref": "#/$defs/tool" }
+    },
+    "handlers": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/id", "not": { "pattern": "^core_" } },
+      "additionalProperties": { "$ref": "#/$defs/handler" }
+    },
+    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_steps": { "$ref": "#/$defs/count" },
+        "max_tool_calls": { "$ref": "#/$defs/count" },
+        "max_depth": { "$ref": "#/$defs/count" },
+        "max_continues": { "$ref": "#/$defs/count" },
+        "max_hook_text": { "$ref": "#/$defs/count" },
+        "timeout_ms": { "$ref": "#/$defs/count" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "schema": {
+      "type": "object",
+      "properties": { "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" } },
+      "$ref": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "tool": {
+      "type": "object",
+      "required": ["description", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "input": { "$ref": "#/$defs/schema" },
+        "output": { "$ref": "#/$defs/schema" }
+      }
+    },
+    "spawn": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "description": { "type": "string" } }
+    },
+    "handler": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "input": { "$ref": "#/$defs/schema" }
+      }
+    },
+    "hook": {
+      "type": "object",
+      "required": ["id", "on", "run"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_.-]{1,64}$" },
+        "on": {
+          "enum": ["session_start", "user_prompt", "pre_request", "pre_tool", "post_tool", "stop", "interrupt"]
+        },
+        "match": {
+          "anyOf": [
+            { "const": "*" },
+            { "$ref": "#/$defs/id" },
+            { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } }
+          ]
+        },
+        "run": { "$ref": "#/$defs/id" },
+        "with": { "type": "object" },
+        "on_failure": { "enum": ["end", "skip"] }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["on"], "properties": { "on": { "enum": ["session_start", "user_prompt", "pre_request", "stop"] } } },
+          "then": { "not": { "required": ["match"] } }
+        },
+        {
+          "if": { "required": ["on", "run"], "properties": { "on": { "enum": ["session_start", "pre_request"] }, "run": { "pattern": "^core_" } } },
+          "then": { "properties": { "run": { "const": "core_context" } } }
+        },
+        {
+          "if": { "required": ["run"], "properties": { "run": { "const": "core_called_since" } } },
+          "then": { "required": ["with"], "properties": { "with": {
+            "required": ["tool"], "additionalProperties": false,
+            "properties": { "tool": { "$ref": "#/$defs/id" }, "since": { "$ref": "#/$defs/id" } } } } }
+        },
+        {
+          "if": { "required": ["run"], "properties": { "run": { "const": "core_last_result" } } },
+          "then": { "required": ["with"], "properties": { "with": {
+            "required": ["tool", "path", "eq"], "additionalProperties": false,
+            "properties": { "tool": { "$ref": "#/$defs/id" }, "path": { "type": "string" }, "eq": true } } } }
+        },
+        {
+          "if": { "required": ["run"], "properties": { "run": { "const": "core_count" } } },
+          "then": { "required": ["with"], "properties": { "with": {
+            "required": ["tool", "max"], "additionalProperties": false,
+            "properties": { "tool": { "$ref": "#/$defs/id" }, "max": { "$ref": "#/$defs/count" } } } } }
+        },
+        {
+          "if": { "required": ["run"], "properties": { "run": { "enum": ["core_deny", "core_context"] } } },
+          "then": { "required": ["with"], "properties": { "with": {
+            "required": ["text"], "additionalProperties": false,
+            "properties": { "text": { "type": "string" } } } } }
+        }
+      ]
+    }
+  }
+}

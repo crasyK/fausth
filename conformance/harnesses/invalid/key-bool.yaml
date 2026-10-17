@@ -1,0 +1,7 @@
+# a boolean mapping key (YAML 1.2: on/yes stay strings, true does not)
+spec: harness/0.4-draft
+name: base
+prompt: p
+handlers: { h: {} }
+hooks:
+  - { id: x, on: stop, run: h, with: { true: one } }

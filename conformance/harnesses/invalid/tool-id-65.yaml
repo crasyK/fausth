@@ -1,0 +1,5 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  a2345678901234567890123456789012345678901234567890123456789012345: { description: m, input: { type: object } }

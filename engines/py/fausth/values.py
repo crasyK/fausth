@@ -14,11 +14,21 @@ TRUNCATED = "…[truncated]"
 
 def parse_json(text: str) -> Any:
     """Read JSON text. NaN and Infinity are not JSON (Python's reader accepts them by default)."""
-    return json.loads(text, parse_constant=_not_json)
+    return json.loads(text, parse_constant=_not_json, parse_int=lambda s: number(int(s)))
 
 
 def _not_json(name: str) -> Any:
     raise ValueError(f"{name} is not JSON")
+
+
+def number(n: int) -> int | float:
+    """An integer as the double an engine reads (§1): exact up to 2^53, rounded beyond."""
+    if abs(n) <= 2**53:
+        return n
+    try:
+        return float(n)
+    except OverflowError:
+        return math.inf if n > 0 else -math.inf
 
 
 def canonical(value: Any) -> str:

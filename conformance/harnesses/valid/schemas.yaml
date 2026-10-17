@@ -1,0 +1,41 @@
+# Schemas that use $defs/$ref, anchors, patterns and annotations (spec 3.2).
+spec: harness/0.4-draft
+name: schemas
+prompt: p
+tools:
+  refs:
+    description: refs
+    input:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        a: { $ref: "#/$defs/name" }
+        b: { $ref: "#short" }
+        c: { $ref: "https://json-schema.org/draft/2020-12/schema" }
+      $defs:
+        name: { type: string, pattern: "^[a-h][1-8]$", format: not-a-known-format }
+        short: { $anchor: short, type: integer }
+  patterns:
+    description: patterns
+    input:
+      type: object
+      patternProperties:
+        "^x_[0-9]+$": { type: number }
+        "^.$": { type: boolean }
+      additionalProperties: false
+      properties:
+        data: { const: { pattern: "this is data, not a regex: (" }, enum: [{ pattern: "(" }] }
+  combos:
+    description: combos
+    input:
+      type: object
+      properties:
+        any: true
+        none: false
+        choice: { anyOf: [{ type: string }, { type: "null" }] }
+        both: { allOf: [{ minimum: 0 }, { multipleOf: 0.5 }] }
+        exactly: { oneOf: [{ const: 1 }, { const: 2 }] }
+        list: { type: array, prefixItems: [{ type: string }], items: { type: integer }, uniqueItems: true }
+        cond: { if: { type: string }, then: { minLength: 2 }, else: { type: number } }
+        names: { type: object, propertyNames: { pattern: "^[a-z]+$" }, unevaluatedProperties: false }
+    output: { type: [object, array], description: any object or array }

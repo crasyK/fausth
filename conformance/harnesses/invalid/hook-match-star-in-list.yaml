@@ -1,0 +1,7 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  board_move: { description: move, input: { type: object } }
+hooks:
+  - { id: a, on: pre_tool, match: ['*', board_move], run: core_deny, with: { text: no } }

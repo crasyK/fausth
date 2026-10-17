@@ -1,0 +1,1 @@
+{"hooks":[{"id":"all-tools","on":"pre_tool","run":"core_count","with":{"max":2,"tool":"t"}},{"id":"all-sources","on":"interrupt","run":"core_context","with":{"text":"x"}}],"name":"d","prompt":"p","spec":"harness/0.4-draft","tools":{"t":{"description":"t","input":{"type":"object"}}}}

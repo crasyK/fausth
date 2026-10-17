@@ -1,0 +1,6 @@
+# $ is the end of input, not the end of a line (spec 3.2)
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  "board_move\n": { description: m, input: { type: object } }

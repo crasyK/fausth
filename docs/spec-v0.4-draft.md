@@ -54,9 +54,13 @@ by `…[truncated]`.
 
 ## 2. The harness file
 
-YAML 1.2 (core schema; duplicate keys are an error) or JSON. Authoring tools MAY support
+YAML 1.2 (core schema; duplicate keys are an error) or JSON, which is read as YAML 1.2 (so
+duplicate keys are an error there too). The document MUST denote a JSON value: string keys
+only, finite numbers only, no tags outside the core schema. Authoring tools MAY support
 includes (e.g. a prompt in a separate file). What an engine runs is the **resolved harness**:
 one JSON document with includes inlined. `harness_hash` = `hash(resolved harness)`.
+[`schema/harness.v0.4.json`](../schema/harness.v0.4.json) is the JSON Schema of the file; the
+cross-references (§3.1, §5.1, §6) are checked in addition.
 
 Top-level fields (closed set; anything else is a validation error):
 
@@ -114,7 +118,8 @@ limits: { max_steps: 12, max_tool_calls: 12 }
 Every id in `tools` and `handlers` MUST match `^[a-zA-Z0-9_-]{1,64}$` and be unique across both
 maps. This is the intersection of what the major model APIs accept as a tool name, so no host
 ever has to rename a tool (renaming would change the tokens). The prefix `core_` is reserved
-for built-ins (§6, §10).
+for built-ins (§6, §10): `core_spawn` is the only one that may appear in `tools`, and no
+`handlers` id may use the prefix.
 
 ### 3.2 Declaration
 
@@ -129,6 +134,13 @@ handlers:
     description: <string>            # optional; documentation only
     input: <JSON Schema>             # optional; validated hook input (§5.3)
 ```
+
+Both maps are closed: no other members. Schemas are JSON objects. An engine compiles every schema
+when it loads the harness; a schema that doesn't compile (invalid against the 2020-12
+meta-schema, an unresolvable `$ref`, a `pattern` that isn't a valid regular expression) makes
+the harness invalid. Regular expressions are ECMA-262 with the `u` flag, as JSON Schema
+recommends: in other languages an engine translates them (`$` is the end of input, `.` excludes
+line terminators, `\d` `\w` `\b` are ASCII, `\s` is ECMAScript's whitespace).
 
 JSON Schema uses standard semantics. The engine injects no defaults (write
 `additionalProperties: false` to close a schema).
@@ -191,6 +203,11 @@ hooks:
 Hook ids match `^[a-zA-Z0-9_.-]{1,64}$`. `run` MUST name a declared handler or a built-in (§6).
 A hook can't run a model-facing tool: a tool used by both the model and a hook is declared
 twice under two ids.
+
+`match` is only valid on `pre_tool` and `post_tool`, where every id MUST be a declared tool,
+and on `interrupt`, where the ids are sources (§11). A list is non-empty and doesn't contain
+`"*"`. A built-in's `with` holds exactly the members listed in §6, and its `tool` and `since`
+MUST be declared tools.
 
 ### 5.2 Order
 
@@ -281,6 +298,9 @@ they just don't count as proof of use.
 | `core_count` | `tool`, `max` | fewer than `max` successful calls of `tool` exist | `{tool} limit reached ({max})` |
 | `core_deny` | `text` | never | `{text}` |
 | `core_context` | `text` | always; returns `add_context` with `text` | — |
+
+`tool`, `since`, `path` and `text` are strings, `max` is a non-negative integer, `eq` is any JSON
+value.
 
 **A failed check becomes the event's push-back decision:**
 
@@ -402,7 +422,8 @@ Several user-role contributions in a row are **merged** into one user message, j
 ## 10. Subagents: `core_spawn`
 
 `core_spawn` is a built-in **model-facing** tool. A harness offers it by listing it in `tools`
-(its `description` may be overridden; its input schema is fixed):
+(its declaration may hold only `description`, which overrides the default; its input schema is
+fixed):
 
 ```json
 {"harness": {<a resolved harness>}, "task": "<string>"}
@@ -434,8 +455,9 @@ later delivers an interrupt with `source: "subagent"` or `"job"`.
 
 ## 11. Interrupts
 
-The host may push `{source, text}` at any time. `source` is a free string; conventional values
-are `user`, `timer`, `subagent`, `job`, `world`. Interrupts are queued and delivered **only at
+The host may push `{source, text}` at any time. `source` matches the id pattern of §3.1 (it
+appears unescaped in the wrapper, §9.2); conventional values are `user`, `timer`, `subagent`,
+`job`, `world`. Interrupts are queued and delivered **only at
 step boundaries** (§8 step 3.1), in arrival order. Each passes the `interrupt` hooks
 (`match` = sources); if not denied, it is logged with the current `step` and rendered (§9.3).
 
@@ -450,7 +472,7 @@ In replay, interrupts come from a recorded file with the step at which each arri
 `limits`: `max_steps` (model requests, default 1000), `max_tool_calls` (default 1000),
 `max_depth` (default 1), `max_continues` (default 3; `stop` hooks per turn, §8),
 `max_hook_text` (default 4000), `timeout_ms` (host wall clock; never
-part of replay).
+part of replay). All limits are non-negative integers.
 
 ### 12.2 Run end
 

@@ -1,0 +1,7 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  board_move: { description: move, input: { type: object } }
+hooks:
+  - { id: a, on: post_tool, match: [board_move, board_observe], run: core_context, with: { text: x } }

@@ -19,3 +19,7 @@ dev = ["pytest>=8.0"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fausth*"]
+
+[tool.setuptools.package-data]
+# A copy of /schema/harness.v0.4.json; tests/test_harness.py fails if it drifts.
+fausth = ["harness.v0.4.json"]

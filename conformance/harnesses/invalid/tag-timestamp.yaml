@@ -1,0 +1,7 @@
+# timestamps are not in the core schema
+spec: harness/0.4-draft
+name: base
+prompt: p
+handlers: { h: {} }
+hooks:
+  - { id: x, on: stop, run: h, with: { v: !!timestamp 2001-12-14 } }

@@ -1,0 +1,5 @@
+%YAML 1.1
+---
+spec: harness/0.4-draft
+name: base
+prompt: p

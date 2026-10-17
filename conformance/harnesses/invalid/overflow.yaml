@@ -1,0 +1,7 @@
+# 1e400 overflows to infinity
+spec: harness/0.4-draft
+name: base
+prompt: p
+handlers: { h: {} }
+hooks:
+  - { id: x, on: stop, run: h, with: { v: 1e400 } }

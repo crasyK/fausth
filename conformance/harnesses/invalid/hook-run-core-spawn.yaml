@@ -1,0 +1,7 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+tools:
+  core_spawn: {}
+hooks:
+  - { id: a, on: pre_tool, run: core_spawn }

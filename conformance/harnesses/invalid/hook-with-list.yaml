@@ -1,0 +1,6 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+handlers: { h: {} }
+hooks:
+  - { id: a, on: stop, run: h, with: [1] }

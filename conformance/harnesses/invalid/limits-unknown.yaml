@@ -1,0 +1,4 @@
+spec: harness/0.4-draft
+name: base
+prompt: p
+limits: { max_spawns: 1 }
