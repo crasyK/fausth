@@ -1,0 +1,7 @@
+{"id": "normalizer", "ok": true, "result": {"decision": "modify", "args": {"move": "e2e4"}, "text": "lowercased the move"}}
+{"id": "second_look", "ok": true, "result": {"decision": "modify", "args": {"move": "e2e4"}}}
+{"id": "board_move", "ok": true, "result": {"played": "e2e4"}}
+{"id": "annotator", "ok": true, "result": {"decision": "replace", "text": "Played e4."}}
+{"id": "noter", "ok": true, "result": {"decision": "add_context", "text": "Black to move."}}
+{"id": "normalizer", "ok": true, "result": {"decision": "allow"}}
+{"id": "second_look", "ok": true, "result": {"decision": "deny", "text": "one move per response"}}

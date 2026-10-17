@@ -1,0 +1,13 @@
+{"depth":0,"harness_hash":"c9d1098d53601332767a63519fe98b1a9b66c0cda0e7ac64ba05b85944279357","seq":1,"type":"run_start"}
+{"seq":2,"text":"Use echo.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c4-0","tool":"echo"}],"type":"assistant"}
+{"call_id":"c4-0","decision":"failed","event":"pre_tool","hook":"flaky","seq":5,"type":"hook"}
+{"call_id":"c4-0","decision":"failed","event":"pre_tool","hook":"broken","seq":6,"type":"hook"}
+{"call_id":"c4-0","decision":"failed","event":"pre_tool","hook":"picky","seq":7,"type":"hook"}
+{"call_id":"c4-0","ok":true,"result":{"n":1},"seq":8,"tool":"echo","type":"tool_result"}
+{"call_id":"c4-0","decision":"failed","event":"post_tool","hook":"wrong","seq":9,"type":"hook"}
+{"call_id":"c4-0","decision":"failed","event":"post_tool","hook":"extra","seq":10,"type":"hook"}
+{"seq":11,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"failed","event":"stop","hook":"strict","seq":12,"type":"hook"}
+{"reason":"infra_failure","seq":13,"type":"run_end"}

@@ -1,0 +1,6 @@
+{"depth":0,"harness_hash":"4af8925aaedc8b68e211d0d83f9d891591e57688d363bc5ab3a721bebef6ab71","seq":1,"type":"run_start"}
+{"seq":2,"text":"Play chess.","type":"system"}
+{"seq":3,"text":"Open.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"move":"E2E4"},"call_id":"c4-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c4-0","decision":"failed","event":"pre_tool","hook":"normalize","seq":5,"type":"hook"}
+{"reason":"infra_failure","seq":6,"type":"run_end"}

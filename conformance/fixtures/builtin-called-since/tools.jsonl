@@ -1,0 +1,5 @@
+{"id": "board_observe", "ok": true, "result": {"fen": "start"}}
+{"id": "board_legal_moves", "ok": true, "result": {"moves": ["e2e4", "d2d4"]}}
+{"id": "board_move", "ok": true, "result": {"played": "e2e4"}}
+{"id": "board_legal_moves", "ok": true, "result": {"moves": ["d2d4", "g1f3"]}}
+{"id": "board_move", "ok": true, "result": {"played": "d2d4"}}

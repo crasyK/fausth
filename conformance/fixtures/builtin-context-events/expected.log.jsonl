@@ -1,0 +1,19 @@
+{"depth":0,"harness_hash":"63740ff0413df28cb2df8f143a7f6e67a01035a1ff05e93cbfbfb2700bf428f7","seq":1,"type":"run_start"}
+{"decision":"add_context","event":"session_start","hook":"ctx-session_start","seq":2,"text":"note for session_start","type":"hook"}
+{"seq":3,"text":"Use echo.\n\n<hook event=\"session_start\" id=\"ctx-session_start\" decision=\"add_context\">note for session_start</hook>","type":"system"}
+{"decision":"add_context","event":"user_prompt","hook":"ctx-user_prompt","seq":4,"text":"note for user_prompt","type":"hook"}
+{"seq":5,"text":"Go.","type":"user"}
+{"decision":"add_context","event":"pre_request","hook":"ctx-pre_request","seq":6,"text":"note for pre_request","type":"hook"}
+{"seq":7,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c7-0","tool":"echo"}],"type":"assistant"}
+{"call_id":"c7-0","decision":"add_context","event":"pre_tool","hook":"ctx-pre_tool","seq":8,"text":"note for pre_tool","type":"hook"}
+{"call_id":"c7-0","ok":true,"result":{"n":1},"seq":9,"tool":"echo","type":"tool_result"}
+{"call_id":"c7-0","decision":"add_context","event":"post_tool","hook":"ctx-post_tool","seq":10,"text":"note for post_tool","type":"hook"}
+{"decision":"add_context","event":"pre_request","hook":"ctx-pre_request","seq":11,"text":"note for pre_request","type":"hook"}
+{"seq":12,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"add_context","event":"stop","hook":"ctx-stop","seq":13,"text":"note for stop","type":"hook"}
+{"decision":"add_context","event":"user_prompt","hook":"ctx-user_prompt","seq":14,"text":"note for user_prompt","type":"hook"}
+{"seq":15,"text":"Again.","type":"user"}
+{"decision":"add_context","event":"pre_request","hook":"ctx-pre_request","seq":16,"text":"note for pre_request","type":"hook"}
+{"seq":17,"step":3,"text":"Done twice.","tool_calls":[],"type":"assistant"}
+{"decision":"add_context","event":"stop","hook":"ctx-stop","seq":18,"text":"note for stop","type":"hook"}
+{"reason":"stop","seq":19,"type":"run_end"}

@@ -1,0 +1,2 @@
+{"tool_calls": [{"tool": "board_move", "args": {"move": "E2E4"}}, {"tool": "board_move", "args": {"move": "e7e5"}}]}
+{"text": "Done."}

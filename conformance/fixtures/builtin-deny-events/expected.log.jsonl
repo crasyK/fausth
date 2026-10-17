@@ -1,0 +1,11 @@
+{"depth":0,"harness_hash":"ca48798a415ea2709affdd0b6e8d2dbb4349aec74f8580c1f586693c8e1e0848","seq":1,"type":"run_start"}
+{"seq":2,"text":"Use echo.","type":"system"}
+{"seq":3,"text":"Clean up.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"path":"/tmp/x"},"call_id":"c4-0","tool":"rm"},{"args":{"n":1},"call_id":"c4-1","tool":"echo"}],"type":"assistant"}
+{"call_id":"c4-0","decision":"deny","event":"pre_tool","hook":"no-rm","seq":5,"text":"rm is not allowed here","type":"hook"}
+{"call_id":"c4-1","ok":true,"result":{"n":1},"seq":6,"tool":"echo","type":"tool_result"}
+{"call_id":"c4-1","decision":"add_context","event":"post_tool","hook":"logged","seq":7,"text":"This call was logged.","type":"hook"}
+{"seq":8,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"continue","event":"stop","hook":"keep-going","seq":9,"text":"Keep going.","type":"hook"}
+{"seq":10,"step":3,"text":"Done again.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":11,"type":"run_end"}

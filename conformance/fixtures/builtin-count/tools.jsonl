@@ -1,0 +1,3 @@
+{"id": "hint", "ok": false, "error": "hint service busy"}
+{"id": "hint", "ok": true, "result": "Look at the knight."}
+{"id": "hint", "ok": true, "result": "Fork the king."}

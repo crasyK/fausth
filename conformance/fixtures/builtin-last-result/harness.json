@@ -1,0 +1,68 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "builtin-last-result",
+  "prompt": "Fix the bug, then submit.",
+  "tools": {
+    "tests_run": {
+      "description": "Run the tests.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "submit": {
+      "description": "Submit the fix.",
+      "input": {
+        "type": "object"
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "tests-before-submit",
+      "on": "pre_tool",
+      "match": "submit",
+      "run": "core_last_result",
+      "with": {
+        "tool": "tests_run",
+        "path": "summary.exit_code",
+        "eq": 0
+      }
+    },
+    {
+      "id": "second-run-passed",
+      "on": "stop",
+      "run": "core_last_result",
+      "with": {
+        "tool": "tests_run",
+        "path": "runs.1.status",
+        "eq": "passed"
+      }
+    },
+    {
+      "id": "summary-clean",
+      "on": "stop",
+      "run": "core_last_result",
+      "with": {
+        "tool": "tests_run",
+        "path": "summary",
+        "eq": {
+          "exit_code": 0,
+          "failed": []
+        }
+      }
+    },
+    {
+      "id": "third-run-passed",
+      "on": "stop",
+      "run": "core_last_result",
+      "with": {
+        "tool": "tests_run",
+        "path": "runs.2.status",
+        "eq": "passed"
+      }
+    }
+  ],
+  "limits": {
+    "max_continues": 1
+  }
+}

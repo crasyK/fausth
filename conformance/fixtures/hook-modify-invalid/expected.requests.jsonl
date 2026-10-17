@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","text":"Open."}],"system":"Play chess.","tools":[{"description":"Play a move in UCI.","input":{"additionalProperties":false,"properties":{"move":{"type":"string"}},"required":["move"],"type":"object"},"name":"board_move"}]}

@@ -1,0 +1,50 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "hook-max-continues",
+  "prompt": "Fix the bug.",
+  "tools": {
+    "tests_run": {
+      "description": "Run the tests.",
+      "input": {
+        "type": "object"
+      }
+    }
+  },
+  "handlers": {
+    "counter": {
+      "input": {
+        "required": [
+          "continued"
+        ],
+        "properties": {
+          "continued": {
+            "enum": [
+              0,
+              1
+            ]
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "count",
+      "on": "stop",
+      "run": "counter"
+    },
+    {
+      "id": "tests-pass",
+      "on": "stop",
+      "run": "core_last_result",
+      "with": {
+        "tool": "tests_run",
+        "path": "exit_code",
+        "eq": 0
+      }
+    }
+  ],
+  "limits": {
+    "max_continues": 2
+  }
+}

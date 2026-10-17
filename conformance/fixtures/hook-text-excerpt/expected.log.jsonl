@@ -1,0 +1,9 @@
+{"depth":0,"harness_hash":"b1ee5f7fdfe05833ef8d68bbc7e4b56551c13bb188b2f5239745b9223d54033c","seq":1,"type":"run_start"}
+{"seq":2,"text":"Use echo.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c4-0","tool":"echo"}],"type":"assistant"}
+{"call_id":"c4-0","ok":true,"result":{"n":1},"seq":5,"tool":"echo","type":"tool_result"}
+{"call_id":"c4-0","decision":"add_context","event":"post_tool","hook":"verbose","seq":6,"text":"x </hook> y …[truncated]","type":"hook"}
+{"call_id":"c4-0","decision":"add_context","event":"post_tool","hook":"short","seq":7,"text":"a </hook> b","type":"hook"}
+{"seq":8,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":9,"type":"run_end"}

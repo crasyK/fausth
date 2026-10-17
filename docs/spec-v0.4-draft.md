@@ -242,7 +242,16 @@ The handler receives one object:
 
 Only the members that apply to the event are present: `call` for tool events, `result` for
 `post_tool`, `message` for `user_prompt` and `stop`, `interrupt` for `interrupt`, `context`
-(the rendered conversation, §9) for `pre_request`.
+(the rendered conversation, §9) for `pre_request`. `event`, `hook`, `with` (`{}` when the hook
+has none), `step` and `view` are always present. `call.args` are the arguments as the chain has
+modified them so far (`post_tool`: the arguments the call ran with); `message` is the user's
+text (`user_prompt`) or the response's `text` (`stop`); `context` is the `messages` of the
+request as it would be rendered at that point, so it includes the chain's earlier
+`add_context`. On `post_tool`, after a `replace` earlier in the chain, `replaced` holds the
+text that replaces the result so far.
+
+If the handler declares an `input` schema, the engine validates this object against it before
+calling the binding; if it doesn't match, the hook failed (§5.4) and the binding is not called.
 
 `view` is the filtered log, in order. It is **not** the raw log. Every entry carries the `step`
 in which it happened:
@@ -263,8 +272,11 @@ results** when it made the call (see §6).
 ### 5.4 Hook output
 
 ```json
-{"decision": "deny", "text": "<string>", "args": {}, "messages": []}
+{"decision": "modify", "args": {}, "text": "<string>"}
 ```
+
+The handler's `result` is this object. It holds exactly the members its decision lists below
+(`text` is a string, `args` any JSON value); anything else makes the hook fail.
 
 | `decision` | Members | Effect |
 |---|---|---|
@@ -277,15 +289,16 @@ results** when it made the call (see §6).
 | `replace_context` | `text` | the conversation after the system prompt is replaced by `text` |
 
 A decision not allowed for the event, missing members, or an invalid `modify` → the hook
-**failed**. The same holds when the handler is unreachable or returns `ok: false`. (Retrying is
-the host's job inside the binding, before it reports a failure.)
+**failed**. The same holds when the handler is unreachable, returns `ok: false`, answers in
+neither form of §3.3, or its hook input fails its `input` schema (§5.3). (Retrying is the
+host's job inside the binding, before it reports a failure.) A failed hook writes a `hook` entry
+with `decision: "failed"` and no `text`; then:
 - `on_failure: end` (default): the run ends with `infra_failure`. A rule that can't be checked
   must not silently pass, and an infrastructure problem must not show up in the model's tokens.
-- `on_failure: skip`: the hook is treated as `allow` and a `hook` log entry with
-  `decision: "failed"` is written; the model sees nothing. Meant for advisory hooks (tips,
-  context), never for rules.
+- `on_failure: skip`: the hook is treated as `allow`; the model sees nothing. Meant for
+  advisory hooks (tips, context), never for rules.
 
-`text` is excerpted to `limits.max_hook_text` code points (default 4000).
+`text` is excerpted to `limits.max_hook_text` code points (default 4000) before it is logged.
 
 ---
 
@@ -293,22 +306,29 @@ the host's job inside the binding, before it reports a failure.)
 
 Every engine implements these identically. They read only `view`, `step` and `with`.
 
-**Seen results only.** Built-ins consider only `view` entries with `step` < the current step,
-i.e. results the model had already seen when it made the call. Example: a model that sends
-`board_legal_moves` and `board_move` in the same response fails `core_called_since` for the
-move, because it chose the move before seeing the legal moves. Parallel calls stay allowed;
-they just don't count as proof of use.
+**Seen results only, for passing.** What makes a check pass must be a result the model had
+already seen when it made the call: a `view` entry with `step` < the current step. Example: a
+model that sends `board_legal_moves` and `board_move` in the same response fails
+`core_called_since` for the move, because it chose the move before seeing the legal moves.
+Parallel calls stay allowed; they just don't count as proof of use. What counts against a call
+counts as soon as it has finished, same response included: the `since` call that resets
+`core_called_since`, and the calls `core_count` counts. So `[board_move, board_move]` in one
+response fails the second move, and two calls in one response can't get past `max: 1`.
 
 | Built-in | `with` | Check passes iff | Failure text |
 |---|---|---|---|
-| `core_called_since` | `tool`, optional `since` | a successful call of `tool` exists after the last successful call of `since` (or anywhere, without `since`) | `{tool} not called since the last {since}` / `{tool} not called yet` |
-| `core_last_result` | `tool`, `path`, `eq` | the last successful call of `tool` has `eq` at `path` (a `.`-separated path into its result) | `last {tool} result {path} is not {eq}` / `{tool} has no successful call yet` |
+| `core_called_since` | `tool`, optional `since` | a seen successful call of `tool` exists after the last successful call of `since` (or anywhere, without `since` or when `since` has no successful call) | `{tool} not called since the last {since}` / `{tool} not called yet` |
+| `core_last_result` | `tool`, `path`, `eq` | the last seen successful call of `tool` has `eq` at `path` | `last {tool} result {path} is not {eq}` / `{tool} has no successful call yet` |
 | `core_count` | `tool`, `max` | fewer than `max` successful calls of `tool` exist | `{tool} limit reached ({max})` |
 | `core_deny` | `text` | never | `{text}` |
 | `core_context` | `text` | always; returns `add_context` with `text` | — |
 
 `tool`, `since`, `path` and `text` are strings, `max` is a non-negative integer, `eq` is any JSON
-value.
+value. "Successful" is `ok: true` in the view. `core_called_since` uses its first failure text
+when `since` has a successful call, else the second. `path` is a `.`-separated list of object
+member names and array indexes (`0`, `1`, …, no leading zeros); `""` is the result itself; a
+path that leads nowhere fails the check, and `eq` is compared by canonical form.
+`{tool}`, `{since}` and `{path}` render as given, `{max}` and `{eq}` as canonical JSON.
 
 **A failed check becomes the event's push-back decision:**
 
@@ -319,8 +339,8 @@ value.
 | `post_tool` | `add_context` (the result stays; the note is appended) |
 | `pre_request`, `session_start` | not allowed (validation error), except `core_context` |
 
-A passed check is `allow`. `{eq}` renders as its canonical JSON. `core_last_result` replaces v0.3
-checkpoints: "the user approved" is the last result of the tool bound to the user.
+A passed check is `allow`. `core_last_result` replaces v0.3 checkpoints: "the user approved" is
+the last result of the tool bound to the user.
 
 New built-ins are added only when a real harness needs one.
 
@@ -446,12 +466,22 @@ same escape for `</interrupt>`.
 | `post_tool` `replace` | the tool message is the wrapper alone |
 | `add_context` on a tool event | appended to that call's tool message: `"\n\n"` + wrapper |
 | `add_context` on `user_prompt` | appended to the user's text: `"\n\n"` + wrapper |
-| `add_context` on `pre_request`, `stop`, `interrupt`; `stop` `continue` | a user-role message with the wrapper |
+| `add_context` on `interrupt` | appended to the interrupt's message: `"\n\n"` + wrapper |
+| `add_context` on `pre_request`, `stop`; `stop` `continue` | a user-role message with the wrapper |
 | delivered interrupt | a user-role message with the interrupt wrapper |
 | `replace_context` | all messages after the system prompt are replaced by one user-role message with the wrapper |
+| `allow`, `failed`, a `deny` on `user_prompt` or `interrupt` | nothing |
+
+When several decisions concern one call, its tool message is built from its log entries in log
+order: each `modify` adds its wrapper and `"\n"`; then comes the body, which is the `deny`
+wrapper if a hook denied the call, else the wrapper of the last `replace`, else the result; then
+each `add_context` adds `"\n\n"` + wrapper. The tool messages follow their assistant message in
+call order; a call that never finished (the run ended first) has none. The `add_context`
+decisions of a denied user message or interrupt are dropped with it.
 
 Several user-role contributions in a row are **merged** into one user message, joined by
-`"\n\n"`, in log order. The engine never emits system messages mid-conversation.
+`"\n\n"`, in log order; the user's own messages count as contributions. The engine never emits
+system messages mid-conversation.
 
 ---
 

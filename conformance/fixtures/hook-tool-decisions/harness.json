@@ -1,0 +1,163 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "hook-tool-decisions",
+  "prompt": "Play chess.",
+  "tools": {
+    "board_move": {
+      "description": "Play a move in UCI.",
+      "input": {
+        "type": "object",
+        "required": [
+          "move"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "move": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "handlers": {
+    "normalizer": {
+      "input": {
+        "required": [
+          "call"
+        ],
+        "properties": {
+          "event": {
+            "const": "pre_tool"
+          },
+          "hook": {
+            "const": "normalize"
+          },
+          "with": {
+            "const": {}
+          },
+          "step": {
+            "const": 1
+          },
+          "view": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "second_look": {
+      "description": "Sees the arguments as modified so far.",
+      "input": {
+        "properties": {
+          "call": {
+            "properties": {
+              "tool": {
+                "const": "board_move"
+              },
+              "args": {
+                "properties": {
+                  "move": {
+                    "pattern": "^[a-h][1-8][a-h][1-8]$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "annotator": {
+      "input": {
+        "required": [
+          "result"
+        ],
+        "not": {
+          "required": [
+            "replaced"
+          ]
+        }
+      }
+    },
+    "noter": {
+      "input": {
+        "required": [
+          "replaced",
+          "result",
+          "call"
+        ],
+        "properties": {
+          "replaced": {
+            "const": "Played e4."
+          },
+          "result": {
+            "const": {
+              "ok": true,
+              "result": {
+                "played": "e2e4"
+              }
+            }
+          },
+          "call": {
+            "const": {
+              "tool": "board_move",
+              "args": {
+                "move": "e2e4"
+              }
+            }
+          },
+          "with": {
+            "const": {
+              "style": "short"
+            }
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "tip",
+      "on": "pre_tool",
+      "match": "board_move",
+      "run": "core_context",
+      "with": {
+        "text": "Say why."
+      }
+    },
+    {
+      "id": "normalize",
+      "on": "pre_tool",
+      "match": "board_move",
+      "run": "normalizer"
+    },
+    {
+      "id": "second-look",
+      "on": "pre_tool",
+      "match": [
+        "board_move"
+      ],
+      "run": "second_look"
+    },
+    {
+      "id": "last-in-chain",
+      "on": "pre_tool",
+      "run": "core_context",
+      "with": {
+        "text": "runs unless the chain ended"
+      }
+    },
+    {
+      "id": "annotate",
+      "on": "post_tool",
+      "match": "board_move",
+      "run": "annotator"
+    },
+    {
+      "id": "note",
+      "on": "post_tool",
+      "run": "noter",
+      "with": {
+        "style": "short"
+      }
+    }
+  ]
+}

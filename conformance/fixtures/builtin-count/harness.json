@@ -1,0 +1,25 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "builtin-count",
+  "prompt": "Use hints sparingly.",
+  "tools": {
+    "hint": {
+      "description": "Get a hint.",
+      "input": {
+        "type": "object"
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "two-hints",
+      "on": "pre_tool",
+      "match": "hint",
+      "run": "core_count",
+      "with": {
+        "tool": "hint",
+        "max": 2
+      }
+    }
+  ]
+}
