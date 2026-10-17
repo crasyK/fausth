@@ -2,7 +2,7 @@
 // (with --write) writes them.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { replay } from "./replay.js";
+import { replayDir } from "./node.js";
 
 async function main(args: string[]): Promise<number> {
   const [command, ...rest] = args;
@@ -13,7 +13,7 @@ async function main(args: string[]): Promise<number> {
   const write = rest.includes("--write");
   let failed = 0;
   for (const dir of rest.filter((a) => a !== "--write")) {
-    const out = await replay(dir);
+    const out = await replayDir(dir);
     for (const [name, text] of [["expected.log.jsonl", out.log], ["expected.requests.jsonl", out.requests]] as const) {
       const path = join(dir, name);
       if (write) writeFileSync(path, text);

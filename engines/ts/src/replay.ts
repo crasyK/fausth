@@ -1,28 +1,33 @@
-// The replay host (spec §14): answers a run from a fixture's recorded files.
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// The replay host (spec §14): answers a run from a fixture's recorded files. Browser-safe: it
+// takes the files' texts; `node.ts` reads them from a directory.
 import { InfraFailure, run, type Host, type Interrupt } from "./engine.js";
 import { harnessErrors, readHarness, type Harness } from "./harness.js";
 import { canonical } from "./values.js";
 
-type Line = { [member: string]: unknown };
-
-function lines(dir: string, name: string): Line[] {
-  const path = join(dir, name);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as Line);
+/** A fixture's input files as text; the recorded ones are optional. */
+export interface FixtureFiles {
+  harness: string;
+  model?: string;
+  tools?: string;
+  user?: string;
+  interrupts?: string;
+  reloads?: string;
 }
 
-/** Replay a fixture directory; returns the log and the rendered requests as JSON Lines. */
-export async function replay(dir: string): Promise<{ log: string; requests: string }> {
-  const harness = readHarness(readFileSync(join(dir, "harness.json"), "utf8"));
+type Line = { [member: string]: unknown };
+
+const lines = (text = ""): Line[] => text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as Line);
+
+/** Replay a fixture; returns the log and the rendered requests as JSON Lines. */
+export async function replayFiles(files: FixtureFiles): Promise<{ log: string; requests: string }> {
+  const harness = readHarness(files.harness);
   const errors = harnessErrors(harness);
-  if (errors.length > 0) throw new Error(`${dir}: invalid harness: ${errors.join("; ")}`);
-  const model = lines(dir, "model.jsonl");
-  const tools = lines(dir, "tools.jsonl");
-  const user = lines(dir, "user.jsonl");
-  const pending = lines(dir, "interrupts.jsonl");
-  const reloads = lines(dir, "reloads.jsonl");
+  if (errors.length > 0) throw new Error(`invalid harness: ${errors.join("; ")}`);
+  const model = lines(files.model);
+  const tools = lines(files.tools);
+  const user = lines(files.user);
+  const pending = lines(files.interrupts);
+  const reloads = lines(files.reloads);
   const requests: string[] = [];
 
   const host: Host = {

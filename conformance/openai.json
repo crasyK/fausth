@@ -290,6 +290,57 @@
    }
   },
   {
+   "name": "content that is not a string counts as no text",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "content": [
+        {
+         "type": "text",
+         "text": "x"
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": ""
+   }
+  },
+  {
+   "name": "tool_calls that is not a list counts as no calls",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "content": "ok",
+       "tool_calls": {
+        "a": 1
+       }
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": "ok"
+   }
+  },
+  {
+   "name": "choices that is not a list",
+   "answer": {
+    "choices": {
+     "0": {
+      "message": {
+       "content": "x"
+      }
+     }
+    }
+   },
+   "error": true
+  },
+  {
    "name": "no choices",
    "answer": {
     "choices": []

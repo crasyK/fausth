@@ -16,8 +16,11 @@ tag; its documents are in [`docs/archive/`](docs/archive/).
 
 ```
 docs/          spec-v0.4-draft.md (normative once released), build plan, design notes
-engines/ts/    TypeScript engine
-engines/py/    Python engine
+engines/ts/    TypeScript engine (+ OpenAI-compatible adapter)
+engines/py/    Python engine (+ adapter, command-line host, python-chess tools)
+hosts/web/     the browser host: one HTML page with the TS engine and chess.js tools
+conformance/   shared vectors and recorded fixtures both engines must reproduce
+examples/      the chess harness (spec §2) with a KIT deployment
 ```
 
 ## Quick start
@@ -40,6 +43,17 @@ python -m fausth run examples/chess/harness.yaml --deployment examples/chess/dep
 `examples/chess/harness.yaml` is the spec's §2 harness. The deployment binds its tools to
 python-chess (`fausth.chess_tools`) and names the model; see `engines/py/fausth/host.py` for the
 binding kinds (`script`, `recorded`, `model`).
+
+## Play it in the browser (TypeScript host)
+
+```bash
+pnpm -C hosts/web build      # writes hosts/web/dist/index.html, one self-contained page
+```
+
+Open `hosts/web/dist/index.html`. It replays every conformance fixture with the TS engine (the
+same bytes as the Python engine), and it plays `examples/chess/harness.yaml` live with chess.js
+tools. Paste a key for an endpoint that accepts browser calls: OpenRouter does; the KIT gateway
+allows only its own origin. `pnpm -C hosts/web check` replays the fixtures in headless Chrome.
 
 ## License
 

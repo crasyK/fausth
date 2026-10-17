@@ -10,6 +10,8 @@
   },
   "scripts": {
     "test": "pnpm -C engines/ts test",
-    "typecheck": "pnpm -C engines/ts typecheck"
+    "typecheck": "pnpm -C engines/ts typecheck",
+    "test:web": "pnpm -C hosts/web test",
+    "build:web": "pnpm -C hosts/web build"
   }
 }

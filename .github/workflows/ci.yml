@@ -30,3 +30,19 @@ jobs:
           python-version: "3.12"
       - run: pip install -e "engines/py[dev]"
       - run: pytest engines/py/tests -q
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm -C hosts/web typecheck
+      - run: pnpm -C hosts/web test
+      - run: pnpm -C hosts/web build
+      - name: Replay every fixture in headless Chrome
+        run: pnpm -C hosts/web check

@@ -42,12 +42,15 @@ def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = 
 def from_chat(body: Any, provider: str) -> dict[str, Any]:
     """The model response (spec §14 shape) for a Chat Completions answer. Raises InfraFailure."""
     choices = body.get("choices") if isinstance(body, dict) else None
-    if not choices or not isinstance(choices[0], dict) or not isinstance(choices[0].get("message"), dict):
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict) \
+            or not isinstance(choices[0].get("message"), dict):
         raise InfraFailure("the answer has no message")
     message = choices[0]["message"]
-    out: dict[str, Any] = {"text": message.get("content") or ""}
+    content = message.get("content")
+    out: dict[str, Any] = {"text": content if isinstance(content, str) else ""}
     calls = []
-    for c in message.get("tool_calls") or []:
+    raw_calls = message.get("tool_calls")
+    for c in raw_calls if isinstance(raw_calls, list) else []:
         f = c.get("function") if isinstance(c, dict) else None
         f = f if isinstance(f, dict) else {}
         raw = f.get("arguments")
