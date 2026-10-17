@@ -1,3 +1,0 @@
-{"args":{"tools":["fs.read"]},"seq":1,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"agent.spawn","ts_logical":1}
-{"args":{"tools":["fs.read"]},"reason":"capability_missing","seq":2,"stage":"validate","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","tool":"agent.spawn","ts_logical":2,"verdict":"deny"}
-{"seq":3,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":3,"verdict":"allow"}

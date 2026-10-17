@@ -1,2 +1,0 @@
-{"call_seq":1,"result":{"output":{"answer":"A replacement, please."}},"tool":"user.ask"}
-{"call_seq":1,"result":{"output":{"ok":1}},"tool":"user.correct"}

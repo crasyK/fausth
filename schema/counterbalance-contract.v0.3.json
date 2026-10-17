@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://fausth.dev/schema/counterbalance-contract.v0.3.json",
-  "title": "Counterbalance Contract v0.3 (alias of the executable IR schema)",
-  "description": "Spec id counterbalance-contract/v0.3 uses the one executable IR shape. The schema of record is counterbalance-contract.v0.1.json (accepts spec ids v0.1, v0.2, v0.3); normative text docs/spec-v0.3.md.",
-  "$ref": "https://fausth.dev/schema/counterbalance-contract.v0.1.json"
-}

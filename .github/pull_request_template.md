@@ -8,12 +8,10 @@
 
 ## Verification
 
-- [ ] `pnpm -C engines/ts test`
-- [ ] `python -m pytest engines/py/tests -q`
-- [ ] `node scripts/parity.mjs`
-- [ ] If harness/deployments changed: `pnpm ci:packaging`
+- [ ] `pnpm -C engines/ts typecheck && pnpm -C engines/ts test`
+- [ ] `pytest engines/py/tests -q`
 
 ## Risk checks
 
 - [ ] No secrets added
-- [ ] Counterbalance fixtures or smoke expectations updated when needed
+- [ ] Spec updated first when behaviour changed (`docs/spec-v0.4-draft.md`)

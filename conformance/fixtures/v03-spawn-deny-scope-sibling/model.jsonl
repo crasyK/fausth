@@ -1,1 +1,0 @@
-{"args":{"filesystem":{"write_scopes":["srcx/"]},"tools":["fs.read"]},"name":"agent.spawn","type":"tool"}

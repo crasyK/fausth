@@ -1,3 +1,0 @@
-{"type":"tool","name":"sensor.temperature.read","args":{}}
-{"type":"tool","name":"system.wait","args":{"ms":25}}
-{"type":"stop","message":"done"}

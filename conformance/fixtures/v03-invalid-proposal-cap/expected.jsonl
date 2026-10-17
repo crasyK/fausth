@@ -1,2 +1,0 @@
-{"observation":{"invalid_reason":"invalid_tool_arguments_json","stop_message":"{\"path\": "},"reason":"invalid_proposal","seq":1,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":1,"verdict":"deny"}
-{"observation":{"invalid_reason":"empty_proposal","stop_message":"I would read the file first."},"reason":"empty_proposal","seq":2,"stage":"propose","state_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","ts_logical":2,"verdict":"deny"}

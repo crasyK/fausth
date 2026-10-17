@@ -1,3 +1,1 @@
-"""Faust Harness Python twin."""
-
-__version__ = "0.4.0a0"
+"""Python engine for spec v0.4 (docs/spec-v0.4-draft.md)."""

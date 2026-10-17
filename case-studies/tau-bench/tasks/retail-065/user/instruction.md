@@ -1,1 +1,0 @@
-Instruction: You are James Kovacs from San Jose CA, 95190. You want to exchange the bookshelf from your most recent order for a camera that is closest but not more expensive than the price of the bookshelf.

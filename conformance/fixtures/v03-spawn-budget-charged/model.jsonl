@@ -1,2 +1,0 @@
-{"args":{"proposals":[{"args":{"path":"src/app.ts"},"name":"fs.read","type":"tool"},{"args":{"path":"src/app.js"},"name":"fs.read","type":"tool"}],"tools":["fs.read"]},"name":"agent.spawn","type":"tool"}
-{"args":{"path":"src/app.ts"},"name":"fs.read","type":"tool"}

@@ -1,3 +1,0 @@
-{"observation":{"freshness":{},"permitted_tools":["kb.lookup"],"sequence_blockers":[]},"seq":1,"stage":"orient","state_hash":"00605536d6cff12fa236ee7663590572d0c58541b8f9f3ec11e1eb19b8f42033","ts_logical":1,"verdict":"allow"}
-{"args":{},"seq":2,"stage":"propose","state_hash":"00605536d6cff12fa236ee7663590572d0c58541b8f9f3ec11e1eb19b8f42033","tool":"refund.request","ts_logical":2}
-{"args":{},"reason":"capability_missing","seq":3,"stage":"validate","state_hash":"00605536d6cff12fa236ee7663590572d0c58541b8f9f3ec11e1eb19b8f42033","tool":"refund.request","ts_logical":3,"verdict":"deny"}

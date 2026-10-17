@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (branch `build/spec-v0.4`)
+
+Rebuild on spec v0.4 (`docs/spec-v0.4-draft.md`), following `docs/build-plan-v0.4.md`.
+- Spec v0.1–v0.3 and the v0.3 documents moved to `docs/archive/`.
+- The v0.3 engines, fixtures, schemas, scripts, examples, worlds and case studies are removed. They stay
+  reachable through the `v0.4.0-alpha` tag. No compatibility layer.
+
 ## 0.4.0-alpha — 2026-10-14 (audit release)
 
 Every finding of the 2026-10-12 audit fixed. Details: `AUDIT-STATUS.md`, `case-studies/CLAIMS-STATUS.md`,

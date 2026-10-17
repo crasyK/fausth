@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Counterbalance contract questions
+  - name: Harness spec questions
     url: https://github.com/crasyK/fausth/discussions
     about: Ask usage and design questions before opening a bug.

@@ -1,1 +1,0 @@
-{"counterbalance":{"intervention_budget":{"max_activations":1,"window":"host_day"}},"name":"v03-budget-host-day","spec":"counterbalance-contract/v0.3","state":{},"tools":[{"id":"noop.ping","input":{"additionalProperties":false,"properties":{},"type":"object"},"output":{"additionalProperties":false,"properties":{"ok":{"type":"integer"}},"required":["ok"],"type":"object"}}]}

@@ -1,2 +1,0 @@
-{"args":{"cmd":"rm -rf /"},"name":"shell.run_allowlisted","type":"tool"}
-{"args":{"cmd":"test"},"name":"shell.run_allowlisted","type":"tool"}

@@ -1,3 +1,0 @@
-{"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"rm -rf src"}}
-{"type":"tool","name":"shell.run_allowlisted","args":{"cmd":"rm -rf src"}}
-{"type":"tool","name":"task.complete","args":{}}

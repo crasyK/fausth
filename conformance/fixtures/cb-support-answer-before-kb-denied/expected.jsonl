@@ -1,3 +1,0 @@
-{"args":{"text":"Policy says refunds are free."},"seq":1,"stage":"propose","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"answer.send","ts_logical":1}
-{"args":{"text":"Policy says refunds are free."},"seq":2,"stage":"validate","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"answer.send","ts_logical":2,"verdict":"allow"}
-{"args":{"text":"Policy says refunds are free."},"failure":{"kind":"missing_prior_tools","missing_prior_tools":["kb.lookup"]},"reason":"sequence_requirement_failed","seq":3,"stage":"authorize","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"answer.send","ts_logical":3,"verdict":"deny"}

@@ -1,2 +1,0 @@
-{"args":{"question":"which file?"},"call_seq":1,"result":{"output":{"answer":"src/app.ts"}},"tool":"user.ask"}
-{"args":{"content":"x","path":"src/app.ts"},"call_seq":2,"result":{"output":{"ok":1,"out_of_scope":0,"path":"src/app.ts"}},"tool":"fs.write_scoped"}

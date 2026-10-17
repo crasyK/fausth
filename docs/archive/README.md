@@ -1,17 +1,14 @@
 # Archived documentation
 
-Point-in-time snapshots that are **not** the current entry path. Canonical history lives in [`CHANGELOG.md`](../../CHANGELOG.md). Canonical specs live at `docs/spec-v0.*.md`.
+Records of the retired system (spec v0.1–v0.3, releases up to `v0.4.0-alpha`). Nothing here is
+current; the current spec is [`../spec-v0.4-draft.md`](../spec-v0.4-draft.md). The code these
+documents describe is reachable through the `v0.4.0-alpha` tag.
 
 | Folder | Contents |
 |--------|----------|
-| [`releases/`](releases/) | Narrative notes for `v0.1.2`–`v0.3.0` alphas |
-| [`specs/`](specs/) | Superseded `spec-v0.2-draft.md` redirect |
+| [`specs/`](specs/) | Spec v0.1, v0.2, v0.3 and the v0.2 / v0.3 drafts |
+| [`v0.3/`](v0.3/) | Documents of the v0.3 system: architecture, authoring, how-to, case-study protocol, audit and claims status, testing notes |
+| [`releases/`](releases/) | Release notes `v0.1.2-alpha` … `v0.4.0-alpha` |
 | [`recon/`](recon/) | Deferred recon (Kaggriculture) |
 
-## Local-only live archive
-
-Raw run dumps are gitignored. After the 2026-08 deep clean:
-
-- **Moved off the hot path:** `live/archive/` (KIT probe, HRI gemma bundle, SWE opt-arms v1/v2, Lab UI ghost logs)
-
-`live/cache/` (SWE-bench checkouts) is also gitignored. Regenerable; do not commit.
+Raw run dumps under `live/` were always gitignored and are not part of the repository.

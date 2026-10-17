@@ -1,4 +1,0 @@
-{"args":{},"seq":1,"stage":"propose","state_hash":"9060ee2518917245113c43e3648e21fead09abfdc5de41d39213c1b73fb02cd2","tool":"noop.ping","ts_logical":1}
-{"args":{},"seq":2,"stage":"validate","state_hash":"9060ee2518917245113c43e3648e21fead09abfdc5de41d39213c1b73fb02cd2","tool":"noop.ping","ts_logical":2,"verdict":"allow"}
-{"args":{},"reason":"gate_denied","seq":3,"stage":"authorize","state_hash":"9060ee2518917245113c43e3648e21fead09abfdc5de41d39213c1b73fb02cd2","tool":"noop.ping","ts_logical":3,"verdict":"deny"}
-{"seq":4,"stage":"propose","state_hash":"9060ee2518917245113c43e3648e21fead09abfdc5de41d39213c1b73fb02cd2","ts_logical":4,"verdict":"allow"}

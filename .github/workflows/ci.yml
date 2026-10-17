@@ -5,16 +5,10 @@ on:
   pull_request:
     branches: [main]
 
-# Every check is its own job or an independent step (`if: !cancelled()`), so one
-# failure never hides another: replay, smoke and recorded matrices all report.
-
-# The Python twin is the repo's engines/py (installed with `pip install -e` in each job that
-# needs it); parity.mjs / fuzz-ir.mjs refuse to guess an interpreter, so name it explicitly.
-env:
-  FAUSTH_PYTHON: python
+# Reduced to what exists while the spec v0.4 engines are being built (docs/build-plan-v0.4.md).
 
 jobs:
-  ts-unit:
+  ts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,109 +18,7 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install
-      - run: pnpm -C engines/ts test
-
-  conformance-replay:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-      - run: pnpm install
-      - run: pnpm -C engines/ts exec node --import tsx src/cli.ts replay
-
-  scripts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pnpm install
-      - run: pip install -e "engines/py[dev]"
-      - name: Host script unit + integration tests
-        run: pnpm test:scripts
-
-  smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pnpm install
-      - run: pip install -e "engines/py"
-      - name: Local disposable-workspace e2e (recorded)
-        if: ${{ !cancelled() }}
-        run: node scripts/local-e2e.mjs
-      - name: Bundle round-trip
-        if: ${{ !cancelled() }}
-        run: node scripts/bundle-roundtrip.mjs
-      - name: Resolved connector execution parity
-        if: ${{ !cancelled() }}
-        run: pnpm ci:resolve
-      - name: MCP stdio TS ↔ Python ↔ golden
-        if: ${{ !cancelled() }}
-        run: pnpm ci:mcp-stdio
-      - name: Example library smoke
-        if: ${{ !cancelled() }}
-        run: pnpm ci:library-smoke
-      - name: IR fuzz validate agreement
-        if: ${{ !cancelled() }}
-        run: pnpm ci:fuzz
-      - name: Release consistency check
-        if: ${{ !cancelled() }}
-        run: pnpm ci:release-check
-      - name: Evidence-pack claims check
-        if: ${{ !cancelled() }}
-        run: pnpm evidence:check
-
-  recorded-matrices:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pnpm install
-      - run: pip install -e "engines/py[dev]"
-      - uses: actions/cache@v4
-        with:
-          path: live/cache/swe
-          key: swe-mirrors-${{ hashFiles('case-studies/swe-bench/tasks/pallets__flask-4045/task.yml') }}
-      - name: Adversarial recorded matrix
-        if: ${{ !cancelled() }}
-        run: pnpm ci:adversarial
-      - name: τ-bench recorded smoke
-        if: ${{ !cancelled() }}
-        run: pnpm ci:tau-recorded
-      - name: SWE-bench recorded smoke
-        if: ${{ !cancelled() }}
-        run: pnpm ci:swe-recorded
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: recorded-matrix-reports
-          path: live/reports/case-studies/
-          if-no-files-found: ignore
+      - run: pnpm -C engines/ts typecheck
 
   py:
     runs-on: ubuntu-latest
@@ -136,41 +28,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e "engines/py[dev]"
-      - run: pytest engines/py/tests -q
-      - run: fausth-py replay
-
-  parity:
-    needs: [ts-unit, py]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pnpm install
-      - run: pip install -e "engines/py[dev]"
-      - run: node scripts/parity.mjs
-
-  packaging:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pnpm install
-      - run: pip install -e "engines/py[dev]"
-      - run: pnpm ci:packaging
-      - run: python -m fausth test examples/coding-counterbalance
-      - run: python -m fausth test examples/support-bot
-      - run: python -m fausth pack examples/coding-counterbalance --out live/reports/coding-counterbalance-py.fausth.json
+      - run: python -c "import fausth"

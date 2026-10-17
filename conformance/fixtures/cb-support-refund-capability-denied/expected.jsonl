@@ -1,2 +1,0 @@
-{"args":{},"seq":1,"stage":"propose","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"refund.request","ts_logical":1}
-{"args":{},"reason":"capability_missing","seq":2,"stage":"validate","state_hash":"b0c963c33ff6b6850e439c693fb9a7765292cb6ebb16075a38724eb975545dbc","tool":"refund.request","ts_logical":2,"verdict":"deny"}

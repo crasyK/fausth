@@ -1,6 +1,0 @@
-{"args":{},"seq":1,"stage":"propose","state_hash":"5272f2592556de40109bea7c48aacc8ea045e66e0bf88a0f42a209f49bcd7578","tool":"noop.ping","ts_logical":1}
-{"args":{},"seq":2,"stage":"validate","state_hash":"5272f2592556de40109bea7c48aacc8ea045e66e0bf88a0f42a209f49bcd7578","tool":"noop.ping","ts_logical":2,"verdict":"allow"}
-{"args":{},"seq":3,"stage":"authorize","state_hash":"5272f2592556de40109bea7c48aacc8ea045e66e0bf88a0f42a209f49bcd7578","tool":"noop.ping","ts_logical":3,"verdict":"allow"}
-{"args":{},"result":{"ok":1},"seq":4,"stage":"execute","state_hash":"5272f2592556de40109bea7c48aacc8ea045e66e0bf88a0f42a209f49bcd7578","tool":"noop.ping","ts_logical":4,"verdict":"allow"}
-{"seq":5,"stage":"verify","state_hash":"5272f2592556de40109bea7c48aacc8ea045e66e0bf88a0f42a209f49bcd7578","ts_logical":5,"verdict":"allow"}
-{"seq":6,"stage":"propose","state_hash":"5272f2592556de40109bea7c48aacc8ea045e66e0bf88a0f42a209f49bcd7578","ts_logical":6,"verdict":"allow"}

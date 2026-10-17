@@ -1,2 +1,0 @@
-{"observation":{"stop_message":"Here is the solution:\n```py\nprint(42)\n```"},"seq":1,"stage":"propose","state_hash":"f3babf84b7a054d10af7e44e01dbaea7c7bd47e64da73be3ebc0c07c8e420573","ts_logical":1,"verdict":"allow"}
-{"observation":{"message":{"contains_code_fence":1,"content":"Here is the solution:\n```py\nprint(42)\n```","length":41}},"reason":"verify_output_failed","seq":2,"stage":"verify","state_hash":"f3babf84b7a054d10af7e44e01dbaea7c7bd47e64da73be3ebc0c07c8e420573","ts_logical":2,"verdict":"deny"}

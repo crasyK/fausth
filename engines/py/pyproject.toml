@@ -5,27 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fausth"
 version = "0.4.0a0"
-description = "Faust Harness Python twin — Counterbalance Contract replay engine"
-readme = "README.md"
+description = "Faust Harness — Python engine (spec v0.4 draft)"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
   "PyYAML>=6.0",
   "jsonschema>=4.23",
-  "cryptography>=42.0,<46",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
-[project.scripts]
-fausth-py = "fausth.cli:main"
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fausth*"]
-
-[tool.setuptools.package-data]
-# Copy of /schema/counterbalance-contract.v0.1.json for non-editable installs
-# (tests/test_schema_location.py fails if the copy drifts from /schema).
-fausth = ["schema/*.json"]
