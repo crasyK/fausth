@@ -1,0 +1,307 @@
+{
+ "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true.",
+ "request": {
+  "system": "You are playing chess.",
+  "tools": [
+   {
+    "name": "board_move",
+    "description": "Play a move.",
+    "input": {
+     "type": "object",
+     "required": [
+      "move"
+     ]
+    }
+   },
+   {
+    "name": "board_observe",
+    "description": "Look.",
+    "input": {
+     "type": "object"
+    }
+   }
+  ],
+  "messages": [
+   {
+    "role": "user",
+    "text": "Play."
+   },
+   {
+    "role": "assistant",
+    "text": "",
+    "tool_calls": [
+     {
+      "call_id": "c4-0",
+      "tool": "board_observe",
+      "args": {}
+     },
+     {
+      "call_id": "c4-1",
+      "tool": "board_move",
+      "args": {
+       "reason": "x",
+       "move": "e2e4"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "call_id": "c4-0",
+    "tool": "board_observe",
+    "text": "{\"fen\":\"start\"}"
+   },
+   {
+    "role": "tool",
+    "call_id": "c4-1",
+    "tool": "board_move",
+    "text": "<hook event=\"pre_tool\" id=\"h\" decision=\"deny\">no</hook>"
+   },
+   {
+    "role": "assistant",
+    "text": "Thinking.",
+    "tool_calls": []
+   },
+   {
+    "role": "user",
+    "text": "Go on."
+   }
+  ]
+ },
+ "chat": {
+  "model": "m",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are playing chess."
+   },
+   {
+    "role": "user",
+    "content": "Play."
+   },
+   {
+    "role": "assistant",
+    "content": null,
+    "tool_calls": [
+     {
+      "id": "c4-0",
+      "type": "function",
+      "function": {
+       "name": "board_observe",
+       "arguments": "{}"
+      }
+     },
+     {
+      "id": "c4-1",
+      "type": "function",
+      "function": {
+       "name": "board_move",
+       "arguments": "{\"move\":\"e2e4\",\"reason\":\"x\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "c4-0",
+    "content": "{\"fen\":\"start\"}"
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "c4-1",
+    "content": "<hook event=\"pre_tool\" id=\"h\" decision=\"deny\">no</hook>"
+   },
+   {
+    "role": "assistant",
+    "content": "Thinking."
+   },
+   {
+    "role": "user",
+    "content": "Go on."
+   }
+  ],
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "board_move",
+     "description": "Play a move.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "move"
+      ]
+     }
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "board_observe",
+     "description": "Look.",
+     "parameters": {
+      "type": "object"
+     }
+    }
+   }
+  ],
+  "temperature": 0
+ },
+ "answers": [
+  {
+   "name": "text only",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "role": "assistant",
+       "content": "e4."
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": "e4."
+   }
+  },
+  {
+   "name": "tool calls, content null",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_x",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\": \"e2e4\", \"n\": 18446744073709551615}"
+         }
+        },
+        {
+         "id": "call_y",
+         "type": "function",
+         "function": {
+          "name": "board_observe",
+          "arguments": ""
+         }
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": "",
+    "tool_calls": [
+     {
+      "tool": "board_move",
+      "args": {
+       "move": "e2e4",
+       "n": 18446744073709552000
+      }
+     },
+     {
+      "tool": "board_observe",
+      "args": {}
+     }
+    ]
+   }
+  },
+  {
+   "name": "arguments that are not JSON stay a string",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "content": "",
+       "tool_calls": [
+        {
+         "function": {
+          "name": "board_move",
+          "arguments": "{move: e2e4"
+         }
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": "",
+    "tool_calls": [
+     {
+      "tool": "board_move",
+      "args": "{move: e2e4"
+     }
+    ]
+   }
+  },
+  {
+   "name": "reasoning_content",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "content": "Nf3.",
+       "reasoning_content": "Develop first."
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": "Nf3.",
+    "reasoning": "Develop first."
+   }
+  },
+  {
+   "name": "reasoning and reasoning_details",
+   "answer": {
+    "choices": [
+     {
+      "message": {
+       "content": "d4.",
+       "reasoning": "Center.",
+       "reasoning_details": [
+        {
+         "type": "reasoning.encrypted",
+         "data": "abc"
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "response": {
+    "text": "d4.",
+    "reasoning": "Center.",
+    "reasoning_opaque": {
+     "provider": "kit",
+     "data": [
+      {
+       "type": "reasoning.encrypted",
+       "data": "abc"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "no choices",
+   "answer": {
+    "choices": []
+   },
+   "error": true
+  },
+  {
+   "name": "not an object",
+   "answer": [
+    "x"
+   ],
+   "error": true
+  }
+ ]
+}
