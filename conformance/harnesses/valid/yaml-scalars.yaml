@@ -1,0 +1,46 @@
+# YAML 1.2 core schema resolution (spec section 2); the values sit in a handler hook's free-form `with`.
+spec: harness/0.5
+name: yaml-scalars
+prompt: |-
+  line one
+    indented line
+  last line
+handlers:
+  h: {}
+hooks:
+  - id: scalars
+    on: stop
+    run: h
+    with:
+      yaml11_booleans: [yes, no, on, off, y, n, Yes, NO]
+      booleans: [true, True, TRUE, false, False, FALSE]
+      nulls: [~, null, Null, NULL, ]
+      empty_value:
+      ints: [0, -0, +12, 0o17, 0x1F, 017, 12_000, 0b101, 1:20]
+      floats: [1e3, .5, 5., -.5e-3, +1.5E+2, 1.0, 0.1, 6.02e23]
+      big: 18446744073709551615
+      not_numbers: [2001-12-14, 1.2.3, 0x, 0o8, '12', "34"]
+      explicit: [!!str 12, ! 12, !!int "12", !!float 1.5, !!bool true, !!null null, !!str true]
+      folded: >
+        folded
+        text
+
+        next paragraph
+      literal_keep: |+
+        kept
+
+      literal_strip: |-
+        stripped
+      double_quoted: "tab\tx\x41\u00e9 \uD83D\uDE00 \N\_\L\P\0\a\e\/\"\\"
+      single_quoted: 'it''s \n not an escape'
+      plain_multiline: a
+        b
+        c
+      anchored: &shared { type: string, minLength: 1 }
+      aliased: *shared
+      flow: { a: [1, {b: c}], 'd e': "f" }
+      merge_is_plain_key: { <<: { x: 1 } }
+      unicode_raw: "é😀…"
+      on: yes
+      ? explicit key
+      : explicit value

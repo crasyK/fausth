@@ -1,0 +1,3 @@
+{"id": "board_observe", "ok": true, "result": {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "side_to_move": "white", "in_check": false, "position_hash": "8f3c2a"}}
+{"id": "board_legal_moves", "ok": true, "result": {"moves": [{"uci": "e2e4", "san": "e4"}, {"uci": "d2d4", "san": "d4"}, {"uci": "g1f3", "san": "Nf3"}]}}
+{"id": "board_move", "ok": true, "result": {"played": "e2e4", "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", "position_hash": "11aa9e"}}

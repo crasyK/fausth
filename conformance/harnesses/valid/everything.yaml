@@ -1,0 +1,44 @@
+# Every field and every built-in, once.
+spec: harness/0.5
+name: everything
+prompt: Use the tools.
+tools:
+  search:
+    description: Search the notes.
+    input:
+      type: object
+      required: [query]
+      additionalProperties: false
+      properties:
+        query: { type: string, minLength: 1 }
+        limit: { type: integer, minimum: 1, maximum: 50 }
+    output:
+      type: object
+      required: [hits]
+      properties: { hits: { type: array, items: { type: string } } }
+  tests_run:
+    description: Run the tests.
+    input: { type: object, additionalProperties: false }
+  core_spawn:
+    description: Hand a subtask to a child harness you write.
+handlers:
+  judge_reason:
+    description: Ask a model whether a reason is good enough.
+    input: { type: object, required: [call] }
+  list_skills: {}
+hooks:
+  - { id: skills, on: session_start, run: list_skills, on_failure: skip }
+  - { id: house-rules, on: session_start, run: core_context, with: { text: Be brief. } }
+  - { id: screen, on: user_prompt, run: judge_reason }
+  - { id: no-empty-prompt, on: user_prompt, run: core_deny, with: { text: say something } }
+  - { id: compact, on: pre_request, run: judge_reason, with: { threshold: 9000 } }
+  - { id: tip, on: pre_request, run: core_context, with: { text: Think first. } }
+  - { id: search-budget, on: pre_tool, match: search, run: core_count, with: { tool: search, max: 3 } }
+  - { id: reason-check, on: pre_tool, match: [search, tests_run], run: judge_reason }
+  - { id: spawn-after-search, on: pre_tool, match: core_spawn, run: core_called_since, with: { tool: search } }
+  - { id: result-note, on: post_tool, run: core_context, with: { text: Check the result. } }
+  - { id: tests-pass, on: stop, run: core_last_result, with: { tool: tests_run, path: exit_code, eq: 0 } }
+  - { id: tests-first, on: stop, run: core_called_since, with: { tool: tests_run, since: search } }
+  - { id: timer-only, on: interrupt, match: [timer, job], run: core_deny, with: { text: dropped } }
+  - { id: interrupt-note, on: interrupt, match: "*", run: core_context, with: { text: An event arrived. } }
+limits: { max_steps: 40, max_tool_calls: 80, max_depth: 2, max_continues: 3, max_hook_text: 2000, timeout_ms: 600000 }

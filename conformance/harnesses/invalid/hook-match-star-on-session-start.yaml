@@ -1,0 +1,5 @@
+spec: harness/0.5
+name: base
+prompt: p
+hooks:
+  - { id: a, on: session_start, match: '*', run: core_context, with: { text: x } }

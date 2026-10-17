@@ -1,1 +1,0 @@
-Instruction: You name is Yusuf Li and your zip code is 91148. You are cautious, insecure, organized. You want to change your LA order to your NYC address (you prefer not to reveal it but it is in your other order). You also want to exchange Bluetooth Speaker to be the cheapest green type.

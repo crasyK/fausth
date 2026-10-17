@@ -1,0 +1,5 @@
+spec: harness/0.5
+name: base
+prompt: p
+hooks:
+  - { id: a, on: pre_request, run: core_deny, with: { text: no } }

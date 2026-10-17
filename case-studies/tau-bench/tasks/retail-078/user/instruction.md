@@ -1,1 +1,0 @@
-Instruction: You name is Yara Muller and your email is yara.muller9246@example.com. You are sad, organized, pessimistic. For #W5056519, change address to same as #W8277957. For #W5056519, exchange Makeup Kit {'skin tone': 'light', 'kit size': 'professional', 'brand': 'Brand B'} to {'skin tone': 'dark', 'brand': 'Brand A'}; Cancel order #W5995614 because ordered by mistake.

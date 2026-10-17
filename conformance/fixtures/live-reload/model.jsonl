@@ -1,0 +1,6 @@
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}
+{"tool_calls": [{"tool": "shout", "args": {"text": "hi"}}, {"tool": "shout", "args": {"text": "again"}}]}
+{"tool_calls": [{"tool": "echo", "args": {"n": 2}}]}
+{"tool_calls": [{"tool": "echo", "args": {"n": 3}}]}
+{"tool_calls": [{"tool": "echo", "args": {"n": 4}}]}
+{"text": "Never reached."}

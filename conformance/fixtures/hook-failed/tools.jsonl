@@ -1,0 +1,6 @@
+{"id": "flaky", "unreachable": true}
+{"id": "broken", "ok": false, "error": "timeout"}
+{"id": "echo", "ok": true, "result": {"n": 1}}
+{"id": "wrong", "ok": true, "result": {"decision": "deny", "text": "denying is not allowed after the call"}}
+{"id": "extra", "ok": true, "result": {"decision": "allow", "text": "allow takes no text"}}
+{"id": "strict", "ok": true, "result": {"decision": "continue"}}

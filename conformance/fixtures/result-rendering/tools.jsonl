@@ -1,0 +1,4 @@
+{"id": "data_get", "ok": true, "result": {"price": 19.99, "qty": 3, "ratio": 0.1, "big": 18446744073709551615, "tiny": 1e-07, "neg_zero": -0.0, "name": "Café 😀"}}
+{"id": "data_get", "ok": true, "result": null}
+{"id": "data_get", "ok": true, "result": ["a", 1, true]}
+{"id": "data_get", "ok": true, "result": "plain text, \"quoted\",   kept"}

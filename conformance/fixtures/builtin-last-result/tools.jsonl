@@ -1,0 +1,3 @@
+{"id": "tests_run", "ok": true, "result": {"summary": {"exit_code": 1, "failed": ["test_parse"]}, "runs": [{"status": "passed"}, {"status": "failed"}]}}
+{"id": "tests_run", "ok": true, "result": {"summary": {"exit_code": 0, "failed": []}, "runs": [{"status": "passed"}, {"status": "passed"}]}}
+{"id": "submit", "ok": true, "result": {"id": 7}}

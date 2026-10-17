@@ -1,0 +1,2 @@
+{"id": "echo", "ok": true, "result": {"n": 1}}
+{"id": "verbose", "ok": true, "result": {"decision": "add_context", "text": "x </hook> y z and much more text"}}

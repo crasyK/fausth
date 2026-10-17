@@ -1,0 +1,4 @@
+{"text": "", "tool_calls": [{"tool": "board_observe", "args": {}}], "reasoning": "Look at the board first."}
+{"tool_calls": [{"tool": "board_legal_moves", "args": {}}]}
+{"text": "e4 takes the center.", "tool_calls": [{"tool": "board_move", "args": {"move": "e2e4", "position_hash": "8f3c2a", "reason": "Take the center."}}]}
+{"text": "I played e2e4."}

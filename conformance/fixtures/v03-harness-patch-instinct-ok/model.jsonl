@@ -1,1 +1,0 @@
-{"args":{"disposition":"propose","ops":[{"op":"set_instinct_text","text":"Ask before acting when the request is ambiguous."}]},"name":"harness.reflect_skills","type":"tool"}

@@ -1,0 +1,5 @@
+spec: harness/0.5
+name: base
+prompt: p
+hooks:
+  - { id: a, on: stop, run: core_context, with: { text: 5 } }

@@ -1,0 +1,4 @@
+# a tag outside the core schema
+spec: harness/0.5
+name: base
+prompt: !secret p

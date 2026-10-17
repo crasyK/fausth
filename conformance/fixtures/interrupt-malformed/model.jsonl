@@ -1,0 +1,2 @@
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}
+{"text": "Never reached."}

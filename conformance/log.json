@@ -1,0 +1,499 @@
+{
+ "about": "Spec v0.4 sections 7 and 5.3. Replay `appends` into an empty log (scope, type, members); the log text must equal `text` and the view of each scope must equal `view`. `call_ids` are [assistant seq, index, call_id].",
+ "appends": [
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "run_start",
+   "members": {
+    "harness_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "depth": 0
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "skills",
+    "event": "session_start",
+    "decision": "add_context",
+    "text": "Skills: none."
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "system",
+   "members": {
+    "text": "Play.\n\n<hook event=\"session_start\" id=\"skills\" decision=\"add_context\">Skills: none.</hook>"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "screen",
+    "event": "user_prompt",
+    "decision": "allow"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "user",
+   "members": {
+    "text": "Play a move."
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "interrupt",
+   "members": {
+    "source": "timer",
+    "text": "tick",
+    "step": 0
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "assistant",
+   "members": {
+    "step": 1,
+    "text": "",
+    "reasoning": "Observe first.",
+    "tool_calls": [
+     {
+      "call_id": "c7-0",
+      "tool": "board_observe",
+      "args": {}
+     },
+     {
+      "call_id": "c7-1",
+      "tool": "board_move",
+      "args": {
+       "move": "e2e4",
+       "position_hash": "p1",
+       "reason": "center"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "tool_result",
+   "members": {
+    "call_id": "c7-0",
+    "tool": "board_observe",
+    "ok": true,
+    "result": {
+     "fen": "startpos",
+     "position_hash": "p1"
+    }
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "observe-first",
+    "event": "pre_tool",
+    "decision": "deny",
+    "text": "board_observe not called yet",
+    "call_id": "c7-1"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "assistant",
+   "members": {
+    "step": 2,
+    "text": "Moving.",
+    "reasoning_opaque": {
+     "provider": "example",
+     "data": "b64=="
+    },
+    "tool_calls": [
+     {
+      "call_id": "c10-0",
+      "tool": "board_move",
+      "args": {
+       "move": "e2e4",
+       "position_hash": "p1",
+       "reason": "center"
+      }
+     },
+     {
+      "call_id": "c10-1",
+      "tool": "core_spawn",
+      "args": {
+       "harness": {
+        "spec": "harness/0.5",
+        "name": "child",
+        "prompt": "Look."
+       },
+       "task": "Check the board."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "normalize",
+    "event": "pre_tool",
+    "decision": "modify",
+    "text": "lowercased",
+    "args": {
+     "move": "e2e3",
+     "position_hash": "p1",
+     "reason": "center"
+    },
+    "call_id": "c10-0"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "observe-first",
+    "event": "pre_tool",
+    "decision": "allow",
+    "call_id": "c10-0"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "tool_result",
+   "members": {
+    "call_id": "c10-0",
+    "tool": "board_move",
+    "ok": false,
+    "error": "illegal move"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "tip",
+    "event": "post_tool",
+    "decision": "add_context",
+    "text": "Check the result.",
+    "call_id": "c10-0"
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "run_start",
+   "members": {
+    "harness_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "depth": 1
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "system",
+   "members": {
+    "text": "Look."
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "user",
+   "members": {
+    "text": "Check the board."
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "assistant",
+   "members": {
+    "step": 1,
+    "text": "",
+    "tool_calls": [
+     {
+      "call_id": "c18-0",
+      "tool": "board_observe",
+      "args": {}
+     }
+    ]
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "tool_result",
+   "members": {
+    "call_id": "c18-0",
+    "tool": "board_observe",
+    "ok": true,
+    "result": null
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "assistant",
+   "members": {
+    "step": 2,
+    "text": "Done.",
+    "tool_calls": []
+   }
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "type": "run_end",
+   "members": {
+    "reason": "stop"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "tool_result",
+   "members": {
+    "call_id": "c10-1",
+    "tool": "core_spawn",
+    "ok": true,
+    "result": {
+     "text": "Done.",
+     "steps": 2,
+     "tool_calls": 1
+    }
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "harness_changed",
+   "members": {
+    "harness_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "system",
+   "members": {
+    "text": "Play again."
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "interrupt",
+   "members": {
+    "source": "user",
+    "text": "stop now",
+    "step": 2
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "drop-timers",
+    "event": "interrupt",
+    "decision": "deny",
+    "text": "dropped"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "assistant",
+   "members": {
+    "step": 3,
+    "text": "Bye.",
+    "tool_calls": []
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "hook",
+   "members": {
+    "hook": "gate",
+    "event": "stop",
+    "decision": "failed"
+   }
+  },
+  {
+   "scope": {
+    "depth": 0
+   },
+   "type": "run_end",
+   "members": {
+    "reason": "stop"
+   }
+  }
+ ],
+ "text": "{\"depth\":0,\"harness_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"seq\":1,\"type\":\"run_start\"}\n{\"decision\":\"add_context\",\"event\":\"session_start\",\"hook\":\"skills\",\"seq\":2,\"text\":\"Skills: none.\",\"type\":\"hook\"}\n{\"seq\":3,\"text\":\"Play.\\n\\n<hook event=\\\"session_start\\\" id=\\\"skills\\\" decision=\\\"add_context\\\">Skills: none.</hook>\",\"type\":\"system\"}\n{\"decision\":\"allow\",\"event\":\"user_prompt\",\"hook\":\"screen\",\"seq\":4,\"type\":\"hook\"}\n{\"seq\":5,\"text\":\"Play a move.\",\"type\":\"user\"}\n{\"seq\":6,\"source\":\"timer\",\"step\":0,\"text\":\"tick\",\"type\":\"interrupt\"}\n{\"reasoning\":\"Observe first.\",\"seq\":7,\"step\":1,\"text\":\"\",\"tool_calls\":[{\"args\":{},\"call_id\":\"c7-0\",\"tool\":\"board_observe\"},{\"args\":{\"move\":\"e2e4\",\"position_hash\":\"p1\",\"reason\":\"center\"},\"call_id\":\"c7-1\",\"tool\":\"board_move\"}],\"type\":\"assistant\"}\n{\"call_id\":\"c7-0\",\"ok\":true,\"result\":{\"fen\":\"startpos\",\"position_hash\":\"p1\"},\"seq\":8,\"tool\":\"board_observe\",\"type\":\"tool_result\"}\n{\"call_id\":\"c7-1\",\"decision\":\"deny\",\"event\":\"pre_tool\",\"hook\":\"observe-first\",\"seq\":9,\"text\":\"board_observe not called yet\",\"type\":\"hook\"}\n{\"reasoning_opaque\":{\"data\":\"b64==\",\"provider\":\"example\"},\"seq\":10,\"step\":2,\"text\":\"Moving.\",\"tool_calls\":[{\"args\":{\"move\":\"e2e4\",\"position_hash\":\"p1\",\"reason\":\"center\"},\"call_id\":\"c10-0\",\"tool\":\"board_move\"},{\"args\":{\"harness\":{\"name\":\"child\",\"prompt\":\"Look.\",\"spec\":\"harness/0.5\"},\"task\":\"Check the board.\"},\"call_id\":\"c10-1\",\"tool\":\"core_spawn\"}],\"type\":\"assistant\"}\n{\"args\":{\"move\":\"e2e3\",\"position_hash\":\"p1\",\"reason\":\"center\"},\"call_id\":\"c10-0\",\"decision\":\"modify\",\"event\":\"pre_tool\",\"hook\":\"normalize\",\"seq\":11,\"text\":\"lowercased\",\"type\":\"hook\"}\n{\"call_id\":\"c10-0\",\"decision\":\"allow\",\"event\":\"pre_tool\",\"hook\":\"observe-first\",\"seq\":12,\"type\":\"hook\"}\n{\"call_id\":\"c10-0\",\"error\":\"illegal move\",\"ok\":false,\"seq\":13,\"tool\":\"board_move\",\"type\":\"tool_result\"}\n{\"call_id\":\"c10-0\",\"decision\":\"add_context\",\"event\":\"post_tool\",\"hook\":\"tip\",\"seq\":14,\"text\":\"Check the result.\",\"type\":\"hook\"}\n{\"depth\":1,\"harness_hash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"parent_call\":\"c10-1\",\"seq\":15,\"type\":\"run_start\"}\n{\"depth\":1,\"parent_call\":\"c10-1\",\"seq\":16,\"text\":\"Look.\",\"type\":\"system\"}\n{\"depth\":1,\"parent_call\":\"c10-1\",\"seq\":17,\"text\":\"Check the board.\",\"type\":\"user\"}\n{\"depth\":1,\"parent_call\":\"c10-1\",\"seq\":18,\"step\":1,\"text\":\"\",\"tool_calls\":[{\"args\":{},\"call_id\":\"c18-0\",\"tool\":\"board_observe\"}],\"type\":\"assistant\"}\n{\"call_id\":\"c18-0\",\"depth\":1,\"ok\":true,\"parent_call\":\"c10-1\",\"result\":null,\"seq\":19,\"tool\":\"board_observe\",\"type\":\"tool_result\"}\n{\"depth\":1,\"parent_call\":\"c10-1\",\"seq\":20,\"step\":2,\"text\":\"Done.\",\"tool_calls\":[],\"type\":\"assistant\"}\n{\"depth\":1,\"parent_call\":\"c10-1\",\"reason\":\"stop\",\"seq\":21,\"type\":\"run_end\"}\n{\"call_id\":\"c10-1\",\"ok\":true,\"result\":{\"steps\":2,\"text\":\"Done.\",\"tool_calls\":1},\"seq\":22,\"tool\":\"core_spawn\",\"type\":\"tool_result\"}\n{\"harness_hash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"seq\":23,\"type\":\"harness_changed\"}\n{\"seq\":24,\"text\":\"Play again.\",\"type\":\"system\"}\n{\"seq\":25,\"source\":\"user\",\"step\":2,\"text\":\"stop now\",\"type\":\"interrupt\"}\n{\"decision\":\"deny\",\"event\":\"interrupt\",\"hook\":\"drop-timers\",\"seq\":26,\"text\":\"dropped\",\"type\":\"hook\"}\n{\"seq\":27,\"step\":3,\"text\":\"Bye.\",\"tool_calls\":[],\"type\":\"assistant\"}\n{\"decision\":\"failed\",\"event\":\"stop\",\"hook\":\"gate\",\"seq\":28,\"type\":\"hook\"}\n{\"reason\":\"stop\",\"seq\":29,\"type\":\"run_end\"}\n",
+ "views": [
+  {
+   "scope": {
+    "depth": 0
+   },
+   "view": [
+    {
+     "step": 0,
+     "interrupt": {
+      "source": "timer",
+      "text": "tick"
+     }
+    },
+    {
+     "step": 1,
+     "tool": "board_observe",
+     "args": {},
+     "ok": true,
+     "result": {
+      "fen": "startpos",
+      "position_hash": "p1"
+     }
+    },
+    {
+     "step": 1,
+     "tool": "board_move",
+     "args": {
+      "move": "e2e4",
+      "position_hash": "p1",
+      "reason": "center"
+     },
+     "ok": false,
+     "error": "board_observe not called yet"
+    },
+    {
+     "step": 2,
+     "tool": "board_move",
+     "args": {
+      "move": "e2e3",
+      "position_hash": "p1",
+      "reason": "center"
+     },
+     "ok": false,
+     "error": "illegal move"
+    },
+    {
+     "step": 2,
+     "tool": "core_spawn",
+     "args": {
+      "harness": {
+       "spec": "harness/0.5",
+       "name": "child",
+       "prompt": "Look."
+      },
+      "task": "Check the board."
+     },
+     "ok": true,
+     "result": {
+      "text": "Done.",
+      "steps": 2,
+      "tool_calls": 1
+     }
+    },
+    {
+     "step": 2,
+     "interrupt": {
+      "source": "user",
+      "text": "stop now"
+     }
+    }
+   ]
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c10-1"
+   },
+   "view": [
+    {
+     "step": 1,
+     "tool": "board_observe",
+     "args": {},
+     "ok": true,
+     "result": null
+    }
+   ]
+  },
+  {
+   "scope": {
+    "depth": 1,
+    "parent_call": "c99-0"
+   },
+   "view": []
+  }
+ ],
+ "call_ids": [
+  [
+   7,
+   0,
+   "c7-0"
+  ],
+  [
+   10,
+   1,
+   "c10-1"
+  ],
+  [
+   123,
+   45,
+   "c123-45"
+  ]
+ ]
+}

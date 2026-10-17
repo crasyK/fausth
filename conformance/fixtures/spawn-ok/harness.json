@@ -1,0 +1,64 @@
+{
+  "spec": "harness/0.5",
+  "name": "spawn-ok",
+  "prompt": "You coordinate helpers.",
+  "tools": {
+    "board_observe": {
+      "description": "Read the position.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "board_legal_moves": {
+      "description": "List the legal moves.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "core_spawn": {}
+  },
+  "hooks": [
+    {
+      "id": "house-rules",
+      "on": "session_start",
+      "run": "core_context",
+      "with": {
+        "text": "Be exact."
+      }
+    },
+    {
+      "id": "task-note",
+      "on": "user_prompt",
+      "run": "core_context",
+      "with": {
+        "text": "from the parent"
+      }
+    },
+    {
+      "id": "observe-first",
+      "on": "pre_tool",
+      "match": "board_legal_moves",
+      "run": "core_called_since",
+      "with": {
+        "tool": "board_observe"
+      }
+    },
+    {
+      "id": "audit",
+      "on": "post_tool",
+      "match": "core_spawn",
+      "run": "core_context",
+      "with": {
+        "text": "Child finished."
+      }
+    }
+  ],
+  "limits": {
+    "max_steps": 10,
+    "max_tool_calls": 10
+  }
+}

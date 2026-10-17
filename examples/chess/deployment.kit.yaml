@@ -1,0 +1,13 @@
+# Deployment for examples/chess/harness.yaml on the KIT gateway (spec §13). The key comes from
+# the environment, never from this file.
+model:
+  base_url: https://ki-toolbox.scc.kit.edu/api/v1
+  api_key_env: KIT_AI_API_KEY
+  model: kit.glm-5.3-flash
+  provider: kit
+  extra: { reasoning_effort: low }
+state: {}                       # e.g. { fen: "<FEN>" } to start from another position
+bindings:
+  board_observe: { script: "fausth.chess_tools:board_observe" }
+  board_legal_moves: { script: "fausth.chess_tools:board_legal_moves" }
+  board_move: { script: "fausth.chess_tools:board_move" }

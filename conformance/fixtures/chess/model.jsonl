@@ -1,0 +1,10 @@
+{"tool_calls": [{"tool": "board_observe", "args": {}}]}
+{"text": "I'll check the legal moves and play e4.", "tool_calls": [{"tool": "board_legal_moves", "args": {}}, {"tool": "board_move", "args": {"move": "e2e4", "position_hash": "b1791d7fc9ae3d38", "reason": "Takes the center and frees the bishop and queen."}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "e2e4", "position_hash": "b1791d7fc9ae3d38", "reason": "Takes the center and frees the bishop and queen."}}]}
+{"text": "I played 1. e4."}
+{"reasoning": "e5 attacked? Nf3 develops with tempo.", "tool_calls": [{"tool": "board_move", "args": {"move": "g1f3", "position_hash": "7d93ad7e3a1c986e", "reason": "Develops a knight and attacks e5."}}]}
+{"tool_calls": [{"tool": "board_observe", "args": {}}]}
+{"tool_calls": [{"tool": "board_legal_moves", "args": {}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "g1f3", "position_hash": "abf9f14281b64137"}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "g1f3", "position_hash": "abf9f14281b64137", "reason": "Develops a knight and attacks e5."}}]}
+{"text": "I played 2. Nf3."}

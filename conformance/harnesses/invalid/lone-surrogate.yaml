@@ -1,0 +1,4 @@
+# a lone surrogate has no canonical form (spec 1)
+spec: harness/0.5
+name: base
+prompt: "\uD800"

@@ -1,1 +1,0 @@
-The function add(a, b) in src/app.js is wrong. Use the tools available in each phase. Write the fix under src/, shell.run_allowlisted cmd=test, clear open todos via user.correct, then task.complete. Do not write before plan approval.

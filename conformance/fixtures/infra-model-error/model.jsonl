@@ -1,0 +1,2 @@
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}
+{"error": "HTTP 503 from the gateway"}

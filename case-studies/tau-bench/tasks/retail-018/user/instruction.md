@@ -1,1 +1,0 @@
-Instruction: You are Mei Davis in 80217. You want to return the office chair because it came with some broken pieces. But if the agent asks you for confirm, you say you want to rethink for a while, and then change your mind to exchange for the same item. You are in debt and sad today, but very brief.

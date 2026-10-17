@@ -1,0 +1,14 @@
+{"depth":0,"harness_hash":"018500e480a8cc938aa5bc197db73d1e08d1c88663aa7c2967fdf86edfca8926","seq":1,"type":"run_start"}
+{"seq":2,"text":"Answer from the notes.","type":"system"}
+{"seq":3,"text":"What is the plan?","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"q":"plan"},"call_id":"c4-0","tool":"notes_search"},{"args":{"key":"Plan"},"call_id":"c4-1","tool":"notes_read"},{"args":{"key":"plan\n"},"call_id":"c4-2","tool":"notes_read"},{"args":"plan","call_id":"c4-3","tool":"notes_read"},{"args":{"extra":1,"key":"plan"},"call_id":"c4-4","tool":"notes_read"},{"args":{"key":"plan"},"call_id":"c4-5","tool":"notes_read"}],"type":"assistant"}
+{"call_id":"c4-0","error":"invalid arguments: unknown tool","ok":false,"seq":5,"tool":"notes_search","type":"tool_result"}
+{"call_id":"c4-1","error":"invalid arguments: does not match the input schema","ok":false,"seq":6,"tool":"notes_read","type":"tool_result"}
+{"call_id":"c4-2","error":"invalid arguments: does not match the input schema","ok":false,"seq":7,"tool":"notes_read","type":"tool_result"}
+{"call_id":"c4-3","error":"invalid arguments: does not match the input schema","ok":false,"seq":8,"tool":"notes_read","type":"tool_result"}
+{"call_id":"c4-4","error":"invalid arguments: does not match the input schema","ok":false,"seq":9,"tool":"notes_read","type":"tool_result"}
+{"call_id":"c4-5","ok":true,"result":"Castle early.\nThen push the h-pawn.","seq":10,"tool":"notes_read","type":"tool_result"}
+{"seq":11,"step":2,"text":"","tool_calls":[{"args":{"key":"todo"},"call_id":"c11-0","tool":"notes_read"}],"type":"assistant"}
+{"call_id":"c11-0","error":"no such note: todo","ok":false,"seq":12,"tool":"notes_read","type":"tool_result"}
+{"seq":13,"step":3,"text":"The plan is to castle early.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":14,"type":"run_end"}

@@ -1,0 +1,59 @@
+{
+  "spec": "harness/0.5",
+  "name": "builtin-called-since",
+  "prompt": "Play chess.",
+  "tools": {
+    "board_observe": {
+      "description": "Read the current position.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "board_legal_moves": {
+      "description": "List the legal moves.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "board_move": {
+      "description": "Play a move in UCI.",
+      "input": {
+        "type": "object",
+        "required": [
+          "move"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "move": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "observe-first",
+      "on": "pre_tool",
+      "match": "board_move",
+      "run": "core_called_since",
+      "with": {
+        "tool": "board_observe"
+      }
+    },
+    {
+      "id": "legal-moves-first",
+      "on": "pre_tool",
+      "match": "board_move",
+      "run": "core_called_since",
+      "with": {
+        "tool": "board_legal_moves",
+        "since": "board_move"
+      }
+    }
+  ]
+}

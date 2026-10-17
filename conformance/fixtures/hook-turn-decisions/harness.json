@@ -1,0 +1,118 @@
+{
+  "spec": "harness/0.5",
+  "name": "hook-turn-decisions",
+  "prompt": "You are a chess coach.",
+  "handlers": {
+    "skills": {
+      "input": {
+        "properties": {
+          "event": {
+            "const": "session_start"
+          },
+          "step": {
+            "const": 0
+          },
+          "view": {
+            "maxItems": 0
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "message"
+              ]
+            },
+            {
+              "required": [
+                "context"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "gate": {
+      "input": {
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "compactor": {
+      "input": {
+        "required": [
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "required": [
+                "role",
+                "text"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "judge": {
+      "input": {
+        "required": [
+          "message",
+          "continued"
+        ],
+        "properties": {
+          "message": {
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "list-skills",
+      "on": "session_start",
+      "run": "skills"
+    },
+    {
+      "id": "house-rules",
+      "on": "session_start",
+      "run": "core_context",
+      "with": {
+        "text": "Answer in one line."
+      }
+    },
+    {
+      "id": "screen",
+      "on": "user_prompt",
+      "run": "gate"
+    },
+    {
+      "id": "date",
+      "on": "pre_request",
+      "run": "core_context",
+      "with": {
+        "text": "Today is 2026-10-17."
+      }
+    },
+    {
+      "id": "compact",
+      "on": "pre_request",
+      "run": "compactor"
+    },
+    {
+      "id": "done-check",
+      "on": "stop",
+      "run": "judge"
+    }
+  ]
+}

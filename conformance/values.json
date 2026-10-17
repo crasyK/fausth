@@ -1,0 +1,406 @@
+{
+ "about": "Shared test vectors for spec v0.5 section 1 (values). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points.",
+ "canonical": [
+  {
+   "name": "rfc8785 sample",
+   "json": "{\n  \"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],\n  \"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",\n  \"literals\": [null, true, false]\n}",
+   "canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"\u20ac$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+   "hash": "2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb"
+  },
+  {
+   "name": "rfc8785 key sorting (UTF-16 code units, not code points)",
+   "json": "{\n  \"\\u20ac\": \"Euro Sign\",\n  \"\\r\": \"Carriage Return\",\n  \"\\ufb33\": \"Hebrew Letter Dalet With Dagesh\",\n  \"1\": \"One\",\n  \"\\ud83d\\ude00\": \"Emoji: Grinning Face\",\n  \"\\u0080\": \"Control\",\n  \"\\u00f6\": \"Latin Small Letter O With Diaeresis\"\n}",
+   "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}",
+   "hash": "5e321556d22018a9656991a9e94f77ec175fa193e52a2429d312f8419ec8b08c"
+  },
+  {
+   "name": "rfc8785 number 5e-324",
+   "json": "5e-324",
+   "canonical": "5e-324"
+  },
+  {
+   "name": "rfc8785 number -5e-324",
+   "json": "-5e-324",
+   "canonical": "-5e-324"
+  },
+  {
+   "name": "rfc8785 number 9007199254740992",
+   "json": "9007199254740992",
+   "canonical": "9007199254740992"
+  },
+  {
+   "name": "rfc8785 number -9007199254740992",
+   "json": "-9007199254740992",
+   "canonical": "-9007199254740992"
+  },
+  {
+   "name": "rfc8785 number 295147905179352830000",
+   "json": "295147905179352830000",
+   "canonical": "295147905179352830000"
+  },
+  {
+   "name": "rfc8785 number 1e+23",
+   "json": "1e+23",
+   "canonical": "1e+23"
+  },
+  {
+   "name": "rfc8785 number 999999999999999700000",
+   "json": "999999999999999700000",
+   "canonical": "999999999999999700000"
+  },
+  {
+   "name": "rfc8785 number 999999999999999900000",
+   "json": "999999999999999900000",
+   "canonical": "999999999999999900000"
+  },
+  {
+   "name": "rfc8785 number 1e+21",
+   "json": "1e+21",
+   "canonical": "1e+21"
+  },
+  {
+   "name": "rfc8785 number 9.999999999999997e-7",
+   "json": "9.999999999999997e-7",
+   "canonical": "9.999999999999997e-7"
+  },
+  {
+   "name": "rfc8785 number 0.000001",
+   "json": "0.000001",
+   "canonical": "0.000001"
+  },
+  {
+   "name": "rfc8785 number 333333333.3333332",
+   "json": "333333333.3333332",
+   "canonical": "333333333.3333332"
+  },
+  {
+   "name": "rfc8785 number 333333333.33333325",
+   "json": "333333333.33333325",
+   "canonical": "333333333.33333325"
+  },
+  {
+   "name": "rfc8785 number 333333333.3333333",
+   "json": "333333333.3333333",
+   "canonical": "333333333.3333333"
+  },
+  {
+   "name": "rfc8785 number 333333333.3333334",
+   "json": "333333333.3333334",
+   "canonical": "333333333.3333334"
+  },
+  {
+   "name": "rfc8785 number 333333333.33333343",
+   "json": "333333333.33333343",
+   "canonical": "333333333.33333343"
+  },
+  {
+   "name": "rfc8785 number -0.0000033333333333333333",
+   "json": "-0.0000033333333333333333",
+   "canonical": "-0.0000033333333333333333"
+  },
+  {
+   "name": "rfc8785 number 1424953923781206.2",
+   "json": "1424953923781206.2",
+   "canonical": "1424953923781206.2"
+  },
+  {
+   "name": "rfc8785 number max double",
+   "json": "1.7976931348623157e308",
+   "canonical": "1.7976931348623157e+308"
+  },
+  {
+   "name": "rfc8785 number min double",
+   "json": "-1.7976931348623157E+308",
+   "canonical": "-1.7976931348623157e+308"
+  },
+  {
+   "name": "rfc8785 number below 1e23",
+   "json": "9.999999999999997e22",
+   "canonical": "9.999999999999997e+22"
+  },
+  {
+   "name": "rfc8785 number above 1e23",
+   "json": "1.0000000000000001e23",
+   "canonical": "1.0000000000000001e+23"
+  },
+  {
+   "name": "zero",
+   "json": "0",
+   "canonical": "0"
+  },
+  {
+   "name": "negative zero integer literal",
+   "json": "-0",
+   "canonical": "0"
+  },
+  {
+   "name": "negative zero decimal literal",
+   "json": "-0.0",
+   "canonical": "0"
+  },
+  {
+   "name": "negative zeros in an array",
+   "json": "[-0, 0, -0.0, 0.0, -0e5]",
+   "canonical": "[0,0,0,0,0]",
+   "hash": "fd76db5c8ad0929aeca788d3e83adb863069b1dc11c4c707e9c14286388dc970"
+  },
+  {
+   "name": "trailing zero dropped",
+   "json": "4.50",
+   "canonical": "4.5"
+  },
+  {
+   "name": "integral decimal",
+   "json": "1.0",
+   "canonical": "1"
+  },
+  {
+   "name": "negative integral decimal",
+   "json": "-1.0",
+   "canonical": "-1"
+  },
+  {
+   "name": "exponent to plain",
+   "json": "1E2",
+   "canonical": "100"
+  },
+  {
+   "name": "small exponent to plain",
+   "json": "2e-3",
+   "canonical": "0.002"
+  },
+  {
+   "name": "one tenth",
+   "json": "0.1",
+   "canonical": "0.1"
+  },
+  {
+   "name": "float sum artefact kept",
+   "json": "0.30000000000000004",
+   "canonical": "0.30000000000000004"
+  },
+  {
+   "name": "seven fractional digits switch to exponent",
+   "json": "0.0000001",
+   "canonical": "1e-7"
+  },
+  {
+   "name": "negative small exponent",
+   "json": "-1.5E-7",
+   "canonical": "-1.5e-7"
+  },
+  {
+   "name": "1e20 stays plain",
+   "json": "1e20",
+   "canonical": "100000000000000000000"
+  },
+  {
+   "name": "1e21 switches to exponent",
+   "json": "1000000000000000000000",
+   "canonical": "1e+21"
+  },
+  {
+   "name": "decimal rounded to nearest double",
+   "json": "123456789.123456789",
+   "canonical": "123456789.12345679"
+  },
+  {
+   "name": "decimal in object",
+   "json": "{\"price\": 19.990, \"qty\": 3}",
+   "canonical": "{\"price\":19.99,\"qty\":3}",
+   "hash": "ed75aa63c03fd52ae5b5618caca8996b80d5a29ffd0530ff3c74836469521eb2"
+  },
+  {
+   "name": "2^53 + 1 rounds to 2^53 (ties to even)",
+   "json": "9007199254740993",
+   "canonical": "9007199254740992"
+  },
+  {
+   "name": "2^53 + 3 rounds up (ties to even)",
+   "json": "9007199254740995",
+   "canonical": "9007199254740996"
+  },
+  {
+   "name": "2^64 - 1",
+   "json": "18446744073709551615",
+   "canonical": "18446744073709552000",
+   "hash": "edacbbb2252b28815fa8983aad4682ab7718badd58a7e92c6b65b4292f308225"
+  },
+  {
+   "name": "-2^64",
+   "json": "-18446744073709551616",
+   "canonical": "-18446744073709552000"
+  },
+  {
+   "name": "20-digit integer",
+   "json": "12345678901234567890",
+   "canonical": "12345678901234567000"
+  },
+  {
+   "name": "30-digit integer",
+   "json": "123456789012345678901234567890",
+   "canonical": "1.2345678901234568e+29"
+  },
+  {
+   "name": "large integer inside a value",
+   "json": "{\"position_hash\": 18446744073709551615, \"id\": \"18446744073709551615\"}",
+   "canonical": "{\"id\":\"18446744073709551615\",\"position_hash\":18446744073709552000}"
+  },
+  {
+   "name": "overflow to infinity",
+   "json": "1e400",
+   "error": true
+  },
+  {
+   "name": "overflow to negative infinity",
+   "json": "-1e400",
+   "error": true
+  },
+  {
+   "name": "NaN literal is not JSON",
+   "json": "NaN",
+   "error": true
+  },
+  {
+   "name": "Infinity literal is not JSON",
+   "json": "[Infinity]",
+   "error": true
+  },
+  {
+   "name": "control characters",
+   "json": "\"\\u0000\\u0001\\u0008\\u0009\\u000a\\u000b\\u000c\\u000d\\u001f\\u007f\"",
+   "canonical": "\"\\u0000\\u0001\\b\\t\\n\\u000b\\f\\r\\u001f\u007f\""
+  },
+  {
+   "name": "line and paragraph separators stay literal",
+   "json": "\"\\u2028\\u2029\"",
+   "canonical": "\"\u2028\u2029\""
+  },
+  {
+   "name": "escaped non-BMP character becomes literal",
+   "json": "\"\\ud83d\\ude00 \\u00e9\"",
+   "canonical": "\"\ud83d\ude00 \u00e9\"",
+   "hash": "d64591213e4736989526c7780261c05f6e228cd67c6e72175f61af1e25031ec1"
+  },
+  {
+   "name": "raw non-BMP character stays literal",
+   "json": "\"\ud83d\ude00\"",
+   "canonical": "\"\ud83d\ude00\""
+  },
+  {
+   "name": "escaped solidus becomes literal",
+   "json": "\"a\\/b\"",
+   "canonical": "\"a/b\""
+  },
+  {
+   "name": "quote and backslash",
+   "json": "\"a\\\"b\\\\c\"",
+   "canonical": "\"a\\\"b\\\\c\""
+  },
+  {
+   "name": "ellipsis character",
+   "json": "\"\u2026[truncated]\"",
+   "canonical": "\"\u2026[truncated]\""
+  },
+  {
+   "name": "lone high surrogate",
+   "json": "\"\\ud800\"",
+   "error": true
+  },
+  {
+   "name": "lone low surrogate",
+   "json": "\"\\udc00x\"",
+   "error": true
+  },
+  {
+   "name": "reversed surrogate pair",
+   "json": "\"\\ude00\\ud83d\"",
+   "error": true
+  },
+  {
+   "name": "lone surrogate in a key",
+   "json": "{\"\\ud800\": 1}",
+   "error": true
+  },
+  {
+   "name": "empty object",
+   "json": "{}",
+   "canonical": "{}",
+   "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+   "name": "empty array",
+   "json": "[]",
+   "canonical": "[]"
+  },
+  {
+   "name": "whitespace removed",
+   "json": " \n\t{ \"a\" : [ 1 , 2 ] }\r\n",
+   "canonical": "{\"a\":[1,2]}"
+  },
+  {
+   "name": "nested sorting",
+   "json": "{\"b\": [1, {\"d\": 2, \"c\": 1}], \"a\": {}}",
+   "canonical": "{\"a\":{},\"b\":[1,{\"c\":1,\"d\":2}]}",
+   "hash": "d51507ea07cd4190108d14a4c3781e248c446106ee0315aadeb257edc033ba37"
+  },
+  {
+   "name": "integer-like keys sort as strings",
+   "json": "{\"10\": 1, \"9\": 2, \"a\": 3, \"1\": 4, \"B\": 5}",
+   "canonical": "{\"1\":4,\"10\":1,\"9\":2,\"B\":5,\"a\":3}"
+  },
+  {
+   "name": "prototype-like keys are ordinary keys",
+   "json": "{\"__proto__\": {\"x\": 1}, \"constructor\": 2}",
+   "canonical": "{\"__proto__\":{\"x\":1},\"constructor\":2}"
+  },
+  {
+   "name": "literals",
+   "json": "[true, false, null]",
+   "canonical": "[true,false,null]"
+  },
+  {
+   "name": "string scalar",
+   "json": "\"chess\"",
+   "canonical": "\"chess\"",
+   "hash": "e4092b39cdf16d579d4a3738c9c273d782dc4873d2c799c6ab4556b0a03a4d57"
+  }
+ ],
+ "excerpt": [
+  {
+   "s": "abc",
+   "n": 3,
+   "out": "abc"
+  },
+  {
+   "s": "abcd",
+   "n": 3,
+   "out": "abc\u2026[truncated]"
+  },
+  {
+   "s": "",
+   "n": 0,
+   "out": ""
+  },
+  {
+   "s": "a",
+   "n": 0,
+   "out": "\u2026[truncated]"
+  },
+  {
+   "s": "\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+   "n": 2,
+   "out": "\ud83d\ude00\ud83d\ude00\u2026[truncated]"
+  },
+  {
+   "s": "\ud83d\ude00\ud83d\ude00",
+   "n": 2,
+   "out": "\ud83d\ude00\ud83d\ude00"
+  },
+  {
+   "s": "ab\ud83d\ude00",
+   "n": 3,
+   "out": "ab\ud83d\ude00"
+  }
+ ]
+}

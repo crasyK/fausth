@@ -1,1 +1,0 @@
-{"limits":{"continue_after_deny":true},"name":"v03-non-canonical-args-denied","spec":"counterbalance-contract/v0.3","state":{},"tools":[{"id":"score.read","input":{"additionalProperties":true,"properties":{"x":{"type":"number"}},"type":"object"},"output":{"additionalProperties":false,"properties":{"score":{"type":"number"}},"required":["score"],"type":"object"}}]}

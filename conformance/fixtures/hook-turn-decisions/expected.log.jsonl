@@ -1,0 +1,22 @@
+{"depth":0,"harness_hash":"ff007d4425aa66ab4d77b78d2e792f1a0c9cc8efa90434b7e6be7fb31f176f0d","seq":1,"type":"run_start"}
+{"decision":"add_context","event":"session_start","hook":"list-skills","seq":2,"text":"Skills: chess-openings.","type":"hook"}
+{"decision":"add_context","event":"session_start","hook":"house-rules","seq":3,"text":"Answer in one line.","type":"hook"}
+{"seq":4,"text":"You are a chess coach.\n\n<hook event=\"session_start\" id=\"list-skills\" decision=\"add_context\">Skills: chess-openings.</hook>\n\n<hook event=\"session_start\" id=\"house-rules\" decision=\"add_context\">Answer in one line.</hook>","type":"system"}
+{"decision":"deny","event":"user_prompt","hook":"screen","seq":5,"text":"Ask about chess.","type":"hook"}
+{"decision":"add_context","event":"user_prompt","hook":"screen","seq":6,"text":"The user asked about openings.","type":"hook"}
+{"seq":7,"text":"Suggest an opening.","type":"user"}
+{"decision":"add_context","event":"pre_request","hook":"date","seq":8,"text":"Today is 2026-10-17.","type":"hook"}
+{"decision":"allow","event":"pre_request","hook":"compact","seq":9,"type":"hook"}
+{"seq":10,"step":1,"text":"Play e4.","tool_calls":[],"type":"assistant"}
+{"decision":"continue","event":"stop","hook":"done-check","seq":11,"text":"Name the opening.","type":"hook"}
+{"decision":"add_context","event":"pre_request","hook":"date","seq":12,"text":"Today is 2026-10-17.","type":"hook"}
+{"decision":"replace_context","event":"pre_request","hook":"compact","seq":13,"text":"Summary: the user asked for an opening; you suggested e4.","type":"hook"}
+{"seq":14,"step":2,"text":"The Open Game.","tool_calls":[],"type":"assistant"}
+{"decision":"add_context","event":"stop","hook":"done-check","seq":15,"text":"Good.","type":"hook"}
+{"decision":"allow","event":"user_prompt","hook":"screen","seq":16,"type":"hook"}
+{"seq":17,"text":"Thanks.","type":"user"}
+{"decision":"add_context","event":"pre_request","hook":"date","seq":18,"text":"Today is 2026-10-17.","type":"hook"}
+{"decision":"allow","event":"pre_request","hook":"compact","seq":19,"type":"hook"}
+{"seq":20,"step":3,"text":"You're welcome.","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"stop","hook":"done-check","seq":21,"type":"hook"}
+{"reason":"stop","seq":22,"type":"run_end"}

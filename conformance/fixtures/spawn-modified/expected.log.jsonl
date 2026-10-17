@@ -1,0 +1,18 @@
+{"depth":0,"harness_hash":"ad93251d53f90c90b1e7f430f34dcc84bd09960da505cd91a3058671dddf369e","seq":1,"type":"run_start"}
+{"seq":2,"text":"Delegate.","type":"system"}
+{"seq":3,"text":"Delegate.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"harness":{"name":"worker","prompt":"Echo.","spec":"harness/0.5","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo twice."},"call_id":"c4-0","tool":"core_spawn"}],"type":"assistant"}
+{"args":{"harness":{"hooks":[{"id":"echo-once","match":"echo","on":"pre_tool","run":"core_count","with":{"max":1,"tool":"echo"}}],"name":"worker","prompt":"Echo.","spec":"harness/0.5","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo twice."},"call_id":"c4-0","decision":"modify","event":"pre_tool","hook":"add-rules","seq":5,"text":"added the house rules","type":"hook"}
+{"depth":1,"harness_hash":"f3bb3f0fbdbfd3a12c323256301c96aa2c9417ba66e8e6dc215c189966e165c0","parent_call":"c4-0","seq":6,"type":"run_start"}
+{"depth":1,"parent_call":"c4-0","seq":7,"text":"Echo.","type":"system"}
+{"depth":1,"parent_call":"c4-0","seq":8,"text":"Echo twice.","type":"user"}
+{"depth":1,"parent_call":"c4-0","seq":9,"step":2,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c9-0","tool":"echo"},{"args":{"n":2},"call_id":"c9-1","tool":"echo"}],"type":"assistant"}
+{"call_id":"c9-0","decision":"allow","depth":1,"event":"pre_tool","hook":"echo-once","parent_call":"c4-0","seq":10,"type":"hook"}
+{"call_id":"c9-0","depth":1,"ok":true,"parent_call":"c4-0","result":{"n":1},"seq":11,"tool":"echo","type":"tool_result"}
+{"call_id":"c9-1","decision":"deny","depth":1,"event":"pre_tool","hook":"echo-once","parent_call":"c4-0","seq":12,"text":"echo limit reached (1)","type":"hook"}
+{"depth":1,"parent_call":"c4-0","seq":13,"step":3,"text":"Echoed once.","tool_calls":[],"type":"assistant"}
+{"depth":1,"parent_call":"c4-0","reason":"stop","seq":14,"type":"run_end"}
+{"call_id":"c4-0","ok":true,"result":{"steps":2,"text":"Echoed once.","tool_calls":2},"seq":15,"tool":"core_spawn","type":"tool_result"}
+{"call_id":"c4-0","decision":"add_context","event":"post_tool","hook":"audit","seq":16,"text":"Child finished.","type":"hook"}
+{"seq":17,"step":4,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":18,"type":"run_end"}

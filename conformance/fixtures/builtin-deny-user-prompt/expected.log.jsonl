@@ -1,0 +1,5 @@
+{"depth":0,"harness_hash":"4f73d8c96cf3ec8f1f3e57bdc3cb9c346532720334fb73fe16d2ab34b68b92da","seq":1,"type":"run_start"}
+{"seq":2,"text":"Help the user.","type":"system"}
+{"decision":"deny","event":"user_prompt","hook":"closed","seq":3,"text":"This bot is closed today.","type":"hook"}
+{"decision":"deny","event":"user_prompt","hook":"closed","seq":4,"text":"This bot is closed today.","type":"hook"}
+{"reason":"stop","seq":5,"type":"run_end"}

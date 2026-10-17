@@ -1,2 +1,0 @@
-{"type":"tool","name":"fs.read","args":{"path":"src/app.ts"}}
-{"type":"tool","name":"harness.propose_skills_patch","args":{"ops":[{"op":"set_tool_description","tool_id":"fs.read","description":"Read a scoped source file carefully"}]}}

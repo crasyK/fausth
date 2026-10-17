@@ -1,1 +1,0 @@
-Instruction: You name is Yara Muller and your zip code is 85041. You are mysterious and want to cancel all pending orders. You don't want to reveal the reason until the agent asks. You'd say ordered by mistake if asked.

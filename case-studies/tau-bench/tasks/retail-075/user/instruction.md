@@ -1,1 +1,0 @@
-Instruction: You name is Liam Moore and your email is liam.moore6985@example.com. You are direct, patient, organized, optimistic. For #W6908222, exchange Wireless Earbuds {'color': 'blue', 'battery life': '8 hours', 'water resistance': 'IPX4'} to {'color': 'black', 'battery life': '4 hours', 'water resistance': 'not resistant'};

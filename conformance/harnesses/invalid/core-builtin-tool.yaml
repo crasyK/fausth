@@ -1,0 +1,5 @@
+spec: harness/0.5
+name: base
+prompt: p
+tools:
+  core_count: { description: m, input: { type: object } }

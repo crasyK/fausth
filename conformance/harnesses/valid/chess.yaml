@@ -1,0 +1,30 @@
+spec: harness/0.5
+name: chess-legal-first
+prompt: |
+  You are playing chess. Find the best move for the side to move and play it.
+tools:
+  board_observe:
+    description: "Read the current position: FEN, side to move, whether in check, position_hash."
+    input: { type: object, properties: {}, additionalProperties: false }
+  board_legal_moves:
+    description: List every legal move for the side to move, in UCI and SAN.
+    input: { type: object, properties: {}, additionalProperties: false }
+  board_move:
+    description: "Play one move in UCI notation (e.g. e2e4). Include reason: why this move."
+    input:
+      type: object
+      required: [move, position_hash, reason]
+      additionalProperties: false
+      properties: { move: { type: string }, position_hash: { type: string }, reason: { type: string } }
+hooks:
+  - id: observe-first
+    on: pre_tool
+    match: board_move
+    run: core_called_since
+    with: { tool: board_observe }
+  - id: legal-moves-first
+    on: pre_tool
+    match: board_move
+    run: core_called_since
+    with: { tool: board_legal_moves, since: board_move }
+limits: { max_steps: 12, max_tool_calls: 12 }

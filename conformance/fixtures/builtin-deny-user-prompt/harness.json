@@ -1,0 +1,15 @@
+{
+  "spec": "harness/0.5",
+  "name": "builtin-deny-user-prompt",
+  "prompt": "Help the user.",
+  "hooks": [
+    {
+      "id": "closed",
+      "on": "user_prompt",
+      "run": "core_deny",
+      "with": {
+        "text": "This bot is closed today."
+      }
+    }
+  ]
+}

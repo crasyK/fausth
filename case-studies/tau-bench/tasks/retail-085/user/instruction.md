@@ -1,1 +1,0 @@
-Instruction: You name is Yusuf Hernandez and your email is yusuf.hernandez8836@example.com. You are shy, rigid. You want to exchange your Fleece Jacket for a large red Fleece Jacket with a half zipper

@@ -1,5 +1,0 @@
-{"args":{},"seq":1,"stage":"propose","state_hash":"669c6c8af53febad50200dacf7cc2d068d63b8937b5570b5653ba2d354795e93","tool":"world.probe","ts_logical":1}
-{"args":{},"seq":2,"stage":"validate","state_hash":"669c6c8af53febad50200dacf7cc2d068d63b8937b5570b5653ba2d354795e93","tool":"world.probe","ts_logical":2,"verdict":"allow"}
-{"args":{},"seq":3,"stage":"authorize","state_hash":"669c6c8af53febad50200dacf7cc2d068d63b8937b5570b5653ba2d354795e93","tool":"world.probe","ts_logical":3,"verdict":"allow"}
-{"args":{},"failure":{"checkpoint_key":"approved","kind":"checkpoint_key"},"reason":"checkpoint_authority_failed","seq":4,"stage":"execute","state_hash":"669c6c8af53febad50200dacf7cc2d068d63b8937b5570b5653ba2d354795e93","tool":"world.probe","ts_logical":4,"verdict":"deny"}
-{"seq":5,"stage":"propose","state_hash":"669c6c8af53febad50200dacf7cc2d068d63b8937b5570b5653ba2d354795e93","ts_logical":5,"verdict":"allow"}

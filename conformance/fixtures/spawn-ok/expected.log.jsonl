@@ -1,0 +1,26 @@
+{"depth":0,"harness_hash":"bbd4a5f408cafba6558a069a389d4b55555f642f52d5c28c4b4d3dd1028dbf5f","seq":1,"type":"run_start"}
+{"decision":"add_context","event":"session_start","hook":"house-rules","seq":2,"text":"Be exact.","type":"hook"}
+{"seq":3,"text":"You coordinate helpers.\n\n<hook event=\"session_start\" id=\"house-rules\" decision=\"add_context\">Be exact.</hook>","type":"system"}
+{"decision":"add_context","event":"user_prompt","hook":"task-note","seq":4,"text":"from the parent","type":"hook"}
+{"seq":5,"text":"Ask a helper for the legal moves.","type":"user"}
+{"seq":6,"step":1,"text":"","tool_calls":[{"args":{"harness":{"hooks":[{"id":"child-note","on":"post_tool","run":"core_context","with":{"text":"child note"}}],"limits":{"max_steps":4},"name":"helper","prompt":"You are helper.","spec":"harness/0.5","tools":{"board_legal_moves":{"description":"List the legal moves.","input":{"additionalProperties":false,"properties":{},"type":"object"}},"board_observe":{"description":"Look at the board first.","input":{"additionalProperties":false,"properties":{},"type":"object"}}}},"task":"List the legal moves."},"call_id":"c6-0","tool":"core_spawn"}],"type":"assistant"}
+{"depth":1,"harness_hash":"3a0223b4d08202f9e631a4e7d25365c3890df264c1e6b463ec3ec0874dfd5c7c","parent_call":"c6-0","seq":7,"type":"run_start"}
+{"decision":"add_context","depth":1,"event":"session_start","hook":"house-rules","parent_call":"c6-0","seq":8,"text":"Be exact.","type":"hook"}
+{"depth":1,"parent_call":"c6-0","seq":9,"text":"You are helper.\n\n<hook event=\"session_start\" id=\"house-rules\" decision=\"add_context\">Be exact.</hook>","type":"system"}
+{"decision":"add_context","depth":1,"event":"user_prompt","hook":"task-note","parent_call":"c6-0","seq":10,"text":"from the parent","type":"hook"}
+{"depth":1,"parent_call":"c6-0","seq":11,"text":"List the legal moves.","type":"user"}
+{"depth":1,"parent_call":"c6-0","seq":12,"step":2,"text":"","tool_calls":[{"args":{},"call_id":"c12-0","tool":"board_legal_moves"}],"type":"assistant"}
+{"call_id":"c12-0","decision":"deny","depth":1,"event":"pre_tool","hook":"observe-first","parent_call":"c6-0","seq":13,"text":"board_observe not called yet","type":"hook"}
+{"depth":1,"parent_call":"c6-0","seq":14,"step":3,"text":"","tool_calls":[{"args":{},"call_id":"c14-0","tool":"board_observe"}],"type":"assistant"}
+{"call_id":"c14-0","depth":1,"ok":true,"parent_call":"c6-0","result":{"fen":"start"},"seq":15,"tool":"board_observe","type":"tool_result"}
+{"call_id":"c14-0","decision":"add_context","depth":1,"event":"post_tool","hook":"child-note","parent_call":"c6-0","seq":16,"text":"child note","type":"hook"}
+{"depth":1,"parent_call":"c6-0","seq":17,"step":4,"text":"","tool_calls":[{"args":{},"call_id":"c17-0","tool":"board_legal_moves"}],"type":"assistant"}
+{"call_id":"c17-0","decision":"allow","depth":1,"event":"pre_tool","hook":"observe-first","parent_call":"c6-0","seq":18,"type":"hook"}
+{"call_id":"c17-0","depth":1,"ok":true,"parent_call":"c6-0","result":{"moves":["e2e4","d2d4"]},"seq":19,"tool":"board_legal_moves","type":"tool_result"}
+{"call_id":"c17-0","decision":"add_context","depth":1,"event":"post_tool","hook":"child-note","parent_call":"c6-0","seq":20,"text":"child note","type":"hook"}
+{"depth":1,"parent_call":"c6-0","seq":21,"step":5,"text":"e2e4, d2d4.","tool_calls":[],"type":"assistant"}
+{"depth":1,"parent_call":"c6-0","reason":"stop","seq":22,"type":"run_end"}
+{"call_id":"c6-0","ok":true,"result":{"steps":4,"text":"e2e4, d2d4.","tool_calls":3},"seq":23,"tool":"core_spawn","type":"tool_result"}
+{"call_id":"c6-0","decision":"add_context","event":"post_tool","hook":"audit","seq":24,"text":"Child finished.","type":"hook"}
+{"seq":25,"step":6,"text":"The helper found e2e4 and d2d4.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":26,"type":"run_end"}

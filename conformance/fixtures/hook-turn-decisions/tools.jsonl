@@ -1,0 +1,10 @@
+{"id": "skills", "ok": true, "result": {"decision": "add_context", "text": "Skills: chess-openings."}}
+{"id": "gate", "ok": true, "result": {"decision": "deny", "text": "Ask about chess."}}
+{"id": "gate", "ok": true, "result": {"decision": "add_context", "text": "The user asked about openings."}}
+{"id": "compactor", "ok": true, "result": {"decision": "allow"}}
+{"id": "judge", "ok": true, "result": {"decision": "continue", "text": "Name the opening."}}
+{"id": "compactor", "ok": true, "result": {"decision": "replace_context", "text": "Summary: the user asked for an opening; you suggested e4."}}
+{"id": "judge", "ok": true, "result": {"decision": "add_context", "text": "Good."}}
+{"id": "gate", "ok": true, "result": {"decision": "allow"}}
+{"id": "compactor", "ok": true, "result": {"decision": "allow"}}
+{"id": "judge", "ok": true, "result": {"decision": "allow"}}

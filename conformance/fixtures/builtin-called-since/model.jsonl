@@ -1,0 +1,7 @@
+{"tool_calls": [{"tool": "board_move", "args": {"move": "e2e4"}}]}
+{"tool_calls": [{"tool": "board_observe", "args": {}}, {"tool": "board_legal_moves", "args": {}}, {"tool": "board_move", "args": {"move": "e2e4"}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "e2e4"}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "d2d4"}}]}
+{"tool_calls": [{"tool": "board_legal_moves", "args": {}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "d2d4"}}, {"tool": "board_move", "args": {"move": "g1f3"}}]}
+{"text": "Done."}

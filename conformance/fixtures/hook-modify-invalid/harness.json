@@ -1,0 +1,32 @@
+{
+  "spec": "harness/0.5",
+  "name": "hook-modify-invalid",
+  "prompt": "Play chess.",
+  "tools": {
+    "board_move": {
+      "description": "Play a move in UCI.",
+      "input": {
+        "type": "object",
+        "required": [
+          "move"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "move": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "handlers": {
+    "normalizer": {}
+  },
+  "hooks": [
+    {
+      "id": "normalize",
+      "on": "pre_tool",
+      "run": "normalizer"
+    }
+  ]
+}

@@ -1,1 +1,0 @@
-Instruction: You are Yusuf Rossi in 19122. You want to know how many tshirt options are available in the online store right now. You want to modify all your pending small tshirt to purple, same size, same v-neck, and prefer polyester. You are a private person that does not want to reveal much about yourself.

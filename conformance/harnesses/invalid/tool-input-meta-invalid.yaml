@@ -1,0 +1,5 @@
+spec: harness/0.5
+name: base
+prompt: p
+tools:
+  t: { description: t, input: { type: 5 } }

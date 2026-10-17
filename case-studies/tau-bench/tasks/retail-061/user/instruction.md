@@ -1,1 +1,0 @@
-Instruction: You are Chen Johnson from Houston TX, 77004. You want to change your wireless earbuds in order W5061109 to a blue colored one. Provide all details upfront and ask the agent to resolve as soon as possible. You want the price to be the same or lower.

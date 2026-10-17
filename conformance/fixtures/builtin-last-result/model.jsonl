@@ -1,0 +1,7 @@
+{"tool_calls": [{"tool": "submit", "args": {}}]}
+{"tool_calls": [{"tool": "tests_run", "args": {}}]}
+{"tool_calls": [{"tool": "submit", "args": {}}]}
+{"tool_calls": [{"tool": "tests_run", "args": {}}, {"tool": "submit", "args": {}}]}
+{"tool_calls": [{"tool": "submit", "args": {}}]}
+{"text": "Submitted."}
+{"text": "Still submitted."}

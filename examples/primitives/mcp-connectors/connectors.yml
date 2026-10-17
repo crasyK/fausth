@@ -1,6 +1,0 @@
-format: fausth-connectors/v0.1
-connectors:
-  - id: weather
-    kind: mcp
-    descriptor: connectors/mcp/weather.json
-    select: [get_forecast]

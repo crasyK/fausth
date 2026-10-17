@@ -1,0 +1,7 @@
+# a mapping key that is not a string
+spec: harness/0.5
+name: base
+prompt: p
+handlers: { h: {} }
+hooks:
+  - { id: x, on: stop, run: h, with: { 1: one } }

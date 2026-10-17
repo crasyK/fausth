@@ -1,2 +1,6 @@
-{"type":"tool","name":"agent.spawn","args":{"tools":["fs.read"]}}
-{"type":"stop"}
+{"tool_calls": [{"tool": "core_spawn", "args": {"harness": {"spec": "harness/0.5", "name": "helper", "prompt": "You are helper.", "tools": {"board_observe": {"description": "Look at the board first.", "input": {"type": "object", "properties": {}, "additionalProperties": false}}, "board_legal_moves": {"description": "List the legal moves.", "input": {"type": "object", "properties": {}, "additionalProperties": false}}}, "hooks": [{"id": "child-note", "on": "post_tool", "run": "core_context", "with": {"text": "child note"}}], "limits": {"max_steps": 4}}, "task": "List the legal moves."}}]}
+{"tool_calls": [{"tool": "board_legal_moves", "args": {}}]}
+{"tool_calls": [{"tool": "board_observe", "args": {}}]}
+{"tool_calls": [{"tool": "board_legal_moves", "args": {}}]}
+{"text": "e2e4, d2d4."}
+{"text": "The helper found e2e4 and d2d4."}

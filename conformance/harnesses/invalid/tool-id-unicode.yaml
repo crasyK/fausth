@@ -1,0 +1,5 @@
+spec: harness/0.5
+name: base
+prompt: p
+tools:
+  zug_é: { description: m, input: { type: object } }

@@ -1,0 +1,5 @@
+{"id": "echo", "ok": true, "result": {"n": 1}}
+{"id": "shout", "ok": true, "result": "HI"}
+{"id": "echo", "ok": true, "result": {"n": 2}}
+{"id": "echo", "ok": true, "result": {"n": 3}}
+{"id": "echo", "ok": true, "result": {"n": 4}}

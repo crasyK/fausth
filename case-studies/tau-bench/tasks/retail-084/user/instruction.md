@@ -1,1 +1,0 @@
-Instruction: You name is Chen Silva and your zip code is 46281. You are messy, flexible, outgoing. You received two tablets and you only need one. You want to return the less expensive one and refund to credit card. But if the agent asks for confirmation, you change your mind and return the more expensive one and refund to GC.

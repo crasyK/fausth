@@ -1,0 +1,4 @@
+{"tool_calls": [{"tool": "hint", "args": {}}]}
+{"tool_calls": [{"tool": "hint", "args": {}}, {"tool": "hint", "args": {}}, {"tool": "hint", "args": {}}]}
+{"tool_calls": [{"tool": "hint", "args": {}}]}
+{"text": "Solved."}

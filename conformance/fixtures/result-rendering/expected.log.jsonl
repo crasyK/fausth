@@ -1,0 +1,10 @@
+{"depth":0,"harness_hash":"2b6c87653ddda59a7370c3f40a8b4ebace52feb34d91158bf03bd4690328579b","seq":1,"type":"run_start"}
+{"seq":2,"text":"Report the record.","type":"system"}
+{"seq":3,"text":"Fetch it.","type":"user"}
+{"reasoning_opaque":{"data":"c2lnbmVk","provider":"example"},"seq":4,"step":1,"text":"","tool_calls":[{"args":{"id":1},"call_id":"c4-0","tool":"data_get"},{"args":{"id":2},"call_id":"c4-1","tool":"data_get"},{"args":{"id":3},"call_id":"c4-2","tool":"data_get"},{"args":{"id":4},"call_id":"c4-3","tool":"data_get"}],"type":"assistant"}
+{"call_id":"c4-0","ok":true,"result":{"big":18446744073709552000,"name":"Café 😀","neg_zero":0,"price":19.99,"qty":3,"ratio":0.1,"tiny":1e-7},"seq":5,"tool":"data_get","type":"tool_result"}
+{"call_id":"c4-1","ok":true,"result":null,"seq":6,"tool":"data_get","type":"tool_result"}
+{"call_id":"c4-2","ok":true,"result":["a",1,true],"seq":7,"tool":"data_get","type":"tool_result"}
+{"call_id":"c4-3","ok":true,"result":"plain text, \"quoted\",   kept","seq":8,"tool":"data_get","type":"tool_result"}
+{"seq":9,"step":2,"text":"Done: 19.99 €.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":10,"type":"run_end"}

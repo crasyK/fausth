@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.5.0 — 2026-10-17
+
+A rebuild on one small, normative spec: `docs/spec-v0.5.md` (drafted as v0.4), built along
+`docs/build-plan-v0.4.md`. Harness files declare `spec: harness/0.5`.
+
+### Spec
+- A harness wires tools, hook-only handlers and hooks; the log is the only state; every model request
+  is a function of the harness and the log (§0, §9). Seven events, seven decisions, five built-ins
+  (`core_called_since`, `core_last_result`, `core_count`, `core_deny`, `core_context`) that pass only on
+  results the model had seen (§4–§6). `core_spawn` runs a child harness the model writes, never with
+  more than its parent (§10). Interrupts and live reload at step boundaries (§11, §12.3).
+- Values in RFC 8785 canonical form, numbers as doubles (§1). Hook decisions reach the model in one
+  fixed wrapper (§9.2, §9.3). The provider-neutral request is fixed, so `expected.requests.jsonl`
+  tests exactly what a model sees (§9, §14).
+
+### Engines and hosts
+- TypeScript (`engines/ts`, about 900 lines) and Python (`engines/py`, about 1,150; its YAML 1.2 reader and
+  regex translation make the difference) engines, each with an OpenAI-compatible adapter. Conformance: 46 recorded fixtures, 114 harness examples, value, log and
+  adapter vectors; both engines reproduce them byte for byte, and so does the TS engine in a browser.
+- Hosts: `python -m fausth run <harness> --deployment <file>` (script, recorded and model bindings,
+  python-chess tools) and `hosts/web`, one HTML page with chess.js tools. The spec's §2 chess harness
+  played live on both (KIT gateway, OpenRouter).
+
+### Review fixes (before the release)
+- Limits are checked with `≥`; with `=`, a live reload that lowered a limit below what was used let the
+  run go on unbounded. A reload's `max_steps` applies at once.
+- `host_end` is reachable: a host ends the run by raising `HostEnd`; both hosts do so when the harness's
+  `timeout_ms` has passed, and a recording asks for it with `{end: true}`. A child's `host_end` ends the
+  whole run.
+- Malformed user messages and `reasoning_opaque` are infrastructure failures instead of crashes; a harness
+  without a canonical form is invalid for every caller; the command line reports unreadable files.
+- Seven fixtures for these cases, including a `pre_tool` hook that modifies a `core_spawn` call.
+
+### Retired
+- Spec v0.1–v0.3 and the v0.3 documents moved to `docs/archive/`. The v0.3 engines, fixtures, schemas,
+  scripts, examples, worlds and case studies are removed; they stay reachable through the
+  `v0.4.0-alpha` tag. No compatibility layer.
+
 ## 0.4.0-alpha — 2026-10-14 (audit release)
 
 Every finding of the 2026-10-12 audit fixed. Details: `AUDIT-STATUS.md`, `case-studies/CLAIMS-STATUS.md`,

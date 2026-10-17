@@ -1,0 +1,3 @@
+{"depth":0,"harness_hash":"6160d2a766f1244ed45c7dfc012c88e9eedb0a559a184746cb95dc8b949c062d","seq":1,"type":"run_start"}
+{"seq":2,"text":"Use echo.","type":"system"}
+{"reason":"stop","seq":3,"type":"run_end"}

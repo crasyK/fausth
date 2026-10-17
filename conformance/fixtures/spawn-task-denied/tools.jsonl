@@ -1,0 +1,2 @@
+{"id": "screen", "ok": true, "result": {"decision": "allow"}}
+{"id": "screen", "ok": true, "result": {"decision": "deny", "text": "No destructive tasks."}}

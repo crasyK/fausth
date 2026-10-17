@@ -1,0 +1,7 @@
+# !!float needs a '.' or an exponent (TypeScript yaml rejects !!float 1; both engines must)
+spec: harness/0.5
+name: base
+prompt: p
+handlers: { h: {} }
+hooks:
+  - { id: x, on: stop, run: h, with: { v: !!float 1 } }

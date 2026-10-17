@@ -1,1 +1,0 @@
-Instruction: You are Ethan Garcia, and you live in Denver, 80280. You want to change your user address and all possible order addresses to be 101 Highway, New York, 10001. Then you regret and want to change the user address back to the original address. You are a mysterious person and do not want to reveal much about yourself.

@@ -1,0 +1,18 @@
+# Odd but valid ids (spec 3.1 / 5.1).
+spec: harness/0.5
+name: ids
+prompt: ""
+tools:
+  "1": { description: one, input: { type: object } }
+  "-": { description: dash, input: { type: object } }
+  __proto__: { description: proto, input: { type: object } }
+  constructor: { description: ctor, input: { type: object } }
+  _: { description: underscore, input: { type: object } }
+  a234567890123456789012345678901234567890123456789012345678901234: { description: 64 chars, input: { type: object } }
+  CamelCase_and-dash: { description: mixed, input: { type: object } }
+handlers:
+  toString: {}
+hooks:
+  - { id: dotted.hook-id_1, on: pre_tool, match: ["1", __proto__], run: toString }
+  - { id: "1", on: post_tool, match: "-", run: core_count, with: { tool: constructor, max: 0 } }
+  - { id: ..., on: interrupt, match: [user, a-b_c], run: toString }

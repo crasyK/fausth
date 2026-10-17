@@ -1,0 +1,13 @@
+{
+  "spec": "harness/0.5",
+  "name": "result-rendering",
+  "prompt": "Report the record.",
+  "tools": {
+    "data_get": {
+      "description": "Fetch a record.",
+      "input": {
+        "type": "object"
+      }
+    }
+  }
+}

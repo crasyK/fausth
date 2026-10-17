@@ -1,0 +1,23 @@
+{
+  "spec": "harness/0.5",
+  "name": "invalid-arguments",
+  "prompt": "Answer from the notes.",
+  "tools": {
+    "notes_read": {
+      "description": "Read a note by key.",
+      "input": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z]+$"
+          }
+        }
+      }
+    }
+  }
+}

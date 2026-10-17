@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fausth in the browser</title>
+<style>
+  :root { --fg: #1d1f24; --muted: #5d6470; --bg: #fafaf8; --panel: #ffffff; --line: #d9dbe0; --ok: #1a7f37; --bad: #b42318; --accent: #2f5bd3; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e6e7ea; --muted: #a0a6b1; --bg: #16181c; --panel: #1f2228; --line: #343841; --ok: #4ac26b; --bad: #ff7b72; --accent: #7aa2ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  label { display: block; margin: 8px 0 2px; color: var(--muted); font-size: 13px; }
+  input, textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+  textarea { font: 12px/1.45 ui-monospace, monospace; min-height: 220px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 12px; }
+  button { margin-top: 12px; padding: 7px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  pre { margin: 12px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .hash { font-family: ui-monospace, monospace; color: var(--muted); }
+  .note { color: var(--muted); font-size: 13px; }
+  .scroll { max-height: 360px; overflow: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fausth in the browser</h1>
+  <p class="lead">The TypeScript engine of spec v0.5 in one page: it replays the conformance fixtures, and it plays a harness live.</p>
+
+  <section>
+    <h2>Conformance replay</h2>
+    <p class="note">Each fixture's recorded files run through the engine here; the log and the rendered requests must equal the expected files byte for byte. The Python engine reproduces the same files, so a match here is a match with Python.</p>
+    <button id="replay">Replay all fixtures</button>
+    <p id="replay-summary"></p>
+    <div class="scroll"><table><thead><tr><th>Fixture</th><th>Log</th><th>Requests</th><th>Log SHA-256</th><th>Requests SHA-256</th></tr></thead><tbody id="replay-rows"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Play</h2>
+    <p class="note">The harness below is <code>examples/chess/harness.yaml</code>, the spec's §2 example, the same file the Python host runs. Its tools run on chess.js. The endpoint must accept calls from a browser (OpenRouter does; the KIT gateway allows only its own origin). The key stays in this page's memory and is sent only to the endpoint.</p>
+    <label for="harness">Harness (YAML or JSON)</label>
+    <textarea id="harness" spellcheck="false"></textarea>
+    <div class="grid">
+      <div><label for="base">Endpoint (OpenAI-compatible)</label><input id="base" value="https://openrouter.ai/api/v1"></div>
+      <div><label for="model">Model</label><input id="model" value="nvidia/nemotron-3-super-120b-a12b:free"></div>
+      <div><label for="provider">Provider name (for reasoning_opaque)</label><input id="provider" value="openrouter"></div>
+      <div><label for="key">API key</label><input id="key" type="password" autocomplete="off"></div>
+      <div><label for="fen">Start position (FEN, empty for the start)</label><input id="fen"></div>
+      <div><label for="user">User message</label><input id="user" value="Play the best move for White."></div>
+    </div>
+    <button id="run">Run</button>
+    <p id="play-status"></p>
+    <pre id="board"></pre>
+    <pre id="play-log"></pre>
+    <p><a id="download" download="run.log.jsonl" hidden>Download the log (JSON Lines)</a></p>
+  </section>
+</main>
+<!--SCRIPT-->
+</body>
+</html>

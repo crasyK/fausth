@@ -1,1 +1,0 @@
-Instruction: You are Sofia Hernandez, and you live in Seattle, WA, 98193. You want to cancel the grill, but if the agent asks you to confirm, you regret and want to keep it. You then want to ask which two t-shirts you have ordered in another order, and what materials are they. Make everything sound very natural and make up reasons.
