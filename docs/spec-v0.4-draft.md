@@ -388,7 +388,8 @@ optional member is left out, never `null`. Every line ends with `\n`.
 2. Ask the host for the next user message; if the conversation has none left, end with `stop`.
    Run `user_prompt` hooks. If denied, go back to 2. Else log `user`.
 3. **Step.** If `steps_used = max_steps`, end with `limit`.
-   1. Deliver queued interrupts (§11).
+   1. Top-level run only: take a replacement harness (§12.3), then deliver queued interrupts
+      (§11).
    2. Run `pre_request` hooks.
    3. Render the request (§9) and call the model. `steps_used += 1`. Log `assistant`.
    4. For each tool call, **in order**:
@@ -548,8 +549,11 @@ later delivers an interrupt with `source: "subagent"` or `"job"`.
 The host may push `{source, text}` at any time. `source` matches the id pattern of §3.1 (it
 appears unescaped in the wrapper, §9.2); conventional values are `user`, `timer`, `subagent`,
 `job`, `world`. Interrupts are queued and delivered **only at
-step boundaries** (§8 step 3.1), in arrival order. Each passes the `interrupt` hooks
+step boundaries** (§8 step 3.1) of the top-level run, in arrival order: they are meant for the
+agent the host talks to, so while a child runs they wait. Each passes the `interrupt` hooks
 (`match` = sources); if not denied, it is logged with the current `step` and rendered (§9.3).
+Interrupts still queued when the run ends are dropped. An interrupt whose `source` or `text`
+isn't valid is an infrastructure failure.
 
 In replay, interrupts come from a recorded file with the step at which each arrived.
 
@@ -572,9 +576,13 @@ API errors, unreachable tools or handlers, failed hooks) are never scored as mod
 ### 12.3 Live reload
 
 A host MAY replace the harness during a run (for example after the agent edited its own file).
-The new harness takes effect at the next step boundary. The engine logs `harness_changed` with
-the new hash, re-assembles the system prompt (logged as a new `system` entry) and offers the new
-tool set from then on. Whether and how a harness edits itself is not part of this spec.
+The new harness takes effect at the next step boundary of the top-level run (§8 step 3.1,
+before interrupts are delivered, so the new `interrupt` hooks apply). The engine logs
+`harness_changed` with the new hash, runs the new harness's `session_start` hooks,
+re-assembles the system prompt (logged as a new `system` entry) and offers the new tool set,
+hooks and limits from then on; the counters of the run go on. A replacement that isn't a valid
+harness is an infrastructure failure. Whether and how a harness edits itself is not part of
+this spec.
 
 ---
 
@@ -599,7 +607,7 @@ A fixture directory contains:
 - `harness.json` (resolved)
 - `model.jsonl`: recorded assistant responses
 - `tools.jsonl`: recorded results for tools **and** handlers, by call order
-- optional `user.jsonl` and `interrupts.jsonl` (with `step`)
+- optional `user.jsonl`, `interrupts.jsonl` (with `step`) and `reloads.jsonl` (§12.3)
 - `expected.log.jsonl`: the log
 - `expected.requests.jsonl`: every rendered model request (§9)
 
@@ -617,6 +625,7 @@ itself**, i.e. exactly what a fine-tuned model would see.
 | | `{id, unreachable: true}` | the binding couldn't be reached |
 | `user.jsonl` | `{text}` | the next user message |
 | `interrupts.jsonl` | `{step, source, text}` | pushed while the run was at `step` (§8): queued once the current step reaches it |
+| `reloads.jsonl` | `{step, harness}` | a replacement harness, taken at the first top-level step boundary where the current step has reached `step` |
 
 The replay host answers from these files in order. A model `error`, an `unreachable` line, a
 tools line whose `id` isn't the id being called, and a missing line in `model.jsonl` or

@@ -29,6 +29,8 @@ class Host(Protocol):
     def interrupts(self, step: int) -> list[dict[str, str]]:
         """Interrupts queued for delivery at this step boundary, in arrival order (§11)."""
 
+    # Optional: harness(step) -> a replacement harness to take at this step boundary, or None (§12.3).
+
 
 LIMITS = ("max_steps", "max_tool_calls", "max_depth", "max_continues", "max_hook_text")
 DEFAULTS = {"max_steps": 1000, "max_tool_calls": 1000, "max_depth": 1, "max_continues": 3, "max_hook_text": 4000}
@@ -46,6 +48,7 @@ ALLOWED = {
 PUSH_BACK = {"pre_tool": "deny", "user_prompt": "deny", "interrupt": "deny", "stop": "continue", "post_tool": "add_context"}
 ENDS_CHAIN = ("deny", "continue", "replace_context")
 _INDEX = re.compile(r"(?:0|[1-9][0-9]*)\Z")
+_SOURCE = re.compile(r"[a-zA-Z0-9_-]{1,64}\Z")
 _NOWHERE = object()
 
 
@@ -58,9 +61,12 @@ class _Ended(Exception):
 def run(harness: dict[str, Any], host: Host) -> Log:
     """Run a validated harness to its end and return the log."""
     log = Log()
-    limits = {n: harness.get("limits", {}).get(n, DEFAULTS[n]) for n in LIMITS}
-    _Run(harness, host, log, TOP, limits, {"step": 0}, None, []).run(None)
+    _Run(harness, host, log, TOP, _top_limits(harness), {"step": 0}, None, []).run(None)
     return log
+
+
+def _top_limits(harness: dict[str, Any]) -> dict[str, int]:
+    return {n: harness.get("limits", {}).get(n, DEFAULTS[n]) for n in LIMITS}
 
 
 class _Run:
@@ -72,14 +78,17 @@ class _Run:
         self.steps_used = 0  # requests and tool calls of this run and its children (§8, §10)
         self.tool_calls_used = 0
         self.last_text = ""
+        self._compile()
+
+    def _compile(self) -> None:
         self.schemas: dict[str, Callable[[Any], bool]] = {}
-        for tid, t in harness.get("tools", {}).items():
+        for tid, t in self.harness.get("tools", {}).items():
             if tid == "core_spawn":
                 self.schemas["tools.core_spawn.input"] = compile_schema(SPAWN_INPUT)
             for k in ("input", "output"):
                 if k in t:
                     self.schemas[f"tools.{tid}.{k}"] = compile_schema(t[k])
-        for hid, h in harness.get("handlers", {}).items():
+        for hid, h in self.harness.get("handlers", {}).items():
             if "input" in h:
                 self.schemas[f"handlers.{hid}.input"] = compile_schema(h["input"])
 
@@ -106,10 +115,7 @@ class _Run:
         """Run to the end. A child's only user message is its task; the top level asks the host."""
         self.append("run_start", {"harness_hash": hash(self.harness), "depth": self.scope.depth})
         try:
-            contexts = self._chain("session_start", {})
-            system = self.harness["prompt"] + "".join(
-                "\n\n" + hook_wrapper("session_start", d["hook"]["id"], d["decision"], d["text"]) for d in contexts)
-            self.append("system", {"text": system})
+            self._start()
             pending = task
             while True:
                 text = pending if self.parent is not None else self.host.user()
@@ -127,11 +133,47 @@ class _Run:
         self.append("run_end", {"reason": reason})
         return reason
 
+    def _start(self) -> None:
+        """Run the `session_start` hooks and log the assembled system prompt (§9.1)."""
+        contexts = self._chain("session_start", {})
+        system = self.harness["prompt"] + "".join(
+            "\n\n" + hook_wrapper("session_start", d["hook"]["id"], d["decision"], d["text"]) for d in contexts)
+        self.append("system", {"text": system})
+
+    def _boundary(self) -> None:
+        """The top-level step boundary (§8 step 3.1): a replacement harness, then queued interrupts."""
+        take = getattr(self.host, "harness", None)
+        new = take(self.step) if take is not None else None
+        if new is not None:
+            try:
+                canonical(new)
+                valid = not harness_errors(new)
+            except ValueError:
+                valid = False
+            if not valid:
+                raise InfraFailure("the host's replacement harness is not valid")
+            self.harness = new
+            self.limits = _top_limits(new)
+            self._compile()
+            self.append("harness_changed", {"harness_hash": hash(new)})
+            self._start()
+        for interrupt in self.host.interrupts(self.step):
+            if not (isinstance(interrupt, dict) and isinstance(interrupt.get("source"), str)
+                    and _SOURCE.match(interrupt["source"]) and isinstance(interrupt.get("text"), str)
+                    and _is_json(interrupt["text"])):
+                raise InfraFailure("malformed interrupt")
+            source, text = interrupt["source"], interrupt["text"]
+            if any(d["decision"] == "deny" for d in self._chain("interrupt", {"interrupt": {"source": source, "text": text}})):
+                continue
+            self.append("interrupt", {"source": source, "text": text, "step": self.step})
+
     def _turn(self) -> None:
         continued = 0
         while True:
             if self.steps_used == self.limits["max_steps"]:
                 raise _Ended("limit")
+            if self.parent is None:
+                self._boundary()
             self._chain("pre_request", {})
             response = _check_response(self.host.model(render(self.harness, self.log.entries, self.scope)))
             self.counter["step"] += 1

@@ -22,7 +22,8 @@ def replay(directory: str | Path) -> tuple[str, str]:
     errors = harness_errors(harness)
     if errors:
         raise ValueError(f"{d}: invalid harness: {'; '.join(errors)}")
-    model, tools, user, pending = (_lines(d / n) for n in ("model.jsonl", "tools.jsonl", "user.jsonl", "interrupts.jsonl"))
+    model, tools, user, pending, reloads = (
+        _lines(d / n) for n in ("model.jsonl", "tools.jsonl", "user.jsonl", "interrupts.jsonl", "reloads.jsonl"))
     requests: list[str] = []
 
     class _Host:
@@ -47,7 +48,12 @@ def replay(directory: str | Path) -> tuple[str, str]:
         def interrupts(self, step: int) -> list[dict[str, str]]:
             due = [line for line in pending if line["step"] <= step]
             pending[:] = [line for line in pending if line["step"] > step]
-            return [{"source": line["source"], "text": line["text"]} for line in due]
+            return [{"source": line.get("source"), "text": line.get("text")} for line in due]
+
+        def harness(self, step: int) -> Any:
+            if not reloads or reloads[0]["step"] > step:
+                return None
+            return reloads.pop(0)["harness"]
 
     log = run(harness, _Host())
     return log.text(), "".join(requests)

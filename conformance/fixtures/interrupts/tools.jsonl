@@ -1,0 +1,3 @@
+{"id": "echo", "ok": true, "result": {"n": 2}}
+{"id": "triage", "ok": true, "result": {"decision": "add_context", "text": "Answer the opponent next."}}
+{"id": "echo", "ok": true, "result": {"n": 5}}

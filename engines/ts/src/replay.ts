@@ -22,6 +22,7 @@ export async function replay(dir: string): Promise<{ log: string; requests: stri
   const tools = lines(dir, "tools.jsonl");
   const user = lines(dir, "user.jsonl");
   const pending = lines(dir, "interrupts.jsonl");
+  const reloads = lines(dir, "reloads.jsonl");
   const requests: string[] = [];
 
   const host: Host = {
@@ -54,6 +55,12 @@ export async function replay(dir: string): Promise<{ log: string; requests: stri
         } else i += 1;
       }
       return due;
+    },
+    harness(step) {
+      const line = reloads[0];
+      if (line === undefined || (line.step as number) > step) return null;
+      reloads.shift();
+      return line.harness;
     },
   };
   const log = await run(harness as unknown as Harness, host);

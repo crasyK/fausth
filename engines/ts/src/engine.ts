@@ -23,6 +23,8 @@ export interface Host {
   call(id: string, input: Json): Promise<unknown>;
   /** Interrupts queued for delivery at this step boundary, in arrival order (§11). */
   interrupts(step: number): Interrupt[];
+  /** A replacement harness to take at this step boundary, or null (§12.3). */
+  harness?(step: number): unknown;
 }
 
 export class InfraFailure extends Error {}
@@ -62,35 +64,45 @@ class Ended extends Error {
 /** Run a validated harness to its end and return the log. */
 export async function run(harness: Harness, host: Host): Promise<Log> {
   const log = new Log();
-  const limits = Object.fromEntries(LIMITS.map((n) => [n, harness.limits?.[n] ?? DEFAULTS[n]])) as Effective;
-  await new Run(harness, host, log, TOP, limits, { step: 0 }, undefined, []).run(null);
+  await new Run(harness, host, log, TOP, topLimits(harness), { step: 0 }, undefined, []).run(null);
   return log;
 }
+
+function topLimits(harness: Harness): Effective {
+  return Object.fromEntries(LIMITS.map((n) => [n, harness.limits?.[n] ?? DEFAULTS[n]])) as Effective;
+}
+
+const SOURCE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 class Run {
   /** Requests and tool calls of this run and its children (§8, §10). */
   stepsUsed = 0;
   toolCallsUsed = 0;
   lastText = "";
-  readonly schemas = new Map<string, Check>();
+  schemas = new Map<string, Check>();
 
   constructor(
-    readonly harness: Harness,
+    public harness: Harness,
     readonly host: Host,
     readonly log: Log,
     readonly scope: Scope,
-    readonly limits: Effective,
+    public limits: Effective,
     /** The current step (§8), shared by every run in the log. */
     readonly counter: { step: number },
     readonly parent: Run | undefined,
     readonly inherited: Owned[],
   ) {
-    for (const [id, t] of Object.entries(harness.tools ?? {})) {
+    this.compile();
+  }
+
+  private compile(): void {
+    this.schemas = new Map();
+    for (const [id, t] of Object.entries(this.harness.tools ?? {})) {
       if (id === "core_spawn") this.schemas.set("tools.core_spawn.input", compileSchema(SPAWN_INPUT));
       if (t.input) this.schemas.set(`tools.${id}.input`, compileSchema(t.input));
       if (t.output) this.schemas.set(`tools.${id}.output`, compileSchema(t.output));
     }
-    for (const [id, h] of Object.entries(harness.handlers ?? {})) {
+    for (const [id, h] of Object.entries(this.harness.handlers ?? {})) {
       if (h.input) this.schemas.set(`handlers.${id}.input`, compileSchema(h.input));
     }
   }
@@ -112,10 +124,7 @@ class Run {
     this.append("run_start", { harness_hash: await hash(this.harness), depth: this.scope.depth });
     let reason: Reason;
     try {
-      const contexts = await this.chain("session_start", {});
-      const system = this.harness.prompt
-        + contexts.map((d) => `\n\n${hookWrapper("session_start", d.hook.id, d.decision, d.text!)}`).join("");
-      this.append("system", { text: system });
+      await this.start();
       let pending = task;
       for (;;) {
         const text = this.parent ? pending : await this.host.user();
@@ -135,10 +144,49 @@ class Run {
     return reason;
   }
 
+  /** Run the `session_start` hooks and log the assembled system prompt (§9.1). */
+  private async start(): Promise<void> {
+    const contexts = await this.chain("session_start", {});
+    const system = this.harness.prompt
+      + contexts.map((d) => `\n\n${hookWrapper("session_start", d.hook.id, d.decision, d.text!)}`).join("");
+    this.append("system", { text: system });
+  }
+
+  /** The top-level step boundary (§8 step 3.1): a replacement harness, then queued interrupts. */
+  private async boundary(): Promise<void> {
+    const next = this.host.harness?.(this.step);
+    if (next !== undefined && next !== null) {
+      let valid: boolean;
+      try {
+        canonical(next);
+        valid = harnessErrors(next).length === 0;
+      } catch {
+        valid = false;
+      }
+      if (!valid) throw new InfraFailure("the host's replacement harness is not valid");
+      this.harness = next as Harness;
+      this.limits = topLimits(this.harness);
+      this.compile();
+      this.append("harness_changed", { harness_hash: await hash(this.harness) });
+      await this.start();
+    }
+    for (const interrupt of this.host.interrupts(this.step)) {
+      if (!isObject(interrupt) || typeof interrupt.source !== "string" || !SOURCE.test(interrupt.source)
+        || typeof interrupt.text !== "string" || !isJson(interrupt.text)) {
+        throw new InfraFailure("malformed interrupt");
+      }
+      const { source, text } = interrupt;
+      const decisions = await this.chain("interrupt", { interrupt: { source, text } });
+      if (decisions.some((d) => d.decision === "deny")) continue;
+      this.append("interrupt", { source, text, step: this.step });
+    }
+  }
+
   private async turn(): Promise<void> {
     let continued = 0;
     for (;;) {
       if (this.stepsUsed === this.limits.max_steps) throw new Ended("limit");
+      if (!this.parent) await this.boundary();
       await this.chain("pre_request", {});
       const response = checkResponse(await this.host.model(render(this.harness, this.log.entries, this.scope)));
       this.counter.step += 1;

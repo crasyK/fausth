@@ -7,7 +7,7 @@ Both engines must reproduce every expected file here byte for byte.
 | `values.json` | §1 vectors: canonical form, hash, excerpt |
 | `harnesses/valid/`, `harnesses/invalid/` | §2–§3, §5.1, §6: harnesses both engines accept (with the expected canonical JSON in `*.expected`) or reject |
 | `log.json` | §7 log lines and the §5.3 view |
-| `fixtures/<name>/` | recorded runs: `harness.json`, `model.jsonl`, `tools.jsonl`, optional `user.jsonl` / `interrupts.jsonl`, and the expected `expected.log.jsonl` and `expected.requests.jsonl` |
+| `fixtures/<name>/` | recorded runs: `harness.json`, `model.jsonl`, `tools.jsonl`, optional `user.jsonl` / `interrupts.jsonl` / `reloads.jsonl`, and the expected `expected.log.jsonl` and `expected.requests.jsonl` |
 
 Replay a fixture and compare (`--write` rewrites the expected files):
 
