@@ -1,9 +1,9 @@
 // The harness file (spec §2, §3, §5.1, §6): reading it and checking it.
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parseDocument } from "yaml";
-import harnessSchema from "../../../schema/harness.v0.4.json" with { type: "json" };
+import harnessSchema from "../../../schema/harness.v0.5.json" with { type: "json" };
 import { compileSchema } from "./schema.js";
-import type { Json } from "./values.js";
+import { canonical, type Json } from "./values.js";
 
 export type Event =
   | "session_start" | "user_prompt" | "pre_request" | "pre_tool" | "post_tool" | "stop" | "interrupt";
@@ -83,6 +83,11 @@ const checkStructure = new Ajv2020({ strict: false, allErrors: true, validateFor
 
 /** What is wrong with a harness; empty if it is valid. */
 export function harnessErrors(value: unknown): string[] {
+  try {
+    canonical(value);
+  } catch (e) {
+    return [`no canonical form (§1): ${e instanceof Error ? e.message : String(e)}`];
+  }
   if (!checkStructure(value)) {
     return (checkStructure.errors ?? []).map((e) => `${e.instancePath || "/"}: ${e.message ?? "invalid"}`);
   }

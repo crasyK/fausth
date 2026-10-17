@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"baf79950c8e32d933949d73dc84a34060f78fcd2d703143b114335a2973e791d","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"29614c8acda2b83aa2bf0a10040aef9fc2919bee0f6eb6ac89b51393d47635ee","seq":1,"type":"run_start"}
 {"seq":2,"text":"Use echo.","type":"system"}
 {"seq":3,"text":"Go.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c4-0","tool":"echo"}],"type":"assistant"}

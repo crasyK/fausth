@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.4-draft",
+  "spec": "harness/0.5",
   "name": "infra-tool-mismatch",
   "prompt": "Use echo.",
   "tools": {

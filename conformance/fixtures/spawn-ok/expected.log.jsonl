@@ -1,10 +1,10 @@
-{"depth":0,"harness_hash":"cf8bebf6c15f6c14221ff19fee86372d49da54e98e7d0f2d873c974a28c1133e","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"bbd4a5f408cafba6558a069a389d4b55555f642f52d5c28c4b4d3dd1028dbf5f","seq":1,"type":"run_start"}
 {"decision":"add_context","event":"session_start","hook":"house-rules","seq":2,"text":"Be exact.","type":"hook"}
 {"seq":3,"text":"You coordinate helpers.\n\n<hook event=\"session_start\" id=\"house-rules\" decision=\"add_context\">Be exact.</hook>","type":"system"}
 {"decision":"add_context","event":"user_prompt","hook":"task-note","seq":4,"text":"from the parent","type":"hook"}
 {"seq":5,"text":"Ask a helper for the legal moves.","type":"user"}
-{"seq":6,"step":1,"text":"","tool_calls":[{"args":{"harness":{"hooks":[{"id":"child-note","on":"post_tool","run":"core_context","with":{"text":"child note"}}],"limits":{"max_steps":4},"name":"helper","prompt":"You are helper.","spec":"harness/0.4-draft","tools":{"board_legal_moves":{"description":"List the legal moves.","input":{"additionalProperties":false,"properties":{},"type":"object"}},"board_observe":{"description":"Look at the board first.","input":{"additionalProperties":false,"properties":{},"type":"object"}}}},"task":"List the legal moves."},"call_id":"c6-0","tool":"core_spawn"}],"type":"assistant"}
-{"depth":1,"harness_hash":"b0597717f483eb18c8a3030df4155c21ad76b9a6c275bf62a85117db13f2f30a","parent_call":"c6-0","seq":7,"type":"run_start"}
+{"seq":6,"step":1,"text":"","tool_calls":[{"args":{"harness":{"hooks":[{"id":"child-note","on":"post_tool","run":"core_context","with":{"text":"child note"}}],"limits":{"max_steps":4},"name":"helper","prompt":"You are helper.","spec":"harness/0.5","tools":{"board_legal_moves":{"description":"List the legal moves.","input":{"additionalProperties":false,"properties":{},"type":"object"}},"board_observe":{"description":"Look at the board first.","input":{"additionalProperties":false,"properties":{},"type":"object"}}}},"task":"List the legal moves."},"call_id":"c6-0","tool":"core_spawn"}],"type":"assistant"}
+{"depth":1,"harness_hash":"3a0223b4d08202f9e631a4e7d25365c3890df264c1e6b463ec3ec0874dfd5c7c","parent_call":"c6-0","seq":7,"type":"run_start"}
 {"decision":"add_context","depth":1,"event":"session_start","hook":"house-rules","parent_call":"c6-0","seq":8,"text":"Be exact.","type":"hook"}
 {"depth":1,"parent_call":"c6-0","seq":9,"text":"You are helper.\n\n<hook event=\"session_start\" id=\"house-rules\" decision=\"add_context\">Be exact.</hook>","type":"system"}
 {"decision":"add_context","depth":1,"event":"user_prompt","hook":"task-note","parent_call":"c6-0","seq":10,"text":"from the parent","type":"hook"}

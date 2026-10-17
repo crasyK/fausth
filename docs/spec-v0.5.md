@@ -1,15 +1,16 @@
-# Harness Spec v0.4 (draft)
+# Harness Spec v0.5
 
-**Status:** Draft, 2026-10-16. Not normative yet. Replaces spec v0.3, which is retired and kept
-only as a record of the journey. The decisions behind this draft are in
+**Status:** Normative, 2026-10-17. Release 0.5.0 implements it: the TypeScript and Python engines
+in this repository produce byte-identical logs and requests for every fixture in
+`conformance/`. Replaces spec v0.3, which is retired and kept only as a record of the journey
+(drafted as v0.4; the version follows the release). The decisions behind it are in
 [`primitives-inventory.md`](primitives-inventory.md) §6–§8.
-**Project name:** undecided. The draft uses the neutral `core_` prefix for built-ins and
-`spec: harness/0.4-draft`.
+**Project name:** undecided. Built-ins use the neutral `core_` prefix; harness files declare
+`spec: harness/0.5`.
 **Design target:** someone can write a conforming engine in a weekend. If a section makes that
 impossible, the section is wrong.
 
-Keywords MUST / SHOULD / MAY as in RFC 2119. "Draft choice" marks a decision made while writing
-this draft that has not been discussed yet.
+Keywords MUST / SHOULD / MAY as in RFC 2119.
 
 ---
 
@@ -59,14 +60,14 @@ duplicate keys are an error there too). The document MUST denote a JSON value: s
 only, finite numbers only, no tags outside the core schema. Authoring tools MAY support
 includes (e.g. a prompt in a separate file). What an engine runs is the **resolved harness**:
 one JSON document with includes inlined. `harness_hash` = `hash(resolved harness)`.
-[`schema/harness.v0.4.json`](../schema/harness.v0.4.json) is the JSON Schema of the file; the
+[`schema/harness.v0.5.json`](../schema/harness.v0.5.json) is the JSON Schema of the file; the
 cross-references (§3.1, §5.1, §6) are checked in addition.
 
 Top-level fields (closed set; anything else is a validation error):
 
 | Field | Required | Meaning |
 |---|---|---|
-| `spec` | yes | `harness/0.4-draft` |
+| `spec` | yes | `harness/0.5` |
 | `name` | yes | Non-empty string. Not shown to the model. |
 | `prompt` | yes | The system prompt text (§9.1). |
 | `tools` | no | Model-facing tools (§3). The model is offered exactly these. |
@@ -77,7 +78,7 @@ Top-level fields (closed set; anything else is a validation error):
 ### Example: the chess harness from `cb-ability-v1` (arm S1G1p, with the stricter rule)
 
 ```yaml
-spec: harness/0.4-draft
+spec: harness/0.5
 name: chess-legal-first
 prompt: |
   You are playing chess. Find the best move for the side to move and play it.
@@ -174,7 +175,7 @@ interpreter.
 
 | Event | Fires | `match` | Decisions allowed (§5.4) |
 |---|---|---|---|
-| `session_start` | once, before the first request | — | `add_context` |
+| `session_start` | once per run, before its first request, and again after a reload (§12.3) | — | `add_context` |
 | `user_prompt` | for every user message (including the first) | — | `deny`, `add_context` |
 | `pre_request` | before every model request | — | `replace_context`, `add_context` |
 | `pre_tool` | before each tool call executes | tool ids | `deny`, `modify`, `add_context` |
@@ -363,8 +364,10 @@ JSON Lines, one canonical object per line, `seq` from 1. Entry types:
 | `run_end` | `reason`: `stop` \| `limit` \| `infra_failure` \| `host_end` |
 
 **Reasoning** (the model's thinking tokens) is always logged when the provider returns it:
-plain text as `reasoning`, an encrypted or signed blob as `reasoning_opaque: {provider, data}`.
-The log is the training data, and reasoning is its most valuable part.
+plain text as `reasoning`, an encrypted or signed blob as `reasoning_opaque: {provider, data}`
+(`provider` a string, `data` any JSON value). The log is the training data, and reasoning is its
+most valuable part. A response that breaks this shape (§14 gives it) is an infrastructure
+failure.
 
 `call_id` is `c<seq of the assistant entry>-<index>`, with `index` counting the response's tool
 calls from 0. It is assigned by the engine, not by the provider, so logs stay identical across
@@ -386,14 +389,15 @@ optional member is left out, never `null`. Every line ends with `\n`.
 
 1. Log `run_start`. Run `session_start` hooks. Assemble and log `system` (§9.1).
 2. Ask the host for the next user message; if the conversation has none left, end with `stop`.
-   Run `user_prompt` hooks. If denied, go back to 2. Else log `user`.
-3. **Step.** If `steps_used = max_steps`, end with `limit`.
+   A message that isn't a string is an infrastructure failure. Run `user_prompt` hooks. If
+   denied, go back to 2. Else log `user`.
+3. **Step.** If `steps_used ≥ max_steps`, end with `limit`.
    1. Top-level run only: take a replacement harness (§12.3), then deliver queued interrupts
       (§11).
    2. Run `pre_request` hooks.
    3. Render the request (§9) and call the model. `steps_used += 1`. Log `assistant`.
    4. For each tool call, **in order**:
-      - If `tool_calls_used = max_tool_calls`, end with `limit`.
+      - If `tool_calls_used ≥ max_tool_calls`, end with `limit`.
       - `tool_calls_used += 1`.
       - Unknown tool → `tool_result` with `ok: false`, `error: "invalid arguments: unknown
         tool"`; arguments that fail the input schema → `error: "invalid arguments: does not
@@ -408,7 +412,9 @@ optional member is left out, never `null`. Every line ends with `\n`.
       message is admitted.
 
 A deny never ends the run. Only limits, infrastructure failures, the host, or the end of the
-conversation do. A one-shot host is a conversation with one user message.
+conversation do. A one-shot host is a conversation with one user message. The host may end the
+run whenever it is asked for something (a user message, a model response, a binding's answer):
+the run ends with `host_end` (§12.2).
 
 **The current step** is the number of model requests made so far, counting every run in the log
 (child runs included, §10): `0` before the first request, `n` for everything that follows the
@@ -435,9 +441,11 @@ changing any text. Its exact shape, which `expected.requests.jsonl` records (§1
 
 `tools` holds every entry of the harness's `tools` in sorted id order (the order of canonical
 JSON, §1: `harness_hash` doesn't see declaration order, so the request mustn't either); `output`
-schemas are not shown. An assistant message repeats its log entry's `text` and `tool_calls`. Reasoning is **not** part of the neutral request. Whether logged reasoning is
-sent back to the model (some providers require it within a tool loop) is decided by the provider
-adapter, following that provider's rules. Other provider extras (caching) are out of scope.
+schemas are not shown. An assistant message repeats its log entry's `text` and `tool_calls`.
+
+Reasoning is **not** part of the neutral request. Whether logged reasoning is sent back to the
+model (some providers require it within a tool loop) is decided by the provider adapter,
+following that provider's rules. Other provider extras (caching) are out of scope.
 
 ### 9.1 System prompt
 
@@ -536,8 +544,8 @@ The child runs synchronously with the parent's deployment bindings. Each of its 
 and tool calls counts against the child and every run above it. The `core_spawn` result is
 `{"text": <the text of the child's last assistant entry, "" if none>, "steps": n, "tool_calls":
 n}`, with the requests and calls counted against the child. A child that ends with `stop` or
-`limit` returns this result; a child that ends with `infra_failure` ends the whole run with
-`infra_failure`.
+`limit` returns this result; a child that ends with `infra_failure` or `host_end` ends the whole
+run the same way.
 
 Background work (an asynchronous child, a long job) is a host tool that returns immediately and
 later delivers an interrupt with `source: "subagent"` or `"job"`.
@@ -565,13 +573,15 @@ In replay, interrupts come from a recorded file with the step at which each arri
 
 `limits`: `max_steps` (model requests, default 1000), `max_tool_calls` (default 1000),
 `max_depth` (default 1), `max_continues` (default 3; `stop` hooks per turn, §8),
-`max_hook_text` (default 4000), `timeout_ms` (host wall clock; never
-part of replay). All limits are non-negative integers.
+`max_hook_text` (default 4000), `timeout_ms` (host wall clock; never part of replay: a host
+that enforces it ends the run with `host_end`). All limits are non-negative integers.
 
 ### 12.2 Run end
 
 `run_end.reason`: `stop`, `limit`, `infra_failure`, `host_end`. Infrastructure failures (model
 API errors, unreachable tools or handlers, failed hooks) are never scored as model behaviour.
+`limit` is the engine's own count and replays exactly; `host_end` is the host's decision (its
+user left, `timeout_ms` passed) and happens in replay only where a recording says so (§14).
 
 ### 12.3 Live reload
 
@@ -580,8 +590,9 @@ The new harness takes effect at the next step boundary of the top-level run (§8
 before interrupts are delivered, so the new `interrupt` hooks apply). The engine logs
 `harness_changed` with the new hash, runs the new harness's `session_start` hooks,
 re-assembles the system prompt (logged as a new `system` entry) and offers the new tool set,
-hooks and limits from then on; the counters of the run go on. A replacement that isn't a valid
-harness is an infrastructure failure. Whether and how a harness edits itself is not part of
+hooks and limits from then on; the counters of the run go on, so a run that has already used up
+the new `max_steps` ends with `limit` right there. A replacement that isn't a valid harness is
+an infrastructure failure. Whether and how a harness edits itself is not part of
 this spec.
 
 ---
@@ -624,6 +635,7 @@ itself**, i.e. exactly what a fine-tuned model would see.
 | `tools.jsonl` | `{id, ok: true, result}` / `{id, ok: false, error}` | the next answer of a tool or handler binding |
 | | `{id, unreachable: true}` | the binding couldn't be reached |
 | `user.jsonl` | `{text}` | the next user message |
+| `user.jsonl`, `model.jsonl` | `{end: true}` | the host ends the run here (`host_end`) |
 | `interrupts.jsonl` | `{step, source, text}` | pushed while the run was at `step` (§8): queued once the current step reaches it |
 | `reloads.jsonl` | `{step, harness}` | a replacement harness, taken at the first top-level step boundary where the current step has reached `step` |
 
@@ -677,12 +689,17 @@ texts are fixed (§8). Every hook decision is logged, `allow` included (§7). Th
 failure texts stay as drafted (§6); the `core_spawn` default description, input schema and
 narrowing denials are fixed in §10.
 
-**Still open:**
-1. **Images and other non-text results:** planned for v0.4.1, after the first host runs.
-   Needs a fixed adapter rule for providers that don't accept images in tool results.
+**Resolved in review (release 0.5.0):** limits are checked with `≥`, and a reload's limits apply
+at once (§8, §12.3); the host ends a run with `host_end`, which a recording can ask for, and
+`timeout_ms` is enforced that way (§8, §12, §14); a child's `host_end` ends the whole run (§10);
+malformed user messages and `reasoning_opaque` are infrastructure failures (§7, §8).
 
-**Next: the first hosts.** A single HTML page running the TS engine (the chess harness with
-`chess.js`, a direct model API call, the key pasted in by the user, fixtures replayable in the
-page), and the Python CLI running the same file with `python-chess`. First check: which model
-endpoint allows calls from a browser (KIT gateway unknown; Anthropic has a direct-browser-access
-header; OpenRouter-style endpoints usually allow it).
+**The first hosts (release 0.5.0):** a Python command line running the chess harness with
+`python-chess`, and a single HTML page running the TS engine with `chess.js`, the key pasted in,
+the fixtures replayable in the page. Both give the model the same tokens for the same game. The
+KIT gateway's CORS policy admits only its own origin, so the page talks to endpoints such as
+OpenRouter that allow browser calls.
+
+**Still open:**
+1. **Images and other non-text results:** planned for a later version, after more host runs.
+   Needs a fixed adapter rule for providers that don't accept images in tool results.

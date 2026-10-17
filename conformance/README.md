@@ -1,4 +1,4 @@
-# Conformance (spec v0.4 §14)
+# Conformance (spec v0.5 §14)
 
 Both engines must reproduce every expected file here byte for byte.
 

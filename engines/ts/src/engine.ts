@@ -14,7 +14,8 @@ export interface ModelResponse {
 export type Answer = { ok: true; result: Json } | { ok: false; error: string };
 export interface Interrupt { source: string; text: string }
 
-/** What the engine needs from a host (§13). Methods throw InfraFailure when they can't answer. */
+/** What the engine needs from a host (§13). Methods throw InfraFailure when they can't answer, and
+ * HostEnd when the host ends the run (§8, §12.2). */
 export interface Host {
   /** The next user message, or null when the conversation is over. */
   user(): Promise<string | null>;
@@ -28,6 +29,8 @@ export interface Host {
 }
 
 export class InfraFailure extends Error {}
+/** Thrown by a host to end the run (its user left, `timeout_ms` passed): `host_end` (§12.2). */
+export class HostEnd extends Error {}
 
 type LimitName = "max_steps" | "max_tool_calls" | "max_depth" | "max_continues" | "max_hook_text";
 type Effective = Record<LimitName, number>;
@@ -53,7 +56,7 @@ interface Decision { hook: Hook; decision: string; text?: string; args?: Json }
 interface Members { call?: { tool: string; args: Json }; result?: Answer; message?: string; interrupt?: Interrupt; continued?: number }
 /** A hook with the run whose harness declared it (inherited hooks keep their harness, §10). */
 interface Owned { hook: Hook; owner: Run }
-type Reason = "stop" | "limit" | "infra_failure";
+type Reason = "stop" | "limit" | "infra_failure" | "host_end";
 
 class Ended extends Error {
   constructor(readonly reason: "stop" | "limit") {
@@ -130,6 +133,7 @@ class Run {
         const text = this.parent ? pending : await this.host.user();
         pending = null;
         if (text === null) throw new Ended("stop");
+        if (typeof text !== "string" || !isJson(text)) throw new InfraFailure("malformed user message");
         const decisions = await this.chain("user_prompt", { message: text });
         if (decisions.some((d) => d.decision === "deny")) continue;
         this.append("user", { text });
@@ -138,6 +142,7 @@ class Run {
     } catch (e) {
       if (e instanceof Ended) reason = e.reason;
       else if (e instanceof InfraFailure) reason = "infra_failure";
+      else if (e instanceof HostEnd) reason = "host_end";
       else throw e;
     }
     this.append("run_end", { reason });
@@ -156,19 +161,13 @@ class Run {
   private async boundary(): Promise<void> {
     const next = this.host.harness?.(this.step);
     if (next !== undefined && next !== null) {
-      let valid: boolean;
-      try {
-        canonical(next);
-        valid = harnessErrors(next).length === 0;
-      } catch {
-        valid = false;
-      }
-      if (!valid) throw new InfraFailure("the host's replacement harness is not valid");
+      if (harnessErrors(next).length > 0) throw new InfraFailure("the host's replacement harness is not valid");
       this.harness = next as Harness;
       this.limits = topLimits(this.harness);
       this.compile();
       this.append("harness_changed", { harness_hash: await hash(this.harness) });
       await this.start();
+      if (this.stepsUsed >= this.limits.max_steps) throw new Ended("limit");
     }
     for (const interrupt of this.host.interrupts(this.step)) {
       if (!isObject(interrupt) || typeof interrupt.source !== "string" || !SOURCE.test(interrupt.source)
@@ -185,7 +184,7 @@ class Run {
   private async turn(): Promise<void> {
     let continued = 0;
     for (;;) {
-      if (this.stepsUsed === this.limits.max_steps) throw new Ended("limit");
+      if (this.stepsUsed >= this.limits.max_steps) throw new Ended("limit");
       if (!this.parent) await this.boundary();
       await this.chain("pre_request", {});
       const response = checkResponse(await this.host.model(render(this.harness, this.log.entries, this.scope)));
@@ -215,7 +214,7 @@ class Run {
   }
 
   private async toolCall(call: ToolCall): Promise<void> {
-    if (this.toolCallsUsed === this.limits.max_tool_calls) throw new Ended("limit");
+    if (this.toolCallsUsed >= this.limits.max_tool_calls) throw new Ended("limit");
     for (let r: Run | undefined = this; r; r = r.parent) r.toolCallsUsed += 1;
     if (!Object.hasOwn(this.harness.tools ?? {}, call.tool)) {
       this.result(call, { ok: false, error: "invalid arguments: unknown tool" });
@@ -252,7 +251,9 @@ class Run {
     const limits = Object.fromEntries(LIMITS.map((n) => [n, child.limits?.[n] ?? this.allowance(n)])) as Effective;
     const scope = { depth: this.scope.depth + 1, parent_call: call.call_id };
     const run = new Run(child, this.host, this.log, scope, limits, this.counter, this, this.hooks);
-    if ((await run.run(args.task)) === "infra_failure") throw new InfraFailure("the child run failed");
+    const reason = await run.run(args.task);
+    if (reason === "infra_failure") throw new InfraFailure("the child run failed");
+    if (reason === "host_end") throw new HostEnd("the host ended the run in a child");
     return { ok: true, result: { text: run.lastText, steps: run.stepsUsed, tool_calls: run.toolCallsUsed } };
   }
 
@@ -265,14 +266,7 @@ class Run {
 
   /** The first failed narrowing check's text (§10), or null if the child may run. */
   private narrowing(child: Harness): string | null {
-    let valid: boolean;
-    try {
-      canonical(child);
-      valid = harnessErrors(child).length === 0;
-    } catch {
-      valid = false;
-    }
-    if (!valid) return "child harness is not valid";
+    if (harnessErrors(child).length > 0) return "child harness is not valid";
     const tools = this.harness.tools ?? {};
     const childTools = child.tools ?? {};
     for (const id of Object.keys(childTools).sort()) {
@@ -418,6 +412,8 @@ function checkResponse(v: unknown): ModelResponse {
   const ok = isObject(v)
     && (v.text === undefined || typeof v.text === "string")
     && (v.reasoning === undefined || typeof v.reasoning === "string")
+    && (v.reasoning_opaque === undefined || (isObject(v.reasoning_opaque) && Object.keys(v.reasoning_opaque).length === 2
+      && typeof v.reasoning_opaque.provider === "string" && "data" in v.reasoning_opaque))
     && (v.tool_calls === undefined || (Array.isArray(v.tool_calls)
       && v.tool_calls.every((c) => isObject(c) && typeof c.tool === "string" && "args" in c)));
   if (!ok || !isJson(v)) throw new InfraFailure("malformed model response");

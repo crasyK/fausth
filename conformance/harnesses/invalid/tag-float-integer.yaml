@@ -1,5 +1,5 @@
 # !!float needs a '.' or an exponent (TypeScript yaml rejects !!float 1; both engines must)
-spec: harness/0.4-draft
+spec: harness/0.5
 name: base
 prompt: p
 handlers: { h: {} }

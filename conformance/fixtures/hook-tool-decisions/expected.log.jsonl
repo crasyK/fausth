@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"b379f41befe10ef6df9dfa1c768570df1ebfcc74ddebcb46448e6cb43707925a","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"093ae9d40a5b3f6b64db8031a5332770469f63b15a1fb452abc03b71dce9d74f","seq":1,"type":"run_start"}
 {"seq":2,"text":"Play chess.","type":"system"}
 {"seq":3,"text":"Open.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{"move":"E2E4"},"call_id":"c4-0","tool":"board_move"},{"args":{"move":"e7e5"},"call_id":"c4-1","tool":"board_move"}],"type":"assistant"}

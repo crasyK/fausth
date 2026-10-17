@@ -1,5 +1,5 @@
 # $ is the end of input, not the end of a line (spec 3.2)
-spec: harness/0.4-draft
+spec: harness/0.5
 name: base
 prompt: p
 tools:

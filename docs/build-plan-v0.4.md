@@ -4,7 +4,8 @@
 session executes.
 
 **Read first, in this order:**
-1. [`spec-v0.4-draft.md`](spec-v0.4-draft.md): what to build. This is the source of truth.
+1. [`spec-v0.5.md`](spec-v0.5.md) (drafted as `spec-v0.4-draft.md`): what to build. This is the
+   source of truth.
 2. [`primitives-inventory.md`](primitives-inventory.md) §6–§8: why. Read it only when a spec
    sentence seems odd.
 
@@ -44,13 +45,13 @@ Steps 1–9 are pure engine work with no network. Steps 10–12 need a model end
 
 ## Not in this build
 
-Images (v0.4.1). Compaction, skills, memory and self-refinement exist only as recipes
+Images (a later version). Compaction, skills, memory and self-refinement exist only as recipes
 (Appendix A), with no built-ins. Interop with Claude Code / Codex / dsh. The project's rename.
 
-## Still open (decide while building, not before)
+## Decided while building (2026-10-17)
 
-- The exact wording of the built-in failure texts and the `core_spawn` denials (spec Appendix B).
-  Decide them in step 5 / step 7 and write them into the spec.
-- **Version numbering:** the `v0.4.0-alpha` release already exists and implements spec v0.3.
-  Recommendation: the release that implements this spec is **0.5.0**, and the spec file is
-  renamed to `spec-v0.5.md` when it becomes normative, so spec and release numbers match.
+- The built-in failure texts stay as drafted (spec §6); the `core_spawn` description, schema and
+  denials are in spec §10.
+- **Version numbering:** the release that implements this spec is **0.5.0**; the spec is
+  `spec-v0.5.md` and harness files declare `spec: harness/0.5`, so spec and release numbers
+  match. (The `v0.4.0-alpha` release implements spec v0.3.)

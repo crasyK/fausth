@@ -15,8 +15,13 @@ class InfraFailure(Exception):
     pass
 
 
+class HostEnd(Exception):
+    """Raised by a host to end the run (its user left, `timeout_ms` passed): `host_end` (§12.2)."""
+
+
 class Host(Protocol):
-    """What the engine needs from a host (§13). Methods raise InfraFailure when they can't answer."""
+    """What the engine needs from a host (§13). Methods raise InfraFailure when they can't answer, and
+    HostEnd when the host ends the run (§8, §12.2)."""
 
     def user(self) -> str | None:
         """The next user message, or None when the conversation is over."""
@@ -122,6 +127,8 @@ class _Run:
                 pending = None
                 if text is None:
                     raise _Ended("stop")
+                if not isinstance(text, str) or not _is_json(text):
+                    raise InfraFailure("malformed user message")
                 if any(d["decision"] == "deny" for d in self._chain("user_prompt", {"message": text})):
                     continue
                 self.append("user", {"text": text})
@@ -130,6 +137,8 @@ class _Run:
             reason = e.reason
         except InfraFailure:
             reason = "infra_failure"
+        except HostEnd:
+            reason = "host_end"
         self.append("run_end", {"reason": reason})
         return reason
 
@@ -145,18 +154,15 @@ class _Run:
         take = getattr(self.host, "harness", None)
         new = take(self.step) if take is not None else None
         if new is not None:
-            try:
-                canonical(new)
-                valid = not harness_errors(new)
-            except ValueError:
-                valid = False
-            if not valid:
+            if harness_errors(new):
                 raise InfraFailure("the host's replacement harness is not valid")
             self.harness = new
             self.limits = _top_limits(new)
             self._compile()
             self.append("harness_changed", {"harness_hash": hash(new)})
             self._start()
+            if self.steps_used >= self.limits["max_steps"]:
+                raise _Ended("limit")
         for interrupt in self.host.interrupts(self.step):
             if not (isinstance(interrupt, dict) and isinstance(interrupt.get("source"), str)
                     and _SOURCE.match(interrupt["source"]) and isinstance(interrupt.get("text"), str)
@@ -170,7 +176,7 @@ class _Run:
     def _turn(self) -> None:
         continued = 0
         while True:
-            if self.steps_used == self.limits["max_steps"]:
+            if self.steps_used >= self.limits["max_steps"]:
                 raise _Ended("limit")
             if self.parent is None:
                 self._boundary()
@@ -198,7 +204,7 @@ class _Run:
             return
 
     def _tool_call(self, call: dict[str, Any]) -> None:
-        if self.tool_calls_used == self.limits["max_tool_calls"]:
+        if self.tool_calls_used >= self.limits["max_tool_calls"]:
             raise _Ended("limit")
         for r in self._ancestry():
             r.tool_calls_used += 1
@@ -238,8 +244,11 @@ class _Run:
         limits = {n: child.get("limits", {}).get(n, self._allowance(n)) for n in LIMITS}
         scope = Scope(self.scope.depth + 1, call["call_id"])
         child_run = _Run(child, self.host, self.log, scope, limits, self.counter, self, self.hooks)
-        if child_run.run(args["task"]) == "infra_failure":
+        reason = child_run.run(args["task"])
+        if reason == "infra_failure":
             raise InfraFailure("the child run failed")
+        if reason == "host_end":
+            raise HostEnd("the host ended the run in a child")
         return {"ok": True, "result": {"text": child_run.last_text, "steps": child_run.steps_used,
                                        "tool_calls": child_run.tool_calls_used}}
 
@@ -253,12 +262,7 @@ class _Run:
 
     def _narrowing(self, child: dict[str, Any]) -> str | None:
         """The first failed narrowing check's text (§10), or None if the child may run."""
-        try:
-            canonical(child)
-            valid = not harness_errors(child)
-        except ValueError:
-            valid = False
-        if not valid:
+        if harness_errors(child):
             return "child harness is not valid"
         tools, child_tools = self.harness.get("tools", {}), child.get("tools", {})
         for tid in sorted(child_tools):
@@ -428,6 +432,9 @@ def _check_response(v: Any) -> dict[str, Any]:
     ok = (isinstance(v, dict)
           and isinstance(v.get("text", ""), str)
           and isinstance(v.get("reasoning", ""), str)
+          and ("reasoning_opaque" not in v or (isinstance(v["reasoning_opaque"], dict) and len(v["reasoning_opaque"]) == 2
+                                               and isinstance(v["reasoning_opaque"].get("provider"), str)
+                                               and "data" in v["reasoning_opaque"]))
           and isinstance(v.get("tool_calls", []), list)
           and all(isinstance(c, dict) and isinstance(c.get("tool"), str) and "args" in c for c in v.get("tool_calls", [])))
     if not ok or not _is_json(v):

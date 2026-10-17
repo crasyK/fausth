@@ -17,7 +17,7 @@ from yaml.resolver import BaseResolver
 from yaml.scanner import Scanner
 
 from .schema import compile_schema, structure_validator
-from .values import number
+from .values import canonical, number
 
 BUILT_INS = frozenset({"core_called_since", "core_last_result", "core_count", "core_deny", "core_context"})
 
@@ -178,11 +178,15 @@ def read_harness(text: str) -> Any:
         loader.dispose()
 
 
-_STRUCTURE = structure_validator(json.loads((files("fausth") / "harness.v0.4.json").read_text("utf-8")))
+_STRUCTURE = structure_validator(json.loads((files("fausth") / "harness.v0.5.json").read_text("utf-8")))
 
 
 def harness_errors(value: Any) -> list[str]:
     """What is wrong with a harness; empty if it is valid."""
+    try:
+        canonical(value)
+    except ValueError as e:
+        return [f"no canonical form (§1): {e}"]
     problems = [f"{e.json_path}: {e.message}" for e in _STRUCTURE.iter_errors(value)]
     if problems:
         return problems

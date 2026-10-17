@@ -1,10 +1,10 @@
-{"depth":0,"harness_hash":"5d4e56907c32e502086a9d0a2baf423440882f72aad6be57f9d846b83274c0da","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"0b671b89ed803f3243efea032a925b737758c4c4239e2458568bd9b0c2c25262","seq":1,"type":"run_start"}
 {"decision":"add_context","event":"session_start","hook":"v1-rules","seq":2,"text":"v1 rules","type":"hook"}
 {"seq":3,"text":"You are v1.\n\n<hook event=\"session_start\" id=\"v1-rules\" decision=\"add_context\">v1 rules</hook>","type":"system"}
 {"seq":4,"text":"Go.","type":"user"}
 {"seq":5,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c5-0","tool":"echo"}],"type":"assistant"}
 {"call_id":"c5-0","ok":true,"result":{"n":1},"seq":6,"tool":"echo","type":"tool_result"}
-{"harness_hash":"36b75af8adec03bd59e9791c0c3c2aad55e45e20e3e0341272e6bfbc1719d910","seq":7,"type":"harness_changed"}
+{"harness_hash":"1721b363abce0b2835a9b30d369b1cf2181743fd6f9b75d39176d470c6e21572","seq":7,"type":"harness_changed"}
 {"decision":"add_context","event":"session_start","hook":"v2-rules","seq":8,"text":"v2 rules","type":"hook"}
 {"seq":9,"text":"You are v2.\n\n<hook event=\"session_start\" id=\"v2-rules\" decision=\"add_context\">v2 rules</hook>","type":"system"}
 {"decision":"add_context","event":"interrupt","hook":"v2-heard","seq":10,"text":"v2 heard it","type":"hook"}

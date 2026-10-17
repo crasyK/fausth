@@ -1,1 +1,1 @@
-{"handlers":{"h":{}},"hooks":[{"id":"x","on":"stop","run":"h","with":{"folded":"e f g\n","key":"plain value","quoted":"h i"}}],"name":"a b","prompt":"a b\ncd\n","spec":"harness/0.4-draft"}
+{"handlers":{"h":{}},"hooks":[{"id":"x","on":"stop","run":"h","with":{"folded":"e f g\n","key":"plain value","quoted":"h i"}}],"name":"a b","prompt":"a b\ncd\n","spec":"harness/0.5"}

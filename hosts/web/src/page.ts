@@ -1,7 +1,7 @@
 // The browser host (build plan step 12): the TypeScript engine in one HTML page. It replays the
 // conformance fixtures, and it plays a harness live with chess.js tools and an OpenAI-compatible
 // endpoint that allows browser calls. The API key stays in this page's memory.
-import { InfraFailure, run, type Answer, type Host } from "../../../engines/ts/src/engine.js";
+import { HostEnd, InfraFailure, run, type Answer, type Host } from "../../../engines/ts/src/engine.js";
 import { harnessErrors, readHarness, type Harness } from "../../../engines/ts/src/harness.js";
 import type { Entry } from "../../../engines/ts/src/log.js";
 import { ChatModel } from "../../../engines/ts/src/openai.js";
@@ -99,11 +99,22 @@ async function play(): Promise<void> {
   const messages = [$<HTMLInputElement>("user").value];
   let failure = "";
   let requests = 0;
+  // The host's wall clock (§12.1): past the harness's timeout_ms the host ends the run.
+  const timeout = harness.limits?.timeout_ms;
+  const deadline = timeout === undefined ? Infinity : Date.now() + timeout;
+  const clock = () => {
+    if (Date.now() >= deadline) {
+      failure = "timeout_ms has passed";
+      throw new HostEnd(failure);
+    }
+  };
   const host: Host = {
     async user() {
+      clock();
       return messages.shift() ?? null;
     },
     async model(request) {
+      clock();
       requests += 1;
       show(`request ${requests}: waiting for the model…`);
       try {
@@ -114,6 +125,7 @@ async function play(): Promise<void> {
       }
     },
     async call(id, input) {
+      clock();
       const binding = bindings[id];
       if (!binding) throw new InfraFailure(`${id} is not bound`);
       const answer = await binding(input);

@@ -1,0 +1,3 @@
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}

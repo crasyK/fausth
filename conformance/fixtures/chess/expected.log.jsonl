@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"51701197545d81e5e957f5c84417d1523d591cd39c9e224bc81ec3baf720d030","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"d020c92ba98f2d84f5cab71b9eb571562f9fb93389fb941a51bbf595b5a649f1","seq":1,"type":"run_start"}
 {"seq":2,"text":"You are playing chess. Find the best move for the side to move and play it.\n","type":"system"}
 {"seq":3,"text":"Play the best move for White.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{},"call_id":"c4-0","tool":"board_observe"}],"type":"assistant"}

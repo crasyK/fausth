@@ -1,5 +1,5 @@
 # !!int on something that is not an integer
-spec: harness/0.4-draft
+spec: harness/0.5
 name: base
 prompt: p
 handlers: { h: {} }

@@ -1,5 +1,5 @@
 # Schemas that use $defs/$ref, anchors, patterns and annotations (spec 3.2).
-spec: harness/0.4-draft
+spec: harness/0.5
 name: schemas
 prompt: p
 tools:

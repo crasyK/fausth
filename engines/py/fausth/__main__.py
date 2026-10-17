@@ -3,7 +3,8 @@
     python -m fausth replay <fixture dir>... [--write]
         Replay fixtures and compare with their expected files (or write them).
     python -m fausth run <harness> --deployment <file> [--user TEXT]... [--log FILE] [--requests FILE]
-        Run a harness with a deployment. Without --user, user messages are read from stdin, one per line.
+        Run a harness with a deployment. Without --user, user messages are read from stdin, one per
+        non-blank line.
 """
 from __future__ import annotations
 
@@ -35,16 +36,21 @@ def _run(args: argparse.Namespace) -> int:
     from .harness import harness_errors, read_harness
     from .host import CliHost, DeploymentError, load_deployment
 
-    harness = read_harness(Path(args.harness).read_text("utf-8"))
+    try:
+        harness = read_harness(Path(args.harness).read_text("utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"invalid harness: {e}", file=sys.stderr)
+        return 2
     errors = harness_errors(harness)
     if errors:
         print("invalid harness:\n  " + "\n  ".join(errors), file=sys.stderr)
         return 2
     try:
         deployment = load_deployment(args.deployment, harness)
-        user = iter(args.user) if args.user else (line.rstrip("\n") for line in sys.stdin)
-        host = CliHost(deployment, Path(args.deployment).parent, user, verbose=not args.quiet)
-    except DeploymentError as e:
+        user = iter(args.user) if args.user else (line.rstrip("\n") for line in sys.stdin if line.strip())
+        host = CliHost(deployment, Path(args.deployment).parent, user,
+                       timeout_ms=harness.get("limits", {}).get("timeout_ms"), verbose=not args.quiet)
+    except (DeploymentError, OSError, ValueError) as e:
         print(f"invalid deployment: {e}", file=sys.stderr)
         return 2
     log = run(harness, host)
@@ -53,8 +59,8 @@ def _run(args: argparse.Namespace) -> int:
     if args.requests:
         Path(args.requests).write_text("".join(canonical(r) + "\n" for r in host.requests), "utf-8", newline="\n")
     reason = log.entries[-1]["reason"]
-    if reason == "infra_failure" and host.failure:
-        print(f"infrastructure failure: {host.failure}", file=sys.stderr)
+    if reason in ("infra_failure", "host_end") and host.failure:
+        print(f"{reason}: {host.failure}", file=sys.stderr)
     print(f"run_end: {reason} after {sum(1 for e in log.entries if e['type'] == 'assistant')} model responses",
           file=sys.stderr)
     return 0 if reason == "stop" else 1

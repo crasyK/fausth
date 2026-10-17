@@ -1,5 +1,5 @@
 {
- "about": "Shared test vectors for spec v0.4 section 1 (values). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points.",
+ "about": "Shared test vectors for spec v0.5 section 1 (values). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points.",
  "canonical": [
   {
    "name": "rfc8785 sample",

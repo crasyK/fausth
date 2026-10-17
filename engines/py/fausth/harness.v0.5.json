@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Harness file (spec v0.4 draft)",
+  "title": "Harness file (spec v0.5)",
   "description": "Structure of a resolved harness (spec sections 2, 3, 5.1, 6, 12). Engines also check what a schema cannot express: ids unique across tools and handlers, unique hook ids, hook references to declared handlers and tools, and that every embedded schema compiles.",
   "type": "object",
   "required": ["spec", "name", "prompt"],
   "additionalProperties": false,
   "properties": {
-    "spec": { "const": "harness/0.4-draft" },
+    "spec": { "const": "harness/0.5" },
     "name": { "type": "string", "minLength": 1 },
     "prompt": { "type": "string" },
     "tools": {

@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"983e04af1accd7b0adc35c1dfe1756cca46592b2b7136d270345cc2d21738c35","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"ff007d4425aa66ab4d77b78d2e792f1a0c9cc8efa90434b7e6be7fb31f176f0d","seq":1,"type":"run_start"}
 {"decision":"add_context","event":"session_start","hook":"list-skills","seq":2,"text":"Skills: chess-openings.","type":"hook"}
 {"decision":"add_context","event":"session_start","hook":"house-rules","seq":3,"text":"Answer in one line.","type":"hook"}
 {"seq":4,"text":"You are a chess coach.\n\n<hook event=\"session_start\" id=\"list-skills\" decision=\"add_context\">Skills: chess-openings.</hook>\n\n<hook event=\"session_start\" id=\"house-rules\" decision=\"add_context\">Answer in one line.</hook>","type":"system"}

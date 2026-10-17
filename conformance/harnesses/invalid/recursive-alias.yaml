@@ -1,5 +1,5 @@
 # an alias inside its own anchor
-spec: harness/0.4-draft
+spec: harness/0.5
 name: base
 prompt: p
 handlers: { h: {} }

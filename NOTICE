@@ -2,5 +2,5 @@ Faust Harness
 Copyright 2026 Faust Harness Authors
 
 Faust Harness is a portable, harness-first agent runtime. The specification
-lives in docs/spec-v0.4-draft.md. Earlier specifications (v0.1 – v0.3) are
+lives in docs/spec-v0.5.md. Earlier specifications (v0.1 – v0.3) are
 archived in docs/archive/specs/.

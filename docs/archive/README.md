@@ -1,7 +1,7 @@
 # Archived documentation
 
 Records of the retired system (spec v0.1–v0.3, releases up to `v0.4.0-alpha`). Nothing here is
-current; the current spec is [`../spec-v0.4-draft.md`](../spec-v0.4-draft.md). The code these
+current; the current spec is [`../spec-v0.5.md`](../spec-v0.5.md). The code these
 documents describe is reachable through the `v0.4.0-alpha` tag.
 
 | Folder | Contents |

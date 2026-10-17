@@ -4,9 +4,9 @@ A harness file declares what a model sees: the prompt, the tools, and the hooks 
 every step. Two small engines (TypeScript and Python) run the same file and must produce
 byte-identical logs and model requests.
 
-**Status:** under construction on branch `build/spec-v0.4`. The source of truth is
-[`docs/spec-v0.4-draft.md`](docs/spec-v0.4-draft.md); the build follows
-[`docs/build-plan-v0.4.md`](docs/build-plan-v0.4.md). Not production-safe.
+**Status:** release 0.5.0 implements [`docs/spec-v0.5.md`](docs/spec-v0.5.md), the normative
+spec: both engines reproduce every fixture in [`conformance/`](conformance/) byte for byte. Built
+along [`docs/build-plan-v0.4.md`](docs/build-plan-v0.4.md). Not production-safe.
 
 The previous system (spec v0.1–v0.3, release `v0.4.0-alpha`) is retired. Its code stays
 reachable through the [`v0.4.0-alpha`](https://github.com/crasyK/fausth/releases/tag/v0.4.0-alpha)
@@ -15,7 +15,7 @@ tag; its documents are in [`docs/archive/`](docs/archive/).
 ## Layout
 
 ```
-docs/          spec-v0.4-draft.md (normative once released), build plan, design notes
+docs/          spec-v0.5.md (normative), build plan, design notes
 engines/ts/    TypeScript engine (+ OpenAI-compatible adapter)
 engines/py/    Python engine (+ adapter, command-line host, python-chess tools)
 hosts/web/     the browser host: one HTML page with the TS engine and chess.js tools

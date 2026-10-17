@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.4-draft",
+  "spec": "harness/0.5",
   "name": "chess-legal-first",
   "prompt": "You are playing chess. Find the best move for the side to move and play it.\n",
   "tools": {

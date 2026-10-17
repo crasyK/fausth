@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .engine import InfraFailure, run
+from .engine import HostEnd, InfraFailure, run
 from .harness import harness_errors, read_harness
 from .values import canonical, parse_json
 
@@ -28,13 +28,22 @@ def replay(directory: str | Path) -> tuple[str, str]:
 
     class _Host:
         def user(self) -> str | None:
-            return user.pop(0)["text"] if user else None
+            if not user:
+                return None
+            line = user.pop(0)
+            if line.get("end") is True:
+                raise HostEnd("user.jsonl ends the run")
+            if not isinstance(line.get("text"), str):
+                raise InfraFailure("a user.jsonl line has no text")
+            return line["text"]
 
         def model(self, request: dict[str, Any]) -> Any:
             requests.append(canonical(request) + "\n")
             if not model:
                 raise InfraFailure("model.jsonl has no more responses")
             line = model.pop(0)
+            if line.get("end") is True:
+                raise HostEnd("model.jsonl ends the run")
             if "error" in line:
                 raise InfraFailure(str(line["error"]))
             return line

@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"4a22642bcf0f2855496bd38581a5b652581038aca932e8ce9823f430197e9356","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"7c6a6fc34601d1a910070f35f686cc41731079eb1e6de66604c51ea86182dcfb","seq":1,"type":"run_start"}
 {"seq":2,"text":"Fix the bug, then submit.","type":"system"}
 {"seq":3,"text":"The parser crashes.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{},"call_id":"c4-0","tool":"submit"}],"type":"assistant"}

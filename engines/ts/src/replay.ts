@@ -1,6 +1,6 @@
 // The replay host (spec §14): answers a run from a fixture's recorded files. Browser-safe: it
 // takes the files' texts; `node.ts` reads them from a directory.
-import { InfraFailure, run, type Host, type Interrupt } from "./engine.js";
+import { HostEnd, InfraFailure, run, type Host, type Interrupt } from "./engine.js";
 import { harnessErrors, readHarness, type Harness } from "./harness.js";
 import { canonical } from "./values.js";
 
@@ -33,12 +33,16 @@ export async function replayFiles(files: FixtureFiles): Promise<{ log: string; r
   const host: Host = {
     async user() {
       const line = user.shift();
-      return line === undefined ? null : (line.text as string);
+      if (line === undefined) return null;
+      if (line.end === true) throw new HostEnd("user.jsonl ends the run");
+      if (typeof line.text !== "string") throw new InfraFailure("a user.jsonl line has no text");
+      return line.text;
     },
     async model(request) {
       requests.push(`${canonical(request)}\n`);
       const line = model.shift();
       if (line === undefined) throw new InfraFailure("model.jsonl has no more responses");
+      if (line.end === true) throw new HostEnd("model.jsonl ends the run");
       if ("error" in line) throw new InfraFailure(String(line.error));
       return line;
     },

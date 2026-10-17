@@ -1,5 +1,5 @@
 # YAML 1.2 core schema resolution (spec section 2); the values sit in a handler hook's free-form `with`.
-spec: harness/0.4-draft
+spec: harness/0.5
 name: yaml-scalars
 prompt: |-
   line one

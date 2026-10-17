@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
 
-# Reduced to what exists while the spec v0.4 engines are being built (docs/build-plan-v0.4.md).
+# Both engines, the browser host, and the conformance set they must reproduce (docs/spec-v0.5.md §14).
 
 jobs:
   ts:

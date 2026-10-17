@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"fe99ce1f44898613a137c155586e2de0ea780fea877f316c7d25ad3f12f87336","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"2b6c87653ddda59a7370c3f40a8b4ebace52feb34d91158bf03bd4690328579b","seq":1,"type":"run_start"}
 {"seq":2,"text":"Report the record.","type":"system"}
 {"seq":3,"text":"Fetch it.","type":"user"}
 {"reasoning_opaque":{"data":"c2lnbmVk","provider":"example"},"seq":4,"step":1,"text":"","tool_calls":[{"args":{"id":1},"call_id":"c4-0","tool":"data_get"},{"args":{"id":2},"call_id":"c4-1","tool":"data_get"},{"args":{"id":3},"call_id":"c4-2","tool":"data_get"},{"args":{"id":4},"call_id":"c4-3","tool":"data_get"}],"type":"assistant"}

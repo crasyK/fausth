@@ -36,5 +36,5 @@ def test_invalid(name):
 
 
 def test_packaged_schema_is_the_repo_schema():
-    packaged = Path(__file__).resolve().parents[1] / "fausth" / "harness.v0.4.json"
-    assert packaged.read_bytes() == (ROOT / "schema" / "harness.v0.4.json").read_bytes()
+    packaged = Path(__file__).resolve().parents[1] / "fausth" / "harness.v0.5.json"
+    assert packaged.read_bytes() == (ROOT / "schema" / "harness.v0.5.json").read_bytes()
