@@ -33,13 +33,19 @@ this draft that has not been discussed yet.
 
 ## 1. Values
 
-All values are JSON. Canonical form is **RFC 8785 (JSON Canonicalization Scheme)**: sorted keys,
-no whitespace, ECMAScript number formatting. JCS libraries exist for most languages (e.g.
-`rfc8785` on PyPI, `canonicalize` on npm). This replaces v0.3's integers-only rule, because
+All values are JSON. Canonical form is **RFC 8785 (JSON Canonicalization Scheme)**: keys sorted
+by UTF-16 code units, no whitespace, ECMAScript number formatting. JCS libraries exist for most
+languages (e.g. `canonicalize` on npm). This replaces v0.3's integers-only rule, because
 ordinary tool results contain decimal numbers. Comparing decimals with `eq` (§6) is the
 author's responsibility.
 
-`hash(x)` = lowercase hex SHA-256 of the canonical form of `x`.
+Numbers are IEEE 754 doubles, as in RFC 8785: an engine reads every JSON number as a double, so
+an integer beyond 2^53 is rounded the way ECMAScript rounds it (`18446744073709551615` →
+`18446744073709552000`). Exact large integers travel as strings. (`rfc8785` on PyPI rejects such
+integers instead, so it can't be used unchanged.) A value without a canonical form (a
+non-finite number, a string with a lone surrogate) is an error.
+
+`hash(x)` = lowercase hex SHA-256 of the UTF-8 bytes of the canonical form of `x`.
 
 `excerpt(s, n)` = `s` if it has at most `n` code points, else its first `n` code points followed
 by `…[truncated]`.
