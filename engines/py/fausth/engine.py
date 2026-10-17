@@ -1,9 +1,10 @@
-"""The run loop (spec §8) and hooks (§5, §6)."""
+"""The run loop (spec §8), hooks (§5, §6) and child runs (§10)."""
 from __future__ import annotations
 
 import re
 from typing import Any, Callable, Protocol
 
+from .harness import SPAWN_INPUT, harness_errors
 from .log import TOP, Log, Scope, call_id, view
 from .render import hook_wrapper, render
 from .schema import compile_schema
@@ -29,6 +30,7 @@ class Host(Protocol):
         """Interrupts queued for delivery at this step boundary, in arrival order (§11)."""
 
 
+LIMITS = ("max_steps", "max_tool_calls", "max_depth", "max_continues", "max_hook_text")
 DEFAULTS = {"max_steps": 1000, "max_tool_calls": 1000, "max_depth": 1, "max_continues": 3, "max_hook_text": 4000}
 
 # Decisions each event allows besides `allow` (§4), and what a failed built-in check becomes (§6).
@@ -56,17 +58,24 @@ class _Ended(Exception):
 def run(harness: dict[str, Any], host: Host) -> Log:
     """Run a validated harness to its end and return the log."""
     log = Log()
-    _Run(harness, host, log, TOP).run()
+    limits = {n: harness.get("limits", {}).get(n, DEFAULTS[n]) for n in LIMITS}
+    _Run(harness, host, log, TOP, limits, {"step": 0}, None, []).run(None)
     return log
 
 
 class _Run:
-    def __init__(self, harness: dict[str, Any], host: Host, log: Log, scope: Scope) -> None:
-        self.harness, self.host, self.log, self.scope = harness, host, log, scope
-        self.step = 0  # the current step (§8): model requests made so far
-        self.tool_calls = 0
+    def __init__(self, harness: dict[str, Any], host: Host, log: Log, scope: Scope, limits: dict[str, int],
+                 counter: dict[str, int], parent: _Run | None, inherited: list[tuple[dict[str, Any], _Run]]) -> None:
+        self.harness, self.host, self.log, self.scope, self.limits = harness, host, log, scope, limits
+        self.counter = counter  # the current step (§8), shared by every run in the log
+        self.parent, self.inherited = parent, inherited
+        self.steps_used = 0  # requests and tool calls of this run and its children (§8, §10)
+        self.tool_calls_used = 0
+        self.last_text = ""
         self.schemas: dict[str, Callable[[Any], bool]] = {}
         for tid, t in harness.get("tools", {}).items():
+            if tid == "core_spawn":
+                self.schemas["tools.core_spawn.input"] = compile_schema(SPAWN_INPUT)
             for k in ("input", "output"):
                 if k in t:
                     self.schemas[f"tools.{tid}.{k}"] = compile_schema(t[k])
@@ -74,21 +83,37 @@ class _Run:
             if "input" in h:
                 self.schemas[f"handlers.{hid}.input"] = compile_schema(h["input"])
 
-    def limit(self, name: str) -> int:
-        return self.harness.get("limits", {}).get(name, DEFAULTS[name])
+    @property
+    def step(self) -> int:
+        return self.counter["step"]
+
+    @property
+    def hooks(self) -> list[tuple[dict[str, Any], _Run]]:
+        """Each hook with the run whose harness declared it (inherited hooks keep their harness, §10)."""
+        return self.inherited + [(hook, self) for hook in self.harness.get("hooks", [])]
+
+    def _ancestry(self) -> list[_Run]:
+        runs, r = [], self
+        while r is not None:
+            runs.append(r)
+            r = r.parent
+        return runs
 
     def append(self, type: str, members: dict[str, Any]) -> dict[str, Any]:
         return self.log.append(self.scope, type, members)
 
-    def run(self) -> None:
+    def run(self, task: str | None) -> str:
+        """Run to the end. A child's only user message is its task; the top level asks the host."""
         self.append("run_start", {"harness_hash": hash(self.harness), "depth": self.scope.depth})
         try:
             contexts = self._chain("session_start", {})
             system = self.harness["prompt"] + "".join(
                 "\n\n" + hook_wrapper("session_start", d["hook"]["id"], d["decision"], d["text"]) for d in contexts)
             self.append("system", {"text": system})
+            pending = task
             while True:
-                text = self.host.user()
+                text = pending if self.parent is not None else self.host.user()
+                pending = None
                 if text is None:
                     raise _Ended("stop")
                 if any(d["decision"] == "deny" for d in self._chain("user_prompt", {"message": text})):
@@ -96,39 +121,45 @@ class _Run:
                 self.append("user", {"text": text})
                 self._turn()
         except _Ended as e:
-            self.append("run_end", {"reason": e.reason})
+            reason = e.reason
         except InfraFailure:
-            self.append("run_end", {"reason": "infra_failure"})
+            reason = "infra_failure"
+        self.append("run_end", {"reason": reason})
+        return reason
 
     def _turn(self) -> None:
         continued = 0
         while True:
-            if self.step == self.limit("max_steps"):
+            if self.steps_used == self.limits["max_steps"]:
                 raise _Ended("limit")
             self._chain("pre_request", {})
             response = _check_response(self.host.model(render(self.harness, self.log.entries, self.scope)))
-            self.step += 1
+            self.counter["step"] += 1
+            for r in self._ancestry():
+                r.steps_used += 1
             seq = len(self.log.entries) + 1
             calls = [{"call_id": call_id(seq, i), "tool": c["tool"], "args": c["args"]}
                      for i, c in enumerate(response.get("tool_calls", []))]
-            text = response.get("text", "")
-            members = {"step": self.step, "text": text, "tool_calls": calls}
+            self.last_text = response.get("text", "")
+            members = {"step": self.step, "text": self.last_text, "tool_calls": calls}
             members.update((k, response[k]) for k in ("reasoning", "reasoning_opaque") if k in response)
             self.append("assistant", members)
             for call in calls:
                 self._tool_call(call)
             if calls:
                 continue
-            if continued < self.limit("max_continues"):
-                if any(d["decision"] == "continue" for d in self._chain("stop", {"message": text, "continued": continued})):
+            if continued < self.limits["max_continues"]:
+                stop = self._chain("stop", {"message": self.last_text, "continued": continued})
+                if any(d["decision"] == "continue" for d in stop):
                     continued += 1
                     continue
             return
 
     def _tool_call(self, call: dict[str, Any]) -> None:
-        if self.tool_calls == self.limit("max_tool_calls"):
+        if self.tool_calls_used == self.limits["max_tool_calls"]:
             raise _Ended("limit")
-        self.tool_calls += 1
+        for r in self._ancestry():
+            r.tool_calls_used += 1
         tool = call["tool"]
         if tool not in self.harness.get("tools", {}):
             self._result(call, {"ok": False, "error": "invalid arguments: unknown tool"})
@@ -141,12 +172,68 @@ class _Run:
             return
         modified = [d["args"] for d in pre if d["decision"] == "modify"]
         args = modified[-1] if modified else call["args"]
-        answer = _check_answer(self.host.call(tool, args), self.schemas.get(f"tools.{tool}.output"))
+        if tool == "core_spawn":
+            answer = self._spawn(call, args)
+        else:
+            answer = _check_answer(self.host.call(tool, args), self.schemas.get(f"tools.{tool}.output"))
+        if answer is None:
+            return
         self._result(call, answer)
         self._chain("post_tool", {"call": {"tool": tool, "args": args}, "result": answer}, call)
 
     def _result(self, call: dict[str, Any], answer: dict[str, Any]) -> None:
         self.append("tool_result", {"call_id": call["call_id"], "tool": call["tool"], **answer})
+
+    def _spawn(self, call: dict[str, Any], args: dict[str, Any]) -> dict[str, Any] | None:
+        """`core_spawn` (§10): the narrowing check, then the child run. None if the check denied it."""
+        child = args["harness"]
+        denial = self._narrowing(child)
+        if denial is not None:
+            text = excerpt(denial, self.limits["max_hook_text"])
+            self.append("hook", {"hook": "core_spawn", "event": "pre_tool", "decision": "deny", "text": text,
+                                 "call_id": call["call_id"]})
+            return None
+        limits = {n: child.get("limits", {}).get(n, self._allowance(n)) for n in LIMITS}
+        scope = Scope(self.scope.depth + 1, call["call_id"])
+        child_run = _Run(child, self.host, self.log, scope, limits, self.counter, self, self.hooks)
+        if child_run.run(args["task"]) == "infra_failure":
+            raise InfraFailure("the child run failed")
+        return {"ok": True, "result": {"text": child_run.last_text, "steps": child_run.steps_used,
+                                       "tool_calls": child_run.tool_calls_used}}
+
+    def _allowance(self, name: str) -> int:
+        """How much of a limit a child may have: what is left of a budget, else the limit itself."""
+        if name == "max_steps":
+            return self.limits["max_steps"] - self.steps_used
+        if name == "max_tool_calls":
+            return self.limits["max_tool_calls"] - self.tool_calls_used
+        return self.limits[name]
+
+    def _narrowing(self, child: dict[str, Any]) -> str | None:
+        """The first failed narrowing check's text (§10), or None if the child may run."""
+        try:
+            canonical(child)
+            valid = not harness_errors(child)
+        except ValueError:
+            valid = False
+        if not valid:
+            return "child harness is not valid"
+        tools, child_tools = self.harness.get("tools", {}), child.get("tools", {})
+        for tid in sorted(child_tools):
+            if tid not in tools:
+                return f"child tool {tid} is not a parent tool"
+            if canonical(child_tools[tid].get("input")) != canonical(tools[tid].get("input")):
+                return f"child tool {tid} has a different input schema"
+        for hid in sorted(child.get("handlers", {})):
+            if hid not in self.harness.get("handlers", {}):
+                return f"child handler {hid} is not a parent handler"
+        for name in LIMITS:
+            declared = child.get("limits", {}).get(name)
+            if declared is not None and declared > self._allowance(name):
+                return f"child limit {name} exceeds the parent's {canonical(self._allowance(name))}"
+        if "core_spawn" in child_tools and not self.scope.depth + 1 < self.limits["max_depth"]:
+            return f"child at depth {self.scope.depth + 1} may not spawn"
+        return None
 
     def _chain(self, event: str, members: dict[str, Any], call: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Run the hooks of an event in order (§5.2), log each decision, and return the ones that act."""
@@ -154,7 +241,7 @@ class _Run:
         current = members.get("call")
         replaced = None
         key = call["tool"] if call else members.get("interrupt", {}).get("source")
-        for hook in self.harness.get("hooks", []):
+        for hook, owner in self.hooks:
             if hook["on"] != event or not _matches(hook.get("match", "*"), key):
                 continue
             inp: dict[str, Any] = {"event": event, "hook": hook["id"], "with": hook.get("with", {}), "step": self.step,
@@ -173,7 +260,7 @@ class _Run:
             if event == "pre_request":
                 inp["context"] = render(self.harness, self.log.entries, self.scope)["messages"]
 
-            d = self._decide(hook, event, inp, current["tool"] if current else None)
+            d = self._decide(hook, owner, event, inp, current["tool"] if current else None)
             where = {"call_id": call["call_id"]} if call else {}
             if d is None:
                 self.append("hook", {"hook": hook["id"], "event": event, "decision": "failed", **where})
@@ -194,10 +281,11 @@ class _Run:
                 break
         return acting
 
-    def _decide(self, hook: dict[str, Any], event: str, inp: dict[str, Any], tool: str | None) -> dict[str, Any] | None:
+    def _decide(self, hook: dict[str, Any], owner: _Run, event: str, inp: dict[str, Any],
+                tool: str | None) -> dict[str, Any] | None:
         """One hook's decision (§5.4), or None if the hook failed."""
         def cap(text: str) -> str:
-            return excerpt(text, self.limit("max_hook_text"))
+            return excerpt(text, self.limits["max_hook_text"])
 
         if hook["run"].startswith("core_"):
             w = hook.get("with", {})
@@ -207,7 +295,7 @@ class _Run:
             if failure is None:
                 return {"hook": hook, "decision": "allow"}
             return {"hook": hook, "decision": PUSH_BACK[event], "text": cap(failure)}
-        schema = self.schemas.get(f"handlers.{hook['run']}.input")
+        schema = owner.schemas.get(f"handlers.{hook['run']}.input")
         if schema is not None and not schema(inp):
             return None
         try:

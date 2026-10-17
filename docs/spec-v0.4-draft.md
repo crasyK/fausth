@@ -409,10 +409,12 @@ optional member is left out, never `null`. Every line ends with `\n`.
 A deny never ends the run. Only limits, infrastructure failures, the host, or the end of the
 conversation do. A one-shot host is a conversation with one user message.
 
-**The current step** is the number of model requests the run has made so far: `0` at
-`session_start` and the first `user_prompt`, `n` for everything that follows the `n`-th
-response up to the next request (its tool calls, `stop`, interrupts delivered before request
-`n + 1`). The `step` members of the log and the hook input hold this number.
+**The current step** is the number of model requests made so far, counting every run in the log
+(child runs included, §10): `0` before the first request, `n` for everything that follows the
+`n`-th request up to the next one (its tool calls, `stop`, interrupts delivered before request
+`n + 1`). The `step` members of the log and the hook input hold this number, so `step` `n` is
+line `n` of `expected.requests.jsonl`. `steps_used` and `tool_calls_used` count a run's own
+requests and calls and those of its children.
 
 ---
 
@@ -489,30 +491,52 @@ system messages mid-conversation.
 
 `core_spawn` is a built-in **model-facing** tool. A harness offers it by listing it in `tools`
 (its declaration may hold only `description`, which overrides the default; its input schema is
-fixed):
+fixed). Its default description and its input schema, as the model sees them:
+
+```text
+Run a child agent on a subtask. harness: the child's complete harness; it may use only tools and handlers you have. task: its first user message. Returns the child's final text.
+```
 
 ```json
-{"harness": {<a resolved harness>}, "task": "<string>"}
+{"type": "object", "required": ["harness", "task"], "additionalProperties": false,
+ "properties": {"harness": {"type": "object"}, "task": {"type": "string"}}}
 ```
 
 The parent writes the child's whole harness: prompt, tools, handlers, hooks. That is a far
 richer handoff than a prompt.
 
-**Narrowing check**, before the child starts. The first failure is a deny with a fixed template
-(hook id `core_spawn`):
-1. The child's `tools` ⊆ the parent's `tools` by id, with identical `input` schemas.
-   Descriptions may differ.
-2. The child's `handlers` ⊆ the parent's `handlers` by id.
-3. Child limits ≤ the parent's remaining limits.
-4. The child may list `core_spawn` only if `depth + 1 < limits.max_depth` of the parent
-   (default `max_depth: 1`: children can't spawn).
+**Narrowing check**, when the call executes (after its `pre_tool` hooks). The first failure is a
+deny (hook id `core_spawn`, event `pre_tool`) with this text:
 
-**Inherited hooks.** The parent's hooks run **before** the child's own hooks, on every matching
-child event. A parent can't drop its own rules by writing a child without them.
+| # | Check | Deny text |
+|---|---|---|
+| 0 | the child harness is valid (§2, §3, §5.1) | `child harness is not valid` |
+| 1 | the child's `tools` ⊆ the parent's `tools` by id, with identical `input` schemas (canonical form); descriptions may differ | `child tool {id} is not a parent tool` / `child tool {id} has a different input schema` |
+| 2 | the child's `handlers` ⊆ the parent's `handlers` by id | `child handler {id} is not a parent handler` |
+| 3 | child limits ≤ the parent's | `child limit {name} exceeds the parent's {value}` |
+| 4 | the child lists `core_spawn` only if `depth + 1 < max_depth` of the parent (default `max_depth: 1`: children can't spawn) | `child at depth {depth + 1} may not spawn` |
 
-The child runs synchronously with the parent's deployment bindings. Its steps and tool calls
-count against the parent's limits. Its log is written inline (§7). The `core_spawn` result is
-`{"text": <the child's final assistant text>, "steps": n, "tool_calls": n}`.
+Ids are checked in sorted order, limits in the order of §12.1. For check 3, `max_steps` and
+`max_tool_calls` are compared with what the parent has left (its limit minus what it has used,
+this call included); `max_depth`, `max_continues` and `max_hook_text` with the parent's own
+value; `timeout_ms` is the host's. A limit the child leaves out is the parent's value, or what
+the parent has left. `{value}` renders as canonical JSON.
+
+**The child run** is a run (§8) whose only user message is `task`, at `depth` = parent depth + 1,
+logged inline (§7). Its view holds only its own calls (§5.3); the current step counts every
+request in the log, the child's included (§8).
+
+**Inherited hooks.** The parent's hooks, including those it inherited itself, run **before** the
+child's own hooks, on every matching child event. A parent can't drop its own rules by writing a
+child without them. An inherited hook keeps its harness: its handler and the handler's `input`
+schema are the declaring harness's.
+
+The child runs synchronously with the parent's deployment bindings. Each of its model requests
+and tool calls counts against the child and every run above it. The `core_spawn` result is
+`{"text": <the text of the child's last assistant entry, "" if none>, "steps": n, "tool_calls":
+n}`, with the requests and calls counted against the child. A child that ends with `stop` or
+`limit` returns this result; a child that ends with `infra_failure` ends the whole run with
+`infra_failure`.
 
 Background work (an asynchronous child, a long job) is a host tool that returns immediately and
 later delivers an interrupt with `source: "subagent"` or `"job"`.
@@ -638,9 +662,14 @@ the four main runs contained more than one tool call (`parallel_tool_calls=false
 the protocol, and the runner executed only the first call). The S1G1p gate results are not
 affected.
 
+**Resolved 2026-10-17 (build session):** the seen-only rule applies to what makes a check pass;
+`since` resets and `core_count` count every finished call (§6). The invalid-arguments error
+texts are fixed (§8). Every hook decision is logged, `allow` included (§7). The built-in
+failure texts stay as drafted (§6); the `core_spawn` default description, input schema and
+narrowing denials are fixed in §10.
+
 **Still open:**
-1. **Exact wording** of the built-in failure texts and the `core_spawn` narrowing denies.
-2. **Images and other non-text results:** planned for v0.4.1, after the first host runs.
+1. **Images and other non-text results:** planned for v0.4.1, after the first host runs.
    Needs a fixed adapter rule for providers that don't accept images in tool results.
 
 **Next: the first hosts.** A single HTML page running the TS engine (the chess harness with

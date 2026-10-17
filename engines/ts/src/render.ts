@@ -1,5 +1,5 @@
 // Rendering (spec §9): the provider-neutral request, a function of the harness and the log.
-import type { Harness } from "./harness.js";
+import { shownTool, type Harness } from "./harness.js";
 import { inScope, type Entry, type Scope } from "./log.js";
 import { canonical, type Json } from "./values.js";
 
@@ -111,9 +111,6 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
   }
 
   const declared = harness.tools ?? {};
-  const tools = Object.keys(declared).sort().map((name) => {
-    const t = declared[name]!;
-    return { name, description: t.description ?? "", input: t.input ?? {} };
-  });
+  const tools = Object.keys(declared).sort().map((name) => ({ name, ...shownTool(name, declared[name]!) }));
   return { system, tools, messages };
 }

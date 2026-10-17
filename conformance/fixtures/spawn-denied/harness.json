@@ -1,0 +1,42 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "spawn-denied",
+  "prompt": "Delegate note work.",
+  "tools": {
+    "notes_read": {
+      "description": "Read a note.",
+      "input": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notes_write": {
+      "description": "Write a note.",
+      "input": {
+        "type": "object",
+        "required": [
+          "key",
+          "text"
+        ]
+      }
+    },
+    "core_spawn": {
+      "description": "Start a helper."
+    }
+  },
+  "handlers": {
+    "judge": {}
+  },
+  "limits": {
+    "max_steps": 20,
+    "max_tool_calls": 20,
+    "max_hook_text": 100
+  }
+}

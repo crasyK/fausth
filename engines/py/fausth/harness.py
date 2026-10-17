@@ -21,6 +21,23 @@ from .values import number
 
 BUILT_INS = frozenset({"core_called_since", "core_last_result", "core_count", "core_deny", "core_context"})
 
+# The built-in tool `core_spawn` as the model sees it (§10).
+SPAWN_DESCRIPTION = ("Run a child agent on a subtask. harness: the child's complete harness; it may use only tools "
+                     "and handlers you have. task: its first user message. Returns the child's final text.")
+SPAWN_INPUT = {
+    "type": "object",
+    "required": ["harness", "task"],
+    "additionalProperties": False,
+    "properties": {"harness": {"type": "object"}, "task": {"type": "string"}},
+}
+
+
+def shown_tool(tid: str, t: dict) -> dict:
+    """A declared tool as the model sees it: `core_spawn` gets its fixed schema and default description."""
+    if tid == "core_spawn":
+        return {"description": t.get("description", SPAWN_DESCRIPTION), "input": SPAWN_INPUT}
+    return {"description": t.get("description", ""), "input": t.get("input", {})}
+
 # YAML 1.2 core schema (spec §2): the same resolution as the TypeScript `yaml` package.
 _TAG = "tag:yaml.org,2002:"
 _NULL = re.compile(r"(?:~|null|Null|NULL)?\Z")

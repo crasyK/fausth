@@ -39,6 +39,22 @@ export interface Harness {
 
 export const BUILT_INS = new Set(["core_called_since", "core_last_result", "core_count", "core_deny", "core_context"]);
 
+/** The built-in tool `core_spawn` as the model sees it (§10). */
+export const SPAWN_DESCRIPTION =
+  "Run a child agent on a subtask. harness: the child's complete harness; it may use only tools and handlers you have. task: its first user message. Returns the child's final text.";
+export const SPAWN_INPUT: Schema = {
+  type: "object",
+  required: ["harness", "task"],
+  additionalProperties: false,
+  properties: { harness: { type: "object" }, task: { type: "string" } },
+};
+
+/** A declared tool as the model sees it: `core_spawn` gets its fixed schema and default description. */
+export function shownTool(id: string, t: Tool): { description: string; input: Schema } {
+  if (id === "core_spawn") return { description: t.description ?? SPAWN_DESCRIPTION, input: SPAWN_INPUT };
+  return { description: t.description ?? "", input: t.input ?? {} };
+}
+
 /** Harness text as a JSON value: YAML 1.2 core schema, JSON read as YAML (§2). Throws otherwise. */
 export function readHarness(text: string): Json {
   const doc = parseDocument(text, { version: "1.2", schema: "core", uniqueKeys: true, merge: false, prettyErrors: false });

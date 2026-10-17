@@ -1,0 +1,12 @@
+{"depth":0,"harness_hash":"d07e24a4f8fb1caeed52ae0ac5d293346320cd503132dd96ca062cf4e811f3d2","seq":1,"type":"run_start"}
+{"seq":2,"text":"Delegate.","type":"system"}
+{"decision":"allow","event":"user_prompt","hook":"screen","seq":3,"type":"hook"}
+{"seq":4,"text":"Go.","type":"user"}
+{"seq":5,"step":1,"text":"","tool_calls":[{"args":{"harness":{"name":"worker","prompt":"You are worker.","spec":"harness/0.4-draft","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Delete everything."},"call_id":"c5-0","tool":"core_spawn"}],"type":"assistant"}
+{"depth":1,"harness_hash":"dc8324d48c7b6e3ebabf8a0b21ee9767ef0e159a21aa2869268b545552765974","parent_call":"c5-0","seq":6,"type":"run_start"}
+{"depth":1,"parent_call":"c5-0","seq":7,"text":"You are worker.","type":"system"}
+{"decision":"deny","depth":1,"event":"user_prompt","hook":"screen","parent_call":"c5-0","seq":8,"text":"No destructive tasks.","type":"hook"}
+{"depth":1,"parent_call":"c5-0","reason":"stop","seq":9,"type":"run_end"}
+{"call_id":"c5-0","ok":true,"result":{"steps":0,"text":"","tool_calls":0},"seq":10,"tool":"core_spawn","type":"tool_result"}
+{"seq":11,"step":2,"text":"The helper refused.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":12,"type":"run_end"}

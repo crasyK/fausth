@@ -1,0 +1,10 @@
+{"depth":0,"harness_hash":"7cb29c968c6cfc87fe7401a291752076bc78b9f410ccbf694ee658fa64386563","seq":1,"type":"run_start"}
+{"seq":2,"text":"Delegate.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"harness":{"name":"worker","prompt":"You are worker.","spec":"harness/0.4-draft","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo."},"call_id":"c4-0","tool":"core_spawn"}],"type":"assistant"}
+{"depth":1,"harness_hash":"dc8324d48c7b6e3ebabf8a0b21ee9767ef0e159a21aa2869268b545552765974","parent_call":"c4-0","seq":5,"type":"run_start"}
+{"depth":1,"parent_call":"c4-0","seq":6,"text":"You are worker.","type":"system"}
+{"depth":1,"parent_call":"c4-0","seq":7,"text":"Echo.","type":"user"}
+{"depth":1,"parent_call":"c4-0","seq":8,"step":2,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c8-0","tool":"echo"}],"type":"assistant"}
+{"depth":1,"parent_call":"c4-0","reason":"infra_failure","seq":9,"type":"run_end"}
+{"reason":"infra_failure","seq":10,"type":"run_end"}

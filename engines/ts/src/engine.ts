@@ -1,5 +1,5 @@
-// The run loop (spec §8) and hooks (§5, §6).
-import type { Event, Harness, Hook, Limits } from "./harness.js";
+// The run loop (spec §8), hooks (§5, §6) and child runs (§10).
+import { SPAWN_INPUT, harnessErrors, type Event, type Harness, type Hook, type Limits } from "./harness.js";
 import { Log, TOP, callId, view, type Scope, type ViewEntry } from "./log.js";
 import { hookWrapper, render, type Request, type ToolCall } from "./render.js";
 import { compileSchema, type Check } from "./schema.js";
@@ -27,9 +27,10 @@ export interface Host {
 
 export class InfraFailure extends Error {}
 
-const DEFAULTS: Required<Omit<Limits, "timeout_ms">> = {
-  max_steps: 1000, max_tool_calls: 1000, max_depth: 1, max_continues: 3, max_hook_text: 4000,
-};
+type LimitName = "max_steps" | "max_tool_calls" | "max_depth" | "max_continues" | "max_hook_text";
+type Effective = Record<LimitName, number>;
+const LIMITS: LimitName[] = ["max_steps", "max_tool_calls", "max_depth", "max_continues", "max_hook_text"];
+const DEFAULTS: Effective = { max_steps: 1000, max_tool_calls: 1000, max_depth: 1, max_continues: 3, max_hook_text: 4000 };
 
 /** Decisions each event allows besides `allow` (§4), and what a failed built-in check becomes (§6). */
 const ALLOWED: Record<Event, string[]> = {
@@ -48,6 +49,9 @@ const ENDS_CHAIN = new Set(["deny", "continue", "replace_context"]);
 
 interface Decision { hook: Hook; decision: string; text?: string; args?: Json }
 interface Members { call?: { tool: string; args: Json }; result?: Answer; message?: string; interrupt?: Interrupt; continued?: number }
+/** A hook with the run whose harness declared it (inherited hooks keep their harness, §10). */
+interface Owned { hook: Hook; owner: Run }
+type Reason = "stop" | "limit" | "infra_failure";
 
 class Ended extends Error {
   constructor(readonly reason: "stop" | "limit") {
@@ -58,18 +62,31 @@ class Ended extends Error {
 /** Run a validated harness to its end and return the log. */
 export async function run(harness: Harness, host: Host): Promise<Log> {
   const log = new Log();
-  await new Run(harness, host, log, TOP).run();
+  const limits = Object.fromEntries(LIMITS.map((n) => [n, harness.limits?.[n] ?? DEFAULTS[n]])) as Effective;
+  await new Run(harness, host, log, TOP, limits, { step: 0 }, undefined, []).run(null);
   return log;
 }
 
 class Run {
-  /** The current step (§8): model requests made so far. */
-  step = 0;
-  toolCalls = 0;
-  private schemas = new Map<string, Check>();
+  /** Requests and tool calls of this run and its children (§8, §10). */
+  stepsUsed = 0;
+  toolCallsUsed = 0;
+  lastText = "";
+  readonly schemas = new Map<string, Check>();
 
-  constructor(readonly harness: Harness, readonly host: Host, readonly log: Log, readonly scope: Scope) {
+  constructor(
+    readonly harness: Harness,
+    readonly host: Host,
+    readonly log: Log,
+    readonly scope: Scope,
+    readonly limits: Effective,
+    /** The current step (§8), shared by every run in the log. */
+    readonly counter: { step: number },
+    readonly parent: Run | undefined,
+    readonly inherited: Owned[],
+  ) {
     for (const [id, t] of Object.entries(harness.tools ?? {})) {
+      if (id === "core_spawn") this.schemas.set("tools.core_spawn.input", compileSchema(SPAWN_INPUT));
       if (t.input) this.schemas.set(`tools.${id}.input`, compileSchema(t.input));
       if (t.output) this.schemas.set(`tools.${id}.output`, compileSchema(t.output));
     }
@@ -78,23 +95,31 @@ class Run {
     }
   }
 
-  limit(name: keyof typeof DEFAULTS): number {
-    return this.harness.limits?.[name] ?? DEFAULTS[name];
+  get step(): number {
+    return this.counter.step;
+  }
+
+  get hooks(): Owned[] {
+    return [...this.inherited, ...(this.harness.hooks ?? []).map((hook) => ({ hook, owner: this as Run }))];
   }
 
   append(type: string, members: { [member: string]: Json }) {
     return this.log.append(this.scope, type, members);
   }
 
-  async run(): Promise<void> {
+  /** Run to the end. A child's only user message is its task; the top level asks the host. */
+  async run(task: string | null): Promise<Reason> {
     this.append("run_start", { harness_hash: await hash(this.harness), depth: this.scope.depth });
+    let reason: Reason;
     try {
       const contexts = await this.chain("session_start", {});
       const system = this.harness.prompt
         + contexts.map((d) => `\n\n${hookWrapper("session_start", d.hook.id, d.decision, d.text!)}`).join("");
       this.append("system", { text: system });
+      let pending = task;
       for (;;) {
-        const text = await this.host.user();
+        const text = this.parent ? pending : await this.host.user();
+        pending = null;
         if (text === null) throw new Ended("stop");
         const decisions = await this.chain("user_prompt", { message: text });
         if (decisions.some((d) => d.decision === "deny")) continue;
@@ -102,33 +127,36 @@ class Run {
         await this.turn();
       }
     } catch (e) {
-      if (e instanceof Ended) this.append("run_end", { reason: e.reason });
-      else if (e instanceof InfraFailure) this.append("run_end", { reason: "infra_failure" });
+      if (e instanceof Ended) reason = e.reason;
+      else if (e instanceof InfraFailure) reason = "infra_failure";
       else throw e;
     }
+    this.append("run_end", { reason });
+    return reason;
   }
 
   private async turn(): Promise<void> {
     let continued = 0;
     for (;;) {
-      if (this.step === this.limit("max_steps")) throw new Ended("limit");
+      if (this.stepsUsed === this.limits.max_steps) throw new Ended("limit");
       await this.chain("pre_request", {});
       const response = checkResponse(await this.host.model(render(this.harness, this.log.entries, this.scope)));
-      this.step += 1;
+      this.counter.step += 1;
+      for (let r: Run | undefined = this; r; r = r.parent) r.stepsUsed += 1;
       const seq = this.log.entries.length + 1;
       const calls: ToolCall[] = (response.tool_calls ?? []).map((c, i) => ({ call_id: callId(seq, i), tool: c.tool, args: c.args }));
-      const text = response.text ?? "";
+      this.lastText = response.text ?? "";
       this.append("assistant", {
         step: this.step,
-        text,
+        text: this.lastText,
         tool_calls: calls,
         ...(response.reasoning !== undefined && { reasoning: response.reasoning }),
         ...(response.reasoning_opaque !== undefined && { reasoning_opaque: response.reasoning_opaque }),
       });
       for (const call of calls) await this.toolCall(call);
       if (calls.length > 0) continue;
-      if (continued < this.limit("max_continues")) {
-        const decisions = await this.chain("stop", { message: text, continued });
+      if (continued < this.limits.max_continues) {
+        const decisions = await this.chain("stop", { message: this.lastText, continued });
         if (decisions.some((d) => d.decision === "continue")) {
           continued += 1;
           continue;
@@ -139,8 +167,8 @@ class Run {
   }
 
   private async toolCall(call: ToolCall): Promise<void> {
-    if (this.toolCalls === this.limit("max_tool_calls")) throw new Ended("limit");
-    this.toolCalls += 1;
+    if (this.toolCallsUsed === this.limits.max_tool_calls) throw new Ended("limit");
+    for (let r: Run | undefined = this; r; r = r.parent) r.toolCallsUsed += 1;
     if (!Object.hasOwn(this.harness.tools ?? {}, call.tool)) {
       this.result(call, { ok: false, error: "invalid arguments: unknown tool" });
       return;
@@ -152,7 +180,10 @@ class Run {
     const pre = await this.chain("pre_tool", { call: { tool: call.tool, args: call.args } }, call);
     if (pre.some((d) => d.decision === "deny")) return;
     const args = pre.filter((d) => d.decision === "modify").at(-1)?.args ?? call.args;
-    const answer = checkAnswer(await this.host.call(call.tool, args), this.schemas.get(`tools.${call.tool}.output`));
+    const answer = call.tool === "core_spawn"
+      ? await this.spawn(call, args as unknown as { harness: Harness; task: string })
+      : checkAnswer(await this.host.call(call.tool, args), this.schemas.get(`tools.${call.tool}.output`));
+    if (answer === null) return;
     this.result(call, answer);
     await this.chain("post_tool", { call: { tool: call.tool, args }, result: answer }, call);
   }
@@ -161,13 +192,69 @@ class Run {
     this.append("tool_result", { call_id: call.call_id, tool: call.tool, ...answer });
   }
 
+  /** `core_spawn` (§10): the narrowing check, then the child run. Null if the check denied it. */
+  private async spawn(call: ToolCall, args: { harness: Harness; task: string }): Promise<Answer | null> {
+    const child = args.harness;
+    const denial = this.narrowing(child);
+    if (denial !== null) {
+      const text = excerpt(denial, this.limits.max_hook_text);
+      this.append("hook", { hook: "core_spawn", event: "pre_tool", decision: "deny", text, call_id: call.call_id });
+      return null;
+    }
+    const limits = Object.fromEntries(LIMITS.map((n) => [n, child.limits?.[n] ?? this.allowance(n)])) as Effective;
+    const scope = { depth: this.scope.depth + 1, parent_call: call.call_id };
+    const run = new Run(child, this.host, this.log, scope, limits, this.counter, this, this.hooks);
+    if ((await run.run(args.task)) === "infra_failure") throw new InfraFailure("the child run failed");
+    return { ok: true, result: { text: run.lastText, steps: run.stepsUsed, tool_calls: run.toolCallsUsed } };
+  }
+
+  /** How much of a limit a child may have: what is left of a budget, else the limit itself. */
+  private allowance(name: LimitName): number {
+    if (name === "max_steps") return this.limits.max_steps - this.stepsUsed;
+    if (name === "max_tool_calls") return this.limits.max_tool_calls - this.toolCallsUsed;
+    return this.limits[name];
+  }
+
+  /** The first failed narrowing check's text (§10), or null if the child may run. */
+  private narrowing(child: Harness): string | null {
+    let valid: boolean;
+    try {
+      canonical(child);
+      valid = harnessErrors(child).length === 0;
+    } catch {
+      valid = false;
+    }
+    if (!valid) return "child harness is not valid";
+    const tools = this.harness.tools ?? {};
+    const childTools = child.tools ?? {};
+    for (const id of Object.keys(childTools).sort()) {
+      if (!Object.hasOwn(tools, id)) return `child tool ${id} is not a parent tool`;
+      if (canonical(childTools[id]!.input ?? null) !== canonical(tools[id]!.input ?? null)) {
+        return `child tool ${id} has a different input schema`;
+      }
+    }
+    for (const id of Object.keys(child.handlers ?? {}).sort()) {
+      if (!Object.hasOwn(this.harness.handlers ?? {}, id)) return `child handler ${id} is not a parent handler`;
+    }
+    for (const name of LIMITS) {
+      const declared = child.limits?.[name];
+      if (declared !== undefined && declared > this.allowance(name)) {
+        return `child limit ${name} exceeds the parent's ${canonical(this.allowance(name))}`;
+      }
+    }
+    if (Object.hasOwn(childTools, "core_spawn") && !(this.scope.depth + 1 < this.limits.max_depth)) {
+      return `child at depth ${this.scope.depth + 1} may not spawn`;
+    }
+    return null;
+  }
+
   /** Run the hooks of an event in order (§5.2), log each decision, and return the ones that act. */
   private async chain(event: Event, members: Members, call?: ToolCall): Promise<Decision[]> {
     const acting: Decision[] = [];
     let current = members.call;
     let replaced: string | undefined;
     const key = call?.tool ?? members.interrupt?.source;
-    for (const hook of this.harness.hooks ?? []) {
+    for (const { hook, owner } of this.hooks) {
       if (hook.on !== event || !matches(hook.match, key)) continue;
       const input: { [k: string]: Json } = {
         event, hook: hook.id, with: hook.with ?? {}, step: this.step, view: view(this.log.entries, this.scope) as Json,
@@ -180,7 +267,7 @@ class Run {
       if (members.continued !== undefined) input.continued = members.continued;
       if (event === "pre_request") input.context = render(this.harness, this.log.entries, this.scope).messages as Json;
 
-      const d = await this.decide(hook, event, input, current?.tool);
+      const d = await this.decide(hook, owner, event, input, current?.tool);
       const where: { [k: string]: Json } = call ? { call_id: call.call_id } : {};
       if (d === null) {
         this.append("hook", { hook: hook.id, event, decision: "failed", ...where });
@@ -201,15 +288,15 @@ class Run {
   }
 
   /** One hook's decision (§5.4), or null if the hook failed. */
-  private async decide(hook: Hook, event: Event, input: { [k: string]: Json }, tool?: string): Promise<Decision | null> {
-    const cap = (text: string) => excerpt(text, this.limit("max_hook_text"));
+  private async decide(hook: Hook, owner: Run, event: Event, input: { [k: string]: Json }, tool?: string): Promise<Decision | null> {
+    const cap = (text: string) => excerpt(text, this.limits.max_hook_text);
     if (hook.run.startsWith("core_")) {
       const w = hook.with ?? {};
       if (hook.run === "core_context") return { hook, decision: "add_context", text: cap(w.text as string) };
       const failure = check(hook.run, w, this.step, input.view as ViewEntry[]);
       return failure === null ? { hook, decision: "allow" } : { hook, decision: PUSH_BACK[event]!, text: cap(failure) };
     }
-    const schema = this.schemas.get(`handlers.${hook.run}.input`);
+    const schema = owner.schemas.get(`handlers.${hook.run}.input`);
     if (schema && !schema(input)) return null;
     let answer: unknown;
     try {

@@ -1,0 +1,25 @@
+{"depth":0,"harness_hash":"a9f2b2edcbc1948740012fd240b5089003420d36e28b0ecbee2fd707a8c2141a","seq":1,"type":"run_start"}
+{"seq":2,"text":"Delegate.","type":"system"}
+{"seq":3,"text":"Delegate twice.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"harness":{"hooks":[{"id":"child-rule","match":"echo","on":"pre_tool","run":"core_context","with":{"text":"child rule"}}],"limits":{"max_steps":10},"name":"middle","prompt":"You are middle.","spec":"harness/0.4-draft","tools":{"core_spawn":{},"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Delegate once more."},"call_id":"c4-0","tool":"core_spawn"}],"type":"assistant"}
+{"depth":1,"harness_hash":"87fd882373c1d5f16f7423001daf9a1c81ab0cf86edf7be4dcd42b9c77b9daa1","parent_call":"c4-0","seq":5,"type":"run_start"}
+{"depth":1,"parent_call":"c4-0","seq":6,"text":"You are middle.","type":"system"}
+{"depth":1,"parent_call":"c4-0","seq":7,"text":"Delegate once more.","type":"user"}
+{"depth":1,"parent_call":"c4-0","seq":8,"step":2,"text":"","tool_calls":[{"args":{"harness":{"name":"grandchild-spawner","prompt":"You are grandchild-spawner.","spec":"harness/0.4-draft","tools":{"core_spawn":{},"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo once."},"call_id":"c8-0","tool":"core_spawn"}],"type":"assistant"}
+{"call_id":"c8-0","decision":"deny","depth":1,"event":"pre_tool","hook":"core_spawn","parent_call":"c4-0","seq":9,"text":"child at depth 2 may not spawn","type":"hook"}
+{"depth":1,"parent_call":"c4-0","seq":10,"step":3,"text":"","tool_calls":[{"args":{"harness":{"name":"grandchild","prompt":"You are grandchild.","spec":"harness/0.4-draft","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo once."},"call_id":"c10-0","tool":"core_spawn"}],"type":"assistant"}
+{"depth":2,"harness_hash":"b01ee5aa6e548038406e3dc82c5aea4bb7c773205d8a490cf9b012e24df5e069","parent_call":"c10-0","seq":11,"type":"run_start"}
+{"depth":2,"parent_call":"c10-0","seq":12,"text":"You are grandchild.","type":"system"}
+{"depth":2,"parent_call":"c10-0","seq":13,"text":"Echo once.","type":"user"}
+{"depth":2,"parent_call":"c10-0","seq":14,"step":4,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c14-0","tool":"echo"}],"type":"assistant"}
+{"call_id":"c14-0","decision":"add_context","depth":2,"event":"pre_tool","hook":"parent-rule","parent_call":"c10-0","seq":15,"text":"parent rule","type":"hook"}
+{"call_id":"c14-0","decision":"add_context","depth":2,"event":"pre_tool","hook":"child-rule","parent_call":"c10-0","seq":16,"text":"child rule","type":"hook"}
+{"call_id":"c14-0","depth":2,"ok":true,"parent_call":"c10-0","result":{"n":1},"seq":17,"tool":"echo","type":"tool_result"}
+{"depth":2,"parent_call":"c10-0","seq":18,"step":5,"text":"Echoed.","tool_calls":[],"type":"assistant"}
+{"depth":2,"parent_call":"c10-0","reason":"stop","seq":19,"type":"run_end"}
+{"call_id":"c10-0","depth":1,"ok":true,"parent_call":"c4-0","result":{"steps":2,"text":"Echoed.","tool_calls":1},"seq":20,"tool":"core_spawn","type":"tool_result"}
+{"depth":1,"parent_call":"c4-0","seq":21,"step":6,"text":"Delegated.","tool_calls":[],"type":"assistant"}
+{"depth":1,"parent_call":"c4-0","reason":"stop","seq":22,"type":"run_end"}
+{"call_id":"c4-0","ok":true,"result":{"steps":5,"text":"Delegated.","tool_calls":3},"seq":23,"tool":"core_spawn","type":"tool_result"}
+{"seq":24,"step":7,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":25,"type":"run_end"}

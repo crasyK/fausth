@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .harness import shown_tool
 from .log import Scope, in_scope
 from .values import canonical
 
@@ -103,8 +104,5 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
             messages.append(message)
 
     declared = harness.get("tools", {})
-    tools = [
-        {"name": name, "description": declared[name].get("description", ""), "input": declared[name].get("input", {})}
-        for name in sorted(declared)
-    ]
+    tools = [{"name": name, **shown_tool(name, declared[name])} for name in sorted(declared)]
     return {"system": system, "tools": tools, "messages": messages}
