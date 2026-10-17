@@ -154,6 +154,8 @@ with the arguments and gets back either `{ok: true, result: <value>}` or
 - An implementation that cannot be reached at all (binding missing, host crash) is an
   **infrastructure failure**: the run ends with `infra_failure` (§12). It is never shown to the
   model as if it were tool output.
+- So is an answer that breaks the interface: not of the two forms above, a `result` that isn't
+  JSON (§1), or a `result` that fails the tool's `output` schema.
 
 A call is **successful** iff its arguments were valid, no hook denied it, and it returned
 `ok: true`.
@@ -363,7 +365,8 @@ optional member is left out, never `null`. Every line ends with `\n`.
 ## 8. The run loop
 
 1. Log `run_start`. Run `session_start` hooks. Assemble and log `system` (§9.1).
-2. Wait for a user message. Run `user_prompt` hooks. If denied, go back to 2. Else log `user`.
+2. Ask the host for the next user message; if the conversation has none left, end with `stop`.
+   Run `user_prompt` hooks. If denied, go back to 2. Else log `user`.
 3. **Step.** If `steps_used = max_steps`, end with `limit`.
    1. Deliver queued interrupts (§11).
    2. Run `pre_request` hooks.
@@ -371,18 +374,25 @@ optional member is left out, never `null`. Every line ends with `\n`.
    4. For each tool call, **in order**:
       - If `tool_calls_used = max_tool_calls`, end with `limit`.
       - `tool_calls_used += 1`.
-      - Unknown tool or invalid arguments → `tool_result` with `ok: false`, `error:
-        "invalid arguments: <schema error>"` (no hooks run).
+      - Unknown tool → `tool_result` with `ok: false`, `error: "invalid arguments: unknown
+        tool"`; arguments that fail the input schema → `error: "invalid arguments: does not
+        match the input schema"`. No hooks run. (The texts are fixed so that every engine and
+        every schema library produces the same tokens.)
       - Run `pre_tool` hooks. If denied → no execution; the deny is the result (§9.3).
       - Execute. Log `tool_result`. Run `post_tool` hooks.
    5. If there were tool calls → next step.
    6. No tool calls → if this turn has had fewer than `limits.max_continues` `continue`
       decisions, run `stop` hooks; otherwise skip them (the model may stop). If `continue` →
-      next step. Otherwise the turn ends: go to 2 (interactive host) or end with `stop`
-      (one-shot host). The `continue` count resets when a new user message is admitted.
+      next step. Otherwise the turn ends: go to 2. The `continue` count resets when a new user
+      message is admitted.
 
 A deny never ends the run. Only limits, infrastructure failures, the host, or the end of the
-conversation do.
+conversation do. A one-shot host is a conversation with one user message.
+
+**The current step** is the number of model requests the run has made so far: `0` at
+`session_start` and the first `user_prompt`, `n` for everything that follows the `n`-th
+response up to the next request (its tool calls, `stop`, interrupts delivered before request
+`n + 1`). The `step` members of the log and the hook input hold this number.
 
 ---
 
@@ -390,7 +400,19 @@ conversation do.
 
 The engine produces a provider-neutral request: `system` (string), `tools` (list), `messages`
 (list of `user` / `assistant` / `tool` messages). Host adapters map it to a provider API without
-changing any text. Reasoning is **not** part of the neutral request. Whether logged reasoning is
+changing any text. Its exact shape, which `expected.requests.jsonl` records (§14):
+
+```json
+{"system": "<text>",
+ "tools": [{"name": "<id>", "description": "<text>", "input": {}}],
+ "messages": [{"role": "user", "text": "<text>"},
+              {"role": "assistant", "text": "<text>", "tool_calls": [{"call_id": "c4-0", "tool": "<id>", "args": {}}]},
+              {"role": "tool", "call_id": "c4-0", "tool": "<id>", "text": "<text>"}]}
+```
+
+`tools` holds every entry of the harness's `tools` in sorted id order (the order of canonical
+JSON, §1: `harness_hash` doesn't see declaration order, so the request mustn't either); `output`
+schemas are not shown. An assistant message repeats its log entry's `text` and `tool_calls`. Reasoning is **not** part of the neutral request. Whether logged reasoning is
 sent back to the model (some providers require it within a tool loop) is decided by the provider
 adapter, following that provider's rules. Other provider extras (caching) are out of scope.
 
@@ -530,6 +552,23 @@ A fixture directory contains:
 Built-ins are computed, never recorded. Two engines conform iff both expected files are
 byte-identical. `expected.requests.jsonl` is new compared with v0.3: **it tests the interface
 itself**, i.e. exactly what a fine-tuned model would see.
+
+**Recorded lines** (one JSON object per line):
+
+| File | Line | Meaning |
+|---|---|---|
+| `model.jsonl` | `{text?, tool_calls?: [{tool, args}], reasoning?, reasoning_opaque?}` | the next response; `text` defaults to `""`, `tool_calls` to `[]` |
+| | `{error}` | the model API failed |
+| `tools.jsonl` | `{id, ok: true, result}` / `{id, ok: false, error}` | the next answer of a tool or handler binding |
+| | `{id, unreachable: true}` | the binding couldn't be reached |
+| `user.jsonl` | `{text}` | the next user message |
+| `interrupts.jsonl` | `{step, source, text}` | pushed while the run was at `step` (§8): queued once the current step reaches it |
+
+The replay host answers from these files in order. A model `error`, an `unreachable` line, a
+tools line whose `id` isn't the id being called, and a missing line in `model.jsonl` or
+`tools.jsonl` are infrastructure failures. When `user.jsonl` has no more lines, the conversation
+is over (§8 step 2). `expected.requests.jsonl` holds one canonical line per model request, in
+order, child runs included.
 
 ---
 

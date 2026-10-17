@@ -1,0 +1,3 @@
+{"tool_calls": [{"tool": "notes_search", "args": {"q": "plan"}}, {"tool": "notes_read", "args": {"key": "Plan"}}, {"tool": "notes_read", "args": {"key": "plan\n"}}, {"tool": "notes_read", "args": "plan"}, {"tool": "notes_read", "args": {"key": "plan", "extra": 1}}, {"tool": "notes_read", "args": {"key": "plan"}}]}
+{"tool_calls": [{"tool": "notes_read", "args": {"key": "todo"}}]}
+{"text": "The plan is to castle early."}

@@ -1,0 +1,13 @@
+{
+  "spec": "harness/0.4-draft",
+  "name": "infra-tool-mismatch",
+  "prompt": "Use echo.",
+  "tools": {
+    "echo": {
+      "description": "Echo the input.",
+      "input": {
+        "type": "object"
+      }
+    }
+  }
+}

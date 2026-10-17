@@ -1,0 +1,1 @@
+{"tool_calls": [{"tool": "echo", "args": {"n": 1}}]}
