@@ -247,6 +247,12 @@ in which it happened:
 - one entry per finished top-level tool call: `{step, tool, args, ok, result | error}`;
 - one entry per delivered interrupt: `{step, interrupt: {source, text}}`.
 
+A call is finished when its `tool_result` is logged, or when a `pre_tool` hook denied it (the
+deny is its result, §8): then `ok` is `false` and `error` is the deny's `text`. `args` are the
+arguments the call ran with, i.e. after any `modify`. The entries are in the order in which the
+calls finished. A run's view holds only its own entries: a child run's calls are not in its
+parent's view, and the parent's calls are not in the child's (§10).
+
 The hook input also carries `step` (the current step) and, for `stop`, `continued` (how many
 `continue` decisions this turn has had so far, §8). Tool calls from the current step were
 made in the same model response as the call being checked: **the model had not seen their
@@ -338,11 +344,19 @@ JSON Lines, one canonical object per line, `seq` from 1. Entry types:
 plain text as `reasoning`, an encrypted or signed blob as `reasoning_opaque: {provider, data}`.
 The log is the training data, and reasoning is its most valuable part.
 
-`call_id` is `c<seq of the assistant entry>-<index>`. It is assigned by the engine, not by the
-provider, so logs stay identical across providers.
+`call_id` is `c<seq of the assistant entry>-<index>`, with `index` counting the response's tool
+calls from 0. It is assigned by the engine, not by the provider, so logs stay identical across
+providers.
 
 Entries of a child run (§10) are written inline with `depth` = parent depth + 1 and
-`parent_call` = the `call_id` of the `core_spawn` call.
+`parent_call` = the `call_id` of the `core_spawn` call. Top-level entries carry neither member,
+except `run_start`, which always carries `depth`.
+
+Member details: `assistant.text` is `""` when the response has no text, and `tool_calls` is
+`[]` when it has no calls. A `hook` entry is written for **every** hook that runs, `allow`
+included, in chain order (§5.2); it carries `call_id` on tool events, `text` when its decision
+has one, and `args` for `modify`. A `tool_result` carries `result` iff `ok`, else `error`. An
+optional member is left out, never `null`. Every line ends with `\n`.
 
 ---
 
