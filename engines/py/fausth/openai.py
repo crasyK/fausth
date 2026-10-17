@@ -12,6 +12,8 @@ from .engine import InfraFailure
 from .values import canonical, parse_json
 
 _RETRY_STATUS = (408, 429, 500, 502, 503, 504)
+# Gateways that answer 400 for their own trouble (KIT: "ServiceUnavailable", "Server Connection Error").
+_TRANSIENT = ("unavailable", "connection error", "overloaded", "try again", "timeout", "bad gateway")
 
 
 def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -74,7 +76,7 @@ class ChatModel:
     (the binding's job, §5.4); anything left is an infrastructure failure."""
 
     def __init__(self, base_url: str, api_key: str, model: str, provider: str, *, extra: dict[str, Any] | None = None,
-                 timeout: float = 120, retries: int = 2) -> None:
+                 timeout: float = 120, retries: int = 3) -> None:
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.api_key, self.model, self.provider = api_key, model, provider
         self.extra, self.timeout, self.retries = extra or {}, timeout, retries
@@ -89,8 +91,7 @@ class ChatModel:
                     return from_chat(json.loads(r.read().decode("utf-8")), self.provider)
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", "replace")[:300]
-                # The KIT gateway answers 400 "ServiceUnavailable" when it is overloaded.
-                transient = e.code in _RETRY_STATUS or (e.code == 400 and "unavailable" in detail.lower())
+                transient = e.code in _RETRY_STATUS or (e.code == 400 and any(t in detail.lower() for t in _TRANSIENT))
                 if last or not transient:
                     raise InfraFailure(f"HTTP {e.code} from {self.model}: {detail}") from None
             except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:

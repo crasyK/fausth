@@ -28,6 +28,19 @@ pnpm test                         # TypeScript engine
 pip install -e "engines/py[dev]" && pytest engines/py/tests -q
 ```
 
+## Play the chess harness (Python host)
+
+```bash
+pip install -e "engines/py[chess]"
+export KIT_AI_API_KEY=...            # the key stays in the environment
+python -m fausth run examples/chess/harness.yaml --deployment examples/chess/deployment.kit.yaml \
+  --user "Play the best move for White." --log run.log.jsonl
+```
+
+`examples/chess/harness.yaml` is the spec's §2 harness. The deployment binds its tools to
+python-chess (`fausth.chess_tools`) and names the model; see `engines/py/fausth/host.py` for the
+binding kinds (`script`, `recorded`, `model`).
+
 ## License
 
 Apache-2.0 — `LICENSE` · `NOTICE`

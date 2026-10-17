@@ -14,7 +14,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "chess>=1.10"]
+chess = ["chess>=1.10"]
 
 [tool.setuptools.packages.find]
 where = ["."]
