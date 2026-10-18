@@ -55,6 +55,37 @@ same bytes as the Python engine), and it plays `examples/chess/harness.yaml` liv
 tools. Paste a key for an endpoint that accepts browser calls: OpenRouter does; the KIT gateway
 allows only its own origin. `pnpm -C hosts/web check` replays the fixtures in headless Chrome.
 
+## Chess tools
+
+`fausth.chess_tools` (python-chess) and `hosts/web/src/chess-tools.ts` (chess.js) give the same
+results for the same game, so both hosts show the model the same tokens;
+[`conformance/chess-tools.json`](conformance/chess-tools.json) holds the vectors both are tested on.
+
+| Tool | Result |
+|---|---|
+| `board_observe` | FEN, side to move, whether in check, `position_hash` |
+| `board_legal_moves` | every legal move, UCI and SAN |
+| `board_move` | plays a UCI move; without `position_hash` the staleness check is skipped |
+| `board_check` | `{move, legal}`; if legal: `san`, `gives_check`, and `captures` when it captures; if not: `why`, the move rule below |
+| `board_piece` | the piece on a square: `can_move_to` (for a piece of the side not to move: where it could go if it were its turn), `attacks`, `attacked_by`, `defended_by`, `pinned`; its side's `in_check` and castling rights (`castling_right_kingside`, `castling_right_queenside`: the right, not whether castling is legal now) |
+| `board_history` | `moves`: the game so far, numbered, in SAN (`last`: only the last n plies); `plies`: how many in all |
+| `board_resign` | `{resigned: true}`; the reason goes to the host (`state["resigned"]`, `resigned` in the browser), which ends the game |
+
+For hosts, three functions (TypeScript: `moveProblem`, `renderBoard`, `turnBrief`):
+
+- `move_problem(board, move)`: the sentence for a move that isn't legal, `None` for a legal one. The first
+  that applies: (1) `Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote.`,
+  (2) `There is no piece on {from}.`, (3) `The {piece} on {from} is your opponent's.`,
+  (4) `Name the piece to promote to, e.g. {from}{to}q.`, (5) `Only a pawn reaching the last rank can promote.`,
+  (6) `You can't castle {kingside|queenside} now.`, (7) `The {piece} on {from} can't move to {to}.`,
+  (8) `You are in check, and {move} doesn't get you out of it.`, (9) `{move} would leave your king in check.`
+  `{piece}` reads like `white knight`, `{move}` as the model wrote it.
+- `render_board(board, fmt, orientation)`: `fen`, `ascii`, `ascii_fen`, `pieces` (one line per side) or
+  `unicode`; `orientation` `white` (White at the bottom) or `mover` (the side to move at the bottom).
+- `turn_brief(board, *, board_format, orientation, last_move, note_mode, note_text, note_lines_added)`: the
+  text a `user_prompt` handler appends to the user message: the board, the opponent's last move, whether
+  the side to move is in check, and the note (`none`, `count`, `count_added`, `full`).
+
 ## License
 
 Apache-2.0 — `LICENSE` · `NOTICE`

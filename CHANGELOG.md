@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 — 2026-10-18
+
+Additions for harness-lab's first harness series (minimal, strategist, squad). Every 0.5.0 harness
+stays valid and sees the same tokens.
 
 ### Spec
 - `core_called_since` takes a list of tools as `tool`: the check passes if any of them has a seen
@@ -14,6 +17,14 @@
 - Fixture `builtin-called-since-list` (passes through the second tool, fails before any call, resets on
   `since`, a same-response call doesn't count, a one-id list on `stop`); harness cases for the list
   (valid, empty, duplicate, undeclared, non-id, and a list on `core_count`).
+
+### Chess tools
+- New tools on both hosts, with the same results: `board_check`, `board_piece`, `board_history`,
+  `board_resign`. `board_move` takes `position_hash` as optional.
+- For hosts: `move_problem` (the nine move-rule sentences), `render_board` (five formats, two
+  orientations) and `turn_brief` (the brief before each move), which harness-lab's `chess_move_rules`
+  and `turn_brief` handlers are built on.
+- `conformance/chess-tools.json`: 108 python-chess vectors that the chess.js tools reproduce.
 
 ## 0.5.0 — 2026-10-17
 
