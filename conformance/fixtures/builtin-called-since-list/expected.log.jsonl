@@ -1,0 +1,21 @@
+{"depth":0,"harness_hash":"10840a4d19706b7ccae378575ebf48d7608d6c65b1dfec2e5e578c6568d2c529","seq":1,"type":"run_start"}
+{"seq":2,"text":"Play chess.","type":"system"}
+{"seq":3,"text":"Your move.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"move":"e2e4"},"call_id":"c4-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c4-0","decision":"deny","event":"pre_tool","hook":"looked-first","seq":5,"text":"board_check or board_piece not called yet","type":"hook"}
+{"seq":6,"step":2,"text":"","tool_calls":[{"args":{"square":"e2"},"call_id":"c6-0","tool":"board_piece"}],"type":"assistant"}
+{"call_id":"c6-0","ok":true,"result":{"moves":["e3","e4"],"piece":"white pawn"},"seq":7,"tool":"board_piece","type":"tool_result"}
+{"seq":8,"step":3,"text":"","tool_calls":[{"args":{"move":"e2e4"},"call_id":"c8-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c8-0","decision":"allow","event":"pre_tool","hook":"looked-first","seq":9,"type":"hook"}
+{"call_id":"c8-0","ok":true,"result":{"played":"e2e4"},"seq":10,"tool":"board_move","type":"tool_result"}
+{"seq":11,"step":4,"text":"","tool_calls":[{"args":{"move":"d2d4"},"call_id":"c11-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c11-0","decision":"deny","event":"pre_tool","hook":"looked-first","seq":12,"text":"board_check or board_piece not called since the last board_move","type":"hook"}
+{"seq":13,"step":5,"text":"","tool_calls":[{"args":{"move":"d2d4"},"call_id":"c13-0","tool":"board_check"},{"args":{"move":"d2d4"},"call_id":"c13-1","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c13-0","ok":true,"result":{"legal":true,"san":"d4"},"seq":14,"tool":"board_check","type":"tool_result"}
+{"call_id":"c13-1","decision":"deny","event":"pre_tool","hook":"looked-first","seq":15,"text":"board_check or board_piece not called since the last board_move","type":"hook"}
+{"seq":16,"step":6,"text":"","tool_calls":[{"args":{"move":"d2d4"},"call_id":"c16-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c16-0","decision":"allow","event":"pre_tool","hook":"looked-first","seq":17,"type":"hook"}
+{"call_id":"c16-0","ok":true,"result":{"played":"d2d4"},"seq":18,"tool":"board_move","type":"tool_result"}
+{"seq":19,"step":7,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"stop","hook":"moved","seq":20,"type":"hook"}
+{"reason":"stop","seq":21,"type":"run_end"}

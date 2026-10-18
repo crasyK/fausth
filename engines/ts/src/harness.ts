@@ -122,7 +122,7 @@ export function harnessErrors(value: unknown): string[] {
     if ((hook.on === "pre_tool" || hook.on === "post_tool") && hook.match !== undefined && hook.match !== "*") {
       toolRefs.push(...[hook.match].flat());
     }
-    if (BUILT_INS.has(hook.run)) toolRefs.push(hook.with?.tool, hook.with?.since);
+    if (BUILT_INS.has(hook.run)) toolRefs.push(...[hook.with?.tool].flat(), hook.with?.since);
     for (const id of toolRefs) {
       if (typeof id === "string" && !Object.hasOwn(tools, id)) errors.push(`hook ${hook.id}: ${id} is not a declared tool`);
     }
