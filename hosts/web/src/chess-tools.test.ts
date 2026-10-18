@@ -66,5 +66,5 @@ test("chess.js tools reproduce the python-chess vectors", async () => {
     }
     assert.deepEqual(got, v.expect, `${v.call} ${JSON.stringify(a)} on ${v.fen ?? "start"} after ${v.moves.join(" ")}`);
   }
-  assert.equal(vectors.length, 106);
+  assert.equal(vectors.length, 108);
 });

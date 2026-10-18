@@ -54,6 +54,7 @@ def board_move(args: Any, state: dict[str, Any]) -> dict[str, Any]:
 
 # The move rules: the sentence a model sees for a move that isn't legal, the first that applies.
 NOT_A_MOVE = "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+ONLY_PAWNS_PROMOTE = "Only a pawn reaching the last rank can promote."
 UCI = re.compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
 NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen",
          chess.KING: "king"}
@@ -113,10 +114,10 @@ def move_problem(board: chess.Board, move: str) -> str | None:
         return f"The {_name(piece)} on {move[:2]} is your opponent's."
     last_rank = 7 if piece.color else 0
     promotes = piece.piece_type == chess.PAWN and chess.square_rank(to) == last_rank
-    if promotion and not promotes:
-        return NOT_A_MOVE
     if promotes and not promotion and _reaches(board, frm, to):
         return f"Name the piece to promote to, e.g. {move[:4]}q."
+    if promotion and not promotes:
+        return ONLY_PAWNS_PROMOTE
     home = chess.E1 if piece.color else chess.E8
     if piece.piece_type == chess.KING and frm == home and to in (home + 2, home - 2):
         return f"You can't castle {'kingside' if to > frm else 'queenside'} now."
@@ -164,8 +165,8 @@ def board_piece(args: Any, state: dict[str, Any]) -> dict[str, Any]:
         "defended_by": [_on(board, s) for s in sorted(board.attackers(color, square), key=chess.square_name)],
         "pinned": board.is_pinned(color, square) if piece.piece_type != chess.KING else False,
         "in_check": king is not None and board.is_attacked_by(not color, king),
-        "can_castle_kingside": board.has_kingside_castling_rights(color),
-        "can_castle_queenside": board.has_queenside_castling_rights(color),
+        "castling_right_kingside": board.has_kingside_castling_rights(color),
+        "castling_right_queenside": board.has_queenside_castling_rights(color),
     }
 
 

@@ -33,7 +33,7 @@ OPENING = ["e2e4", "e7e5", "g1f3", "b8c6"]
 
 # (fen, moves played first, call, args)
 CASES = [
-    *[(START, [], "move_problem", {"move": m}) for m in ["e2e4", "Nf3", "e2e4+", "e7e8Q", "0000", "e4e5", "e7e5", "g1g3", "a1a3", "h1h1"]],
+    *[(START, [], "move_problem", {"move": m}) for m in ["e2e4", "Nf3", "e2e4+", "e7e8Q", "0000", "e4e5", "e7e5", "g1g3", "a1a3", "h1h1", "e2e4q", "g1f3q"]],
     *[(CASTLE, [], "move_problem", {"move": m}) for m in ["e1g1", "e1c1", "e1e3"]],
     *[(CASTLE_THROUGH_CHECK, [], "move_problem", {"move": m}) for m in ["e1g1", "e1c1"]],
     *[(CASTLE_NO_RIGHTS, [], "move_problem", {"move": m}) for m in ["e1g1", "e1c1"]],
@@ -140,18 +140,20 @@ def test_each_move_rule_has_its_sentence():
     assert problem(START, "e4e5") == "There is no piece on e4."  # 2
     assert problem(START, "e7e5") == "The black pawn on e7 is your opponent's."  # 3
     assert problem(PROMOTION, "a7a8") == "Name the piece to promote to, e.g. a7a8q."  # 4
-    assert problem(CASTLE_THROUGH_CHECK, "e1g1") == "You can't castle kingside now."  # 5
+    assert problem(PROMOTION, "h1g1q") == "Only a pawn reaching the last rank can promote."  # 5: not a pawn
+    assert problem(START, "e2e4q") == "Only a pawn reaching the last rank can promote."  # 5: not the last rank
+    assert problem(CASTLE_THROUGH_CHECK, "e1g1") == "You can't castle kingside now."  # 6
     assert problem(CASTLE_NO_RIGHTS, "e1c1") == "You can't castle queenside now."
-    assert problem(START, "g1g3") == "The white knight on g1 can't move to g3."  # 6
-    assert problem(CHECK, "a2a3") == "You are in check, and a2a3 doesn't get you out of it."  # 7
-    assert problem(PIN, "e2d3") == "e2d3 would leave your king in check."  # 8
+    assert problem(START, "g1g3") == "The white knight on g1 can't move to g3."  # 7
+    assert problem(CHECK, "a2a3") == "You are in check, and a2a3 doesn't get you out of it."  # 8
+    assert problem(PIN, "e2d3") == "e2d3 would leave your king in check."  # 9
 
 
 def test_the_rules_apply_in_order_and_legal_moves_pass():
     assert problem(START, "e2e4") is None
     assert problem(PROMOTION, "a7a8q") is None
     assert problem(CASTLE, "e1g1") is None
-    assert problem(PROMOTION, "h1g1q") == chess_tools.NOT_A_MOVE  # a promotion piece on a move that doesn't promote
+    assert problem(START, "e7e5q") == "The black pawn on e7 is your opponent's."  # before the promotion rules
     assert problem(PROMOTION_BLOCKED, "a7a8") == "The white pawn on a7 can't move to a8."  # no promotion to name
     assert problem(DOUBLE_CHECK, "c2a1") == "You are in check, and c2a1 doesn't get you out of it."
     assert problem(EN_PASSANT_PINNED, "e5d6") == "e5d6 would leave your king in check."

@@ -9,6 +9,7 @@ import type { Answer } from "../../../engines/ts/src/engine.js";
 type Args = { [k: string]: unknown };
 
 const NOT_A_MOVE = "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote.";
+const ONLY_PAWNS_PROMOTE = "Only a pawn reaching the last rank can promote.";
 const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
 const NAMES: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
 const GLYPHS: Record<string, string> = { K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙", k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
@@ -61,8 +62,8 @@ export function moveProblem(game: Chess, move: string): string | null {
   if (!piece) return `There is no piece on ${from}.`;
   if (piece.color !== game.turn()) return `The ${pieceName(piece)} on ${from} is your opponent's.`;
   const promotes = piece.type === "p" && rankOf(to) === (piece.color === "w" ? 7 : 0);
-  if (promotion && !promotes) return NOT_A_MOVE;
   if (promotes && !promotion && reaches(game, from, to)) return `Name the piece to promote to, e.g. ${move.slice(0, 4)}q.`;
+  if (promotion && !promotes) return ONLY_PAWNS_PROMOTE;
   const home = piece.color === "w" ? "e1" : "e8";
   if (piece.type === "k" && from === home && rankOf(to) === rankOf(from) && Math.abs(fileOf(to) - fileOf(from)) === 2) {
     return `You can't castle ${fileOf(to) > fileOf(from) ? "kingside" : "queenside"} now.`;
@@ -253,7 +254,7 @@ export function chessTools(fen?: string) {
           defended_by: game.attackers(square as Square, color).sort(byName).map((s) => on(game, s)),
           pinned: pinned(game, square as Square, color),
           in_check: king !== null && game.isAttacked(king, enemy),
-          can_castle_kingside: rights.k, can_castle_queenside: rights.q,
+          castling_right_kingside: rights.k, castling_right_queenside: rights.q,
         },
       };
     },

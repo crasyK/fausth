@@ -90,6 +90,24 @@
   "expect": "The white rook on h1 can't move to h1."
  },
  {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e2e4q"
+  },
+  "expect": "Only a pawn reaching the last rank can promote."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "g1f3q"
+  },
+  "expect": "Only a pawn reaching the last rank can promote."
+ },
+ {
   "fen": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
   "moves": [],
   "call": "move_problem",
@@ -258,7 +276,7 @@
   "args": {
    "move": "h1g1q"
   },
-  "expect": "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+  "expect": "Only a pawn reaching the last rank can promote."
  },
  {
   "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
@@ -532,8 +550,8 @@
     ],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": true,
-    "can_castle_queenside": true
+    "castling_right_kingside": true,
+    "castling_right_queenside": true
    }
   }
  },
@@ -557,8 +575,8 @@
     ],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": true,
-    "can_castle_queenside": true
+    "castling_right_kingside": true,
+    "castling_right_queenside": true
    }
   }
  },
@@ -614,8 +632,8 @@
     "defended_by": [],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": true,
-    "can_castle_queenside": true
+    "castling_right_kingside": true,
+    "castling_right_queenside": true
    }
   }
  },
@@ -641,8 +659,8 @@
     ],
     "pinned": true,
     "in_check": false,
-    "can_castle_kingside": false,
-    "can_castle_queenside": false
+    "castling_right_kingside": false,
+    "castling_right_queenside": false
    }
   }
  },
@@ -681,8 +699,8 @@
     ],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": false,
-    "can_castle_queenside": false
+    "castling_right_kingside": false,
+    "castling_right_queenside": false
    }
   }
  },
@@ -712,8 +730,8 @@
     ],
     "pinned": false,
     "in_check": true,
-    "can_castle_kingside": false,
-    "can_castle_queenside": false
+    "castling_right_kingside": false,
+    "castling_right_queenside": false
    }
   }
  },
@@ -735,8 +753,8 @@
     "defended_by": [],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": false,
-    "can_castle_queenside": false
+    "castling_right_kingside": false,
+    "castling_right_queenside": false
    }
   }
  },
@@ -761,8 +779,8 @@
     "defended_by": [],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": true,
-    "can_castle_queenside": true
+    "castling_right_kingside": true,
+    "castling_right_queenside": true
    }
   }
  },
@@ -793,8 +811,8 @@
     ],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": true,
-    "can_castle_queenside": true
+    "castling_right_kingside": true,
+    "castling_right_queenside": true
    }
   }
  },
@@ -831,8 +849,8 @@
     "defended_by": [],
     "pinned": false,
     "in_check": false,
-    "can_castle_kingside": true,
-    "can_castle_queenside": true
+    "castling_right_kingside": true,
+    "castling_right_queenside": true
    }
   }
  },
