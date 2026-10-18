@@ -377,9 +377,11 @@ function check(run: string, w: { [k: string]: Json }, step: number, entries: Vie
   const successful = (tool: Json) => (e: Call) => e.tool === tool && e.ok;
   const seen = (e: Call) => e.step < step;
   if (run === "core_called_since") {
+    const tools = [w.tool!].flat();
     const since = w.since === undefined ? -1 : calls.findLastIndex(successful(w.since));
-    if (calls.slice(since + 1).some((e) => successful(w.tool!)(e) && seen(e))) return null;
-    return since >= 0 ? `${w.tool} not called since the last ${w.since}` : `${w.tool} not called yet`;
+    if (calls.slice(since + 1).some((e) => tools.some((t) => successful(t)(e)) && seen(e))) return null;
+    const named = tools.join(" or ");
+    return since >= 0 ? `${named} not called since the last ${w.since}` : `${named} not called yet`;
   }
   if (run === "core_last_result") {
     const last = calls.filter((e) => successful(w.tool!)(e) && seen(e)).at(-1);

@@ -1,0 +1,4 @@
+{"id": "board_piece", "ok": true, "result": {"piece": "white pawn", "moves": ["e3", "e4"]}}
+{"id": "board_move", "ok": true, "result": {"played": "e2e4"}}
+{"id": "board_check", "ok": true, "result": {"legal": true, "san": "d4"}}
+{"id": "board_move", "ok": true, "result": {"played": "d2d4"}}

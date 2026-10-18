@@ -1,0 +1,7 @@
+{"tool_calls": [{"tool": "board_move", "args": {"move": "e2e4"}}]}
+{"tool_calls": [{"tool": "board_piece", "args": {"square": "e2"}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "e2e4"}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "d2d4"}}]}
+{"tool_calls": [{"tool": "board_check", "args": {"move": "d2d4"}}, {"tool": "board_move", "args": {"move": "d2d4"}}]}
+{"tool_calls": [{"tool": "board_move", "args": {"move": "d2d4"}}]}
+{"text": "Done."}

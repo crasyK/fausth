@@ -101,7 +101,12 @@
           "if": { "required": ["run"], "properties": { "run": { "const": "core_called_since" } } },
           "then": { "required": ["with"], "properties": { "with": {
             "required": ["tool"], "additionalProperties": false,
-            "properties": { "tool": { "$ref": "#/$defs/id" }, "since": { "$ref": "#/$defs/id" } } } } }
+            "properties": {
+              "tool": { "anyOf": [
+                { "$ref": "#/$defs/id" },
+                { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+              ] },
+              "since": { "$ref": "#/$defs/id" } } } } }
         },
         {
           "if": { "required": ["run"], "properties": { "run": { "const": "core_last_result" } } },

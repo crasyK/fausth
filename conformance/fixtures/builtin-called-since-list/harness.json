@@ -1,0 +1,77 @@
+{
+  "spec": "harness/0.5",
+  "name": "builtin-called-since-list",
+  "prompt": "Play chess.",
+  "tools": {
+    "board_check": {
+      "description": "Check a move without playing it.",
+      "input": {
+        "type": "object",
+        "required": [
+          "move"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "move": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "board_piece": {
+      "description": "Inspect the piece on a square.",
+      "input": {
+        "type": "object",
+        "required": [
+          "square"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "square": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "board_move": {
+      "description": "Play a move in UCI.",
+      "input": {
+        "type": "object",
+        "required": [
+          "move"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "move": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "looked-first",
+      "on": "pre_tool",
+      "match": "board_move",
+      "run": "core_called_since",
+      "with": {
+        "tool": [
+          "board_check",
+          "board_piece"
+        ],
+        "since": "board_move"
+      }
+    },
+    {
+      "id": "moved",
+      "on": "stop",
+      "run": "core_called_since",
+      "with": {
+        "tool": [
+          "board_move"
+        ]
+      }
+    }
+  ]
+}

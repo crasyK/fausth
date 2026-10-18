@@ -391,12 +391,14 @@ def _check(run: str, w: dict[str, Any], step: int, entries: list[dict[str, Any]]
         return e["step"] < step
 
     if run == "core_called_since":
+        tools = w["tool"] if isinstance(w["tool"], list) else [w["tool"]]
         since = -1
         if "since" in w:
             since = max((i for i, e in enumerate(calls) if successful(w["since"])(e)), default=-1)
-        if any(successful(w["tool"])(e) and seen(e) for e in calls[since + 1:]):
+        if any(successful(t)(e) and seen(e) for e in calls[since + 1:] for t in tools):
             return None
-        return f"{w['tool']} not called since the last {w['since']}" if since >= 0 else f"{w['tool']} not called yet"
+        named = " or ".join(tools)
+        return f"{named} not called since the last {w['since']}" if since >= 0 else f"{named} not called yet"
     if run == "core_last_result":
         last = [e for e in calls if successful(w["tool"])(e) and seen(e)]
         if not last:

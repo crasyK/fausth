@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Spec
+- `core_called_since` takes a list of tools as `tool`: the check passes if any of them has a seen
+  successful call after `since`, and the failure text joins the ids with ` or `
+  (`board_check or board_piece not called yet`). Needed by the chess strategist harness ("check a move or
+  inspect a piece before moving"). A built-in rather than a host handler, so every engine computes it and
+  words it the same, and replay recomputes it (§5.1, §6, schema). Files still declare `spec: harness/0.5`;
+  a 0.5.0 engine rejects a harness that uses the list.
+
+### Conformance
+- Fixture `builtin-called-since-list` (passes through the second tool, fails before any call, resets on
+  `since`, a same-response call doesn't count, a one-id list on `stop`); harness cases for the list
+  (valid, empty, duplicate, undeclared, non-id, and a list on `core_count`).
+
 ## 0.5.0 — 2026-10-17
 
 A rebuild on one small, normative spec: `docs/spec-v0.5.md` (drafted as v0.4), built along

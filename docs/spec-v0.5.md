@@ -210,7 +210,7 @@ twice under two ids.
 `match` is only valid on `pre_tool` and `post_tool`, where every id MUST be a declared tool,
 and on `interrupt`, where the ids are sources (§11). A list is non-empty and doesn't contain
 `"*"`. A built-in's `with` holds exactly the members listed in §6, and its `tool` and `since`
-MUST be declared tools.
+(every id of a `tool` list) MUST be declared tools.
 
 ### 5.2 Order
 
@@ -318,18 +318,21 @@ response fails the second move, and two calls in one response can't get past `ma
 
 | Built-in | `with` | Check passes iff | Failure text |
 |---|---|---|---|
-| `core_called_since` | `tool`, optional `since` | a seen successful call of `tool` exists after the last successful call of `since` (or anywhere, without `since` or when `since` has no successful call) | `{tool} not called since the last {since}` / `{tool} not called yet` |
+| `core_called_since` | `tool` (an id or a list of ids), optional `since` | a seen successful call of `tool` (of any listed tool) exists after the last successful call of `since` (or anywhere, without `since` or when `since` has no successful call) | `{tool} not called since the last {since}` / `{tool} not called yet` |
 | `core_last_result` | `tool`, `path`, `eq` | the last seen successful call of `tool` has `eq` at `path` | `last {tool} result {path} is not {eq}` / `{tool} has no successful call yet` |
 | `core_count` | `tool`, `max` | fewer than `max` successful calls of `tool` exist | `{tool} limit reached ({max})` |
 | `core_deny` | `text` | never | `{text}` |
 | `core_context` | `text` | always; returns `add_context` with `text` | — |
 
 `tool`, `since`, `path` and `text` are strings, `max` is a non-negative integer, `eq` is any JSON
-value. "Successful" is `ok: true` in the view. `core_called_since` uses its first failure text
+value. `core_called_since` also takes a non-empty list of distinct tool ids as `tool`: the check
+passes if any of them qualifies, and `{tool}` renders as the ids joined by
+` or ` in the listed order (`board_check or board_piece not called yet`); a one-id list behaves as
+the id. "Successful" is `ok: true` in the view. `core_called_since` uses its first failure text
 when `since` has a successful call, else the second. `path` is a `.`-separated list of object
 member names and array indexes (`0`, `1`, …, no leading zeros); `""` is the result itself; a
 path that leads nowhere fails the check, and `eq` is compared by canonical form.
-`{tool}`, `{since}` and `{path}` render as given, `{max}` and `{eq}` as canonical JSON.
+`{tool}` (an id), `{since}` and `{path}` render as given, `{max}` and `{eq}` as canonical JSON.
 
 **A failed check becomes the event's push-back decision:**
 

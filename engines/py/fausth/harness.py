@@ -220,7 +220,8 @@ def harness_errors(value: Any) -> list[str]:
         if hook["on"] in ("pre_tool", "post_tool") and match != "*":
             tool_refs += match if isinstance(match, list) else [match]
         if run in BUILT_INS:
-            tool_refs += [hook.get("with", {}).get("tool"), hook.get("with", {}).get("since")]
+            tool = hook.get("with", {}).get("tool")
+            tool_refs += [*(tool if isinstance(tool, list) else [tool]), hook.get("with", {}).get("since")]
         for tid in tool_refs:
             if isinstance(tid, str) and tid not in tools:
                 errors.append(f"hook {hook_id}: {tid} is not a declared tool")

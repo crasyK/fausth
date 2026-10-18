@@ -1,0 +1,10 @@
+spec: harness/0.5
+name: called-since-list
+prompt: p
+tools:
+  board_check: { description: check, input: { type: object } }
+  board_piece: { description: piece, input: { type: object } }
+  board_move: { description: move, input: { type: object } }
+hooks:
+  - { id: looked-first, on: pre_tool, match: board_move, run: core_called_since, with: { tool: [board_check, board_piece], since: board_move } }
+  - { id: one-id-list, on: stop, run: core_called_since, with: { tool: [board_move] } }

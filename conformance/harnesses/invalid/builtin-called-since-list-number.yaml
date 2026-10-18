@@ -1,0 +1,7 @@
+spec: harness/0.5
+name: base
+prompt: p
+tools:
+  board_move: { description: move, input: { type: object } }
+hooks:
+  - { id: a, on: pre_tool, run: core_called_since, with: { tool: [board_move, 7] } }
