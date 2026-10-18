@@ -1,0 +1,1406 @@
+[
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e2e4"
+  },
+  "expect": null
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "Nf3"
+  },
+  "expect": "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e2e4+"
+  },
+  "expect": "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e7e8Q"
+  },
+  "expect": "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "0000"
+  },
+  "expect": "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e4e5"
+  },
+  "expect": "There is no piece on e4."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e7e5"
+  },
+  "expect": "The black pawn on e7 is your opponent's."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "g1g3"
+  },
+  "expect": "The white knight on g1 can't move to g3."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a1a3"
+  },
+  "expect": "The white rook on a1 can't move to a3."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "h1h1"
+  },
+  "expect": "The white rook on h1 can't move to h1."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1g1"
+  },
+  "expect": null
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1c1"
+  },
+  "expect": null
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1e3"
+  },
+  "expect": "The white king on e1 can't move to e3."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/5r2/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1g1"
+  },
+  "expect": "You can't castle kingside now."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/5r2/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1c1"
+  },
+  "expect": null
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1g1"
+  },
+  "expect": "You can't castle kingside now."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1c1"
+  },
+  "expect": "You can't castle queenside now."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/RN2K1NR w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1g1"
+  },
+  "expect": "You can't castle kingside now."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/RN2K1NR w KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1c1"
+  },
+  "expect": "You can't castle queenside now."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e8g8"
+  },
+  "expect": null
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1g1"
+  },
+  "expect": "The white king on e1 is your opponent's."
+ },
+ {
+  "fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e5f6"
+  },
+  "expect": null
+ },
+ {
+  "fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e5d6"
+  },
+  "expect": "The white pawn on e5 can't move to d6."
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e5d6"
+  },
+  "expect": "e5d6 would leave your king in check."
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a7a8"
+  },
+  "expect": "Name the piece to promote to, e.g. a7a8q."
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a7a8q"
+  },
+  "expect": null
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a7a8n"
+  },
+  "expect": null
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a7b8q"
+  },
+  "expect": "The white pawn on a7 can't move to b8."
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "h1g1q"
+  },
+  "expect": "Not a move. Write it in UCI: from-square then to-square, e.g. g1f3, or e7e8q to promote."
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "h1g1"
+  },
+  "expect": null
+ },
+ {
+  "fen": "n7/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a7a8"
+  },
+  "expect": "The white pawn on a7 can't move to a8."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/P7/4K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "a2a3"
+  },
+  "expect": "You are in check, and a2a3 doesn't get you out of it."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/P7/4K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1e2"
+  },
+  "expect": "You are in check, and e1e2 doesn't get you out of it."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/P7/4K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1d1"
+  },
+  "expect": null
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e2d3"
+  },
+  "expect": "e2d3 would leave your king in check."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e2e3"
+  },
+  "expect": "The white bishop on e2 can't move to e3."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1d1"
+  },
+  "expect": null
+ },
+ {
+  "fen": "4k3/8/8/8/1b6/8/2N5/r3K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "c2a1"
+  },
+  "expect": "You are in check, and c2a1 doesn't get you out of it."
+ },
+ {
+  "fen": "4k3/8/8/8/1b6/8/2N5/r3K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "c2b4"
+  },
+  "expect": "You are in check, and c2b4 doesn't get you out of it."
+ },
+ {
+  "fen": "4k3/8/8/8/1b6/8/2N5/r3K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1e2"
+  },
+  "expect": null
+ },
+ {
+  "fen": "4k3/8/8/8/1b6/8/2N5/r3K3 w - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "e1d2"
+  },
+  "expect": "You are in check, and e1d2 doesn't get you out of it."
+ },
+ {
+  "fen": "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "h8g8"
+  },
+  "expect": "h8g8 would leave your king in check."
+ },
+ {
+  "fen": "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",
+  "moves": [],
+  "call": "move_problem",
+  "args": {
+   "move": "h8h7"
+  },
+  "expect": "h8h7 would leave your king in check."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_check",
+  "args": {
+   "move": "g1f3"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "g1f3",
+    "legal": true,
+    "san": "Nf3",
+    "gives_check": false
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_check",
+  "args": {
+   "move": "g1g3"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "g1g3",
+    "legal": false,
+    "why": "The white knight on g1 can't move to g3."
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "d7d5"
+  ],
+  "call": "board_check",
+  "args": {
+   "move": "e4d5"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "e4d5",
+    "legal": true,
+    "san": "exd5",
+    "gives_check": false,
+    "captures": "black pawn on d5"
+   }
+  }
+ },
+ {
+  "fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+  "moves": [],
+  "call": "board_check",
+  "args": {
+   "move": "e5f6"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "e5f6",
+    "legal": true,
+    "san": "exf6",
+    "gives_check": false,
+    "captures": "black pawn on f5"
+   }
+  }
+ },
+ {
+  "fen": "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1",
+  "moves": [],
+  "call": "board_check",
+  "args": {
+   "move": "a1a8"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "a1a8",
+    "legal": true,
+    "san": "Ra8#",
+    "gives_check": true
+   }
+  }
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "board_check",
+  "args": {
+   "move": "a7a8q"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "a7a8q",
+    "legal": true,
+    "san": "a8=Q+",
+    "gives_check": true
+   }
+  }
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "board_check",
+  "args": {
+   "move": "e1g1"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "move": "e1g1",
+    "legal": true,
+    "san": "O-O",
+    "gives_check": false
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "g1"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "g1",
+    "piece": "white knight",
+    "can_move_to": [
+     "f3",
+     "h3"
+    ],
+    "attacks": [],
+    "attacked_by": [],
+    "defended_by": [
+     "white rook on h1"
+    ],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": true,
+    "can_castle_queenside": true
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e1"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e1",
+    "piece": "white king",
+    "can_move_to": [],
+    "attacks": [],
+    "attacked_by": [],
+    "defended_by": [
+     "white queen on d1"
+    ],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": true,
+    "can_castle_queenside": true
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e4"
+  },
+  "expect": {
+   "ok": false,
+   "error": "There is no piece on e4."
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "z9"
+  },
+  "expect": {
+   "ok": false,
+   "error": "not a square: z9"
+  }
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "d7d5"
+  ],
+  "call": "board_piece",
+  "args": {
+   "square": "e4"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e4",
+    "piece": "white pawn",
+    "can_move_to": [
+     "d5",
+     "e5"
+    ],
+    "attacks": [
+     "black pawn on d5"
+    ],
+    "attacked_by": [
+     "black pawn on d5"
+    ],
+    "defended_by": [],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": true,
+    "can_castle_queenside": true
+   }
+  }
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e2"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e2",
+    "piece": "white bishop",
+    "can_move_to": [],
+    "attacks": [],
+    "attacked_by": [
+     "black rook on e7"
+    ],
+    "defended_by": [
+     "white king on e1"
+    ],
+    "pinned": true,
+    "in_check": false,
+    "can_castle_kingside": false,
+    "can_castle_queenside": false
+   }
+  }
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e7"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e7",
+    "piece": "black rook",
+    "can_move_to": [
+     "a7",
+     "b7",
+     "c7",
+     "d7",
+     "e2",
+     "e3",
+     "e4",
+     "e5",
+     "e6",
+     "f7",
+     "g7",
+     "h7"
+    ],
+    "attacks": [
+     "white bishop on e2"
+    ],
+    "attacked_by": [],
+    "defended_by": [
+     "black king on e8"
+    ],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": false,
+    "can_castle_queenside": false
+   }
+  }
+ },
+ {
+  "fen": "4k3/8/8/8/1b6/8/2N5/r3K3 w - - 0 1",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e1"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e1",
+    "piece": "white king",
+    "can_move_to": [
+     "e2",
+     "f2"
+    ],
+    "attacks": [],
+    "attacked_by": [
+     "black rook on a1",
+     "black bishop on b4"
+    ],
+    "defended_by": [
+     "white knight on c2"
+    ],
+    "pinned": false,
+    "in_check": true,
+    "can_castle_kingside": false,
+    "can_castle_queenside": false
+   }
+  }
+ },
+ {
+  "fen": "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "h8"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "h8",
+    "piece": "black king",
+    "can_move_to": [],
+    "attacks": [],
+    "attacked_by": [],
+    "defended_by": [],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": false,
+    "can_castle_queenside": false
+   }
+  }
+ },
+ {
+  "fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e5"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e5",
+    "piece": "white pawn",
+    "can_move_to": [
+     "e6",
+     "f6"
+    ],
+    "attacks": [],
+    "attacked_by": [],
+    "defended_by": [],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": true,
+    "can_castle_queenside": true
+   }
+  }
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/5r2/R3K2R w KQkq - 0 1",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "e1"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "e1",
+    "piece": "white king",
+    "can_move_to": [
+     "c1",
+     "d1",
+     "f2"
+    ],
+    "attacks": [
+     "black rook on f2"
+    ],
+    "attacked_by": [],
+    "defended_by": [
+     "white rook on a1",
+     "white rook on h1"
+    ],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": true,
+    "can_castle_queenside": true
+   }
+  }
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1",
+  "moves": [],
+  "call": "board_piece",
+  "args": {
+   "square": "a1"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "square": "a1",
+    "piece": "white rook",
+    "can_move_to": [
+     "a2",
+     "a3",
+     "a4",
+     "a5",
+     "a6",
+     "a7",
+     "a8",
+     "b1",
+     "c1",
+     "d1"
+    ],
+    "attacks": [
+     "black rook on a8"
+    ],
+    "attacked_by": [
+     "black rook on a8"
+    ],
+    "defended_by": [],
+    "pinned": false,
+    "in_check": false,
+    "can_castle_kingside": true,
+    "can_castle_queenside": true
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_history",
+  "args": {},
+  "expect": {
+   "ok": true,
+   "result": {
+    "moves": "",
+    "plies": 0
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "e7e5",
+   "g1f3",
+   "b8c6"
+  ],
+  "call": "board_history",
+  "args": {},
+  "expect": {
+   "ok": true,
+   "result": {
+    "moves": "1. e4 e5 2. Nf3 Nc6",
+    "plies": 4
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "e7e5",
+   "g1f3",
+   "b8c6"
+  ],
+  "call": "board_history",
+  "args": {
+   "last": 3
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "moves": "1... e5 2. Nf3 Nc6",
+    "plies": 4
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "e7e5",
+   "g1f3",
+   "b8c6"
+  ],
+  "call": "board_history",
+  "args": {
+   "last": 2
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "moves": "2. Nf3 Nc6",
+    "plies": 4
+   }
+  }
+ },
+ {
+  "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 3 10",
+  "moves": [
+   "g8f6",
+   "b1c3",
+   "f8c5"
+  ],
+  "call": "board_history",
+  "args": {},
+  "expect": {
+   "ok": true,
+   "result": {
+    "moves": "10... Nf6 11. Nc3 Bc5",
+    "plies": 3
+   }
+  }
+ },
+ {
+  "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 3 10",
+  "moves": [
+   "g8f6",
+   "b1c3",
+   "f8c5"
+  ],
+  "call": "board_history",
+  "args": {
+   "last": 2
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "moves": "11. Nc3 Bc5",
+    "plies": 3
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_resign",
+  "args": {
+   "reason": "lost on material"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "resigned": true
+   },
+   "state_resigned": "lost on material"
+  }
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "board_move",
+  "args": {
+   "move": "e2e4",
+   "reason": "takes the center"
+  },
+  "expect": {
+   "ok": true,
+   "result": {
+    "played": "e2e4",
+    "san": "e4",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+    "position_hash": "7d93ad7e3a1c986e"
+   }
+  }
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "fen",
+   "orientation": "white"
+  },
+  "expect": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "fen",
+   "orientation": "mover"
+  },
+  "expect": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii",
+   "orientation": "white"
+  },
+  "expect": "8 r n b q k b n r\n7 p p p p p p p p\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . P . . .\n3 . . . . . . . .\n2 P P P P . P P P\n1 R N B Q K B N R\n  a b c d e f g h"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii",
+   "orientation": "mover"
+  },
+  "expect": "1 R N B K Q B N R\n2 P P P . P P P P\n3 . . . . . . . .\n4 . . . P . . . .\n5 . . . . . . . .\n6 . . . . . . . .\n7 p p p p p p p p\n8 r n b k q b n r\n  h g f e d c b a"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii_fen",
+   "orientation": "white"
+  },
+  "expect": "8 r n b q k b n r\n7 p p p p p p p p\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . P . . .\n3 . . . . . . . .\n2 P P P P . P P P\n1 R N B Q K B N R\n  a b c d e f g h\nFEN: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii_fen",
+   "orientation": "mover"
+  },
+  "expect": "1 R N B K Q B N R\n2 P P P . P P P P\n3 . . . . . . . .\n4 . . . P . . . .\n5 . . . . . . . .\n6 . . . . . . . .\n7 p p p p p p p p\n8 r n b k q b n r\n  h g f e d c b a\nFEN: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "pieces",
+   "orientation": "white"
+  },
+  "expect": "White: Ke1 Qd1 Ra1 Rh1 Bc1 Bf1 Nb1 Ng1, pawns a2 b2 c2 d2 e4 f2 g2 h2\nBlack: Ke8 Qd8 Ra8 Rh8 Bc8 Bf8 Nb8 Ng8, pawns a7 b7 c7 d7 e7 f7 g7 h7"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "pieces",
+   "orientation": "mover"
+  },
+  "expect": "White: Ke1 Qd1 Ra1 Rh1 Bc1 Bf1 Nb1 Ng1, pawns a2 b2 c2 d2 e4 f2 g2 h2\nBlack: Ke8 Qd8 Ra8 Rh8 Bc8 Bf8 Nb8 Ng8, pawns a7 b7 c7 d7 e7 f7 g7 h7"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "unicode",
+   "orientation": "white"
+  },
+  "expect": "8 ♜ ♞ ♝ ♛ ♚ ♝ ♞ ♜\n7 ♟ ♟ ♟ ♟ ♟ ♟ ♟ ♟\n6 · · · · · · · ·\n5 · · · · · · · ·\n4 · · · · ♙ · · ·\n3 · · · · · · · ·\n2 ♙ ♙ ♙ ♙ · ♙ ♙ ♙\n1 ♖ ♘ ♗ ♕ ♔ ♗ ♘ ♖\n  a b c d e f g h"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4"
+  ],
+  "call": "render_board",
+  "args": {
+   "fmt": "unicode",
+   "orientation": "mover"
+  },
+  "expect": "1 ♖ ♘ ♗ ♔ ♕ ♗ ♘ ♖\n2 ♙ ♙ ♙ · ♙ ♙ ♙ ♙\n3 · · · · · · · ·\n4 · · · ♙ · · · ·\n5 · · · · · · · ·\n6 · · · · · · · ·\n7 ♟ ♟ ♟ ♟ ♟ ♟ ♟ ♟\n8 ♜ ♞ ♝ ♚ ♛ ♝ ♞ ♜\n  h g f e d c b a"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "fen",
+   "orientation": "white"
+  },
+  "expect": "8/8/8/K2pP2q/8/8/8/7k w - - 0 1"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "fen",
+   "orientation": "mover"
+  },
+  "expect": "8/8/8/K2pP2q/8/8/8/7k w - - 0 1"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii",
+   "orientation": "white"
+  },
+  "expect": "8 . . . . . . . .\n7 . . . . . . . .\n6 . . . . . . . .\n5 K . . p P . . q\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 . . . . . . . k\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii",
+   "orientation": "mover"
+  },
+  "expect": "8 . . . . . . . .\n7 . . . . . . . .\n6 . . . . . . . .\n5 K . . p P . . q\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 . . . . . . . k\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii_fen",
+   "orientation": "white"
+  },
+  "expect": "8 . . . . . . . .\n7 . . . . . . . .\n6 . . . . . . . .\n5 K . . p P . . q\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 . . . . . . . k\n  a b c d e f g h\nFEN: 8/8/8/K2pP2q/8/8/8/7k w - - 0 1"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii_fen",
+   "orientation": "mover"
+  },
+  "expect": "8 . . . . . . . .\n7 . . . . . . . .\n6 . . . . . . . .\n5 K . . p P . . q\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 . . . . . . . k\n  a b c d e f g h\nFEN: 8/8/8/K2pP2q/8/8/8/7k w - - 0 1"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "pieces",
+   "orientation": "white"
+  },
+  "expect": "White: Ka5, pawns e5\nBlack: Kh1 Qh5, pawns d5"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "pieces",
+   "orientation": "mover"
+  },
+  "expect": "White: Ka5, pawns e5\nBlack: Kh1 Qh5, pawns d5"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "unicode",
+   "orientation": "white"
+  },
+  "expect": "8 · · · · · · · ·\n7 · · · · · · · ·\n6 · · · · · · · ·\n5 ♔ · · ♟ ♙ · · ♛\n4 · · · · · · · ·\n3 · · · · · · · ·\n2 · · · · · · · ·\n1 · · · · · · · ♚\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/8/8/K2pP2q/8/8/8/7k w - d6 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "unicode",
+   "orientation": "mover"
+  },
+  "expect": "8 · · · · · · · ·\n7 · · · · · · · ·\n6 · · · · · · · ·\n5 ♔ · · ♟ ♙ · · ♛\n4 · · · · · · · ·\n3 · · · · · · · ·\n2 · · · · · · · ·\n1 · · · · · · · ♚\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "fen",
+   "orientation": "white"
+  },
+  "expect": "8/P7/8/8/8/8/8/k6K w - - 0 1"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "fen",
+   "orientation": "mover"
+  },
+  "expect": "8/P7/8/8/8/8/8/k6K w - - 0 1"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii",
+   "orientation": "white"
+  },
+  "expect": "8 . . . . . . . .\n7 P . . . . . . .\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 k . . . . . . K\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii",
+   "orientation": "mover"
+  },
+  "expect": "8 . . . . . . . .\n7 P . . . . . . .\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 k . . . . . . K\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii_fen",
+   "orientation": "white"
+  },
+  "expect": "8 . . . . . . . .\n7 P . . . . . . .\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 k . . . . . . K\n  a b c d e f g h\nFEN: 8/P7/8/8/8/8/8/k6K w - - 0 1"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "ascii_fen",
+   "orientation": "mover"
+  },
+  "expect": "8 . . . . . . . .\n7 P . . . . . . .\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 . . . . . . . .\n1 k . . . . . . K\n  a b c d e f g h\nFEN: 8/P7/8/8/8/8/8/k6K w - - 0 1"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "pieces",
+   "orientation": "white"
+  },
+  "expect": "White: Kh1, pawns a7\nBlack: Ka1"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "pieces",
+   "orientation": "mover"
+  },
+  "expect": "White: Kh1, pawns a7\nBlack: Ka1"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "unicode",
+   "orientation": "white"
+  },
+  "expect": "8 · · · · · · · ·\n7 ♙ · · · · · · ·\n6 · · · · · · · ·\n5 · · · · · · · ·\n4 · · · · · · · ·\n3 · · · · · · · ·\n2 · · · · · · · ·\n1 ♚ · · · · · · ♔\n  a b c d e f g h"
+ },
+ {
+  "fen": "8/P7/8/8/8/8/8/k6K w - - 0 1",
+  "moves": [],
+  "call": "render_board",
+  "args": {
+   "fmt": "unicode",
+   "orientation": "mover"
+  },
+  "expect": "8 · · · · · · · ·\n7 ♙ · · · · · · ·\n6 · · · · · · · ·\n5 · · · · · · · ·\n4 · · · · · · · ·\n3 · · · · · · · ·\n2 · · · · · · · ·\n1 ♚ · · · · · · ♔\n  a b c d e f g h"
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "e7e5",
+   "g1f3"
+  ],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "ascii",
+   "orientation": "white",
+   "last_move": [
+    "Nf3",
+    "g1f3"
+   ],
+   "note_mode": "count_added",
+   "note_text": "Plan: castle short.\nWatch f7.\n",
+   "note_lines_added": 1
+  },
+  "expect": "Board, White at the bottom (uppercase: White, lowercase: Black):\n8 r n b q k b n r\n7 p p p p . p p p\n6 . . . . . . . .\n5 . . . . p . . .\n4 . . . . P . . .\n3 . . . . . N . .\n2 P P P P . P P P\n1 R N B Q K B . R\n  a b c d e f g h\nLast move: White played Nf3 (g1f3).\nBlack to move. You are not in check.\nYour note has 2 lines, 1 added since your last move."
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "e7e5",
+   "g1f3"
+  ],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "ascii",
+   "orientation": "mover",
+   "last_move": [
+    "Nf3",
+    "g1f3"
+   ],
+   "note_mode": "count_added",
+   "note_text": "one line",
+   "note_lines_added": 0
+  },
+  "expect": "Board, Black at the bottom (uppercase: White, lowercase: Black):\n1 R . B K Q B N R\n2 P P P . P P P P\n3 . . N . . . . .\n4 . . . P . . . .\n5 . . . p . . . .\n6 . . . . . . . .\n7 p p p . p p p p\n8 r n b k q b n r\n  h g f e d c b a\nLast move: White played Nf3 (g1f3).\nBlack to move. You are not in check.\nYour note has 1 line, none added since your last move."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/P7/4K3 w - - 0 1",
+  "moves": [],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "fen",
+   "orientation": "white",
+   "last_move": null,
+   "note_mode": "none",
+   "note_text": null,
+   "note_lines_added": null
+  },
+  "expect": "Position (FEN): 4k3/4r3/8/8/8/8/P7/4K3 w - - 0 1\nLast move: none.\nWhite to move. You are in check."
+ },
+ {
+  "fen": "4k3/4r3/8/8/8/8/4B3/4K3 w - - 0 1",
+  "moves": [],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "pieces",
+   "orientation": "white",
+   "last_move": [
+    "Re7",
+    "e8e7"
+   ],
+   "note_mode": "count",
+   "note_text": "",
+   "note_lines_added": null
+  },
+  "expect": "Pieces:\nWhite: Ke1 Be2\nBlack: Ke8 Re7\nLast move: Black played Re7 (e8e7).\nWhite to move. You are not in check.\nYour note is empty."
+ },
+ {
+  "fen": "r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1",
+  "moves": [],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "unicode",
+   "orientation": "mover",
+   "last_move": [
+    "Rh1",
+    "h2h1"
+   ],
+   "note_mode": "full",
+   "note_text": "Last move: nothing new.\nWeaknesses: none.\n\n",
+   "note_lines_added": null
+  },
+  "expect": "Board, Black at the bottom:\n1 ♖ · · ♔ · · · ♖\n2 · · · · · · · ·\n3 · · · · · · · ·\n4 · · · · · · · ·\n5 · · · · · · · ·\n6 · · · · · · · ·\n7 · · · · · · · ·\n8 ♜ · · ♚ · · · ♜\n  h g f e d c b a\nLast move: White played Rh1 (h2h1).\nBlack to move. You are not in check.\nYour note:\nLast move: nothing new.\nWeaknesses: none."
+ },
+ {
+  "fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+  "moves": [],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "ascii_fen",
+   "orientation": "white",
+   "last_move": [
+    "f5",
+    "f7f5"
+   ],
+   "note_mode": "count_added",
+   "note_text": "a\nb",
+   "note_lines_added": null
+  },
+  "expect": "Board, White at the bottom (uppercase: White, lowercase: Black):\n8 r n b q k b n r\n7 p p p . p . p p\n6 . . . . . . . .\n5 . . . p P p . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 P P P P . P P P\n1 R N B Q K B N R\n  a b c d e f g h\nFEN: rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3\nLast move: Black played f5 (f7f5).\nWhite to move. You are not in check.\nYour note has 2 lines."
+ }
+]

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Chess tools
+- New tools on both hosts, with the same results: `board_check`, `board_piece`, `board_history`,
+  `board_resign`. `board_move` takes `position_hash` as optional.
+- For hosts: `move_problem` (the eight move-rule sentences), `render_board` (five formats, two
+  orientations) and `turn_brief` (the brief before each move), which harness-lab's `chess_move_rules`
+  and `turn_brief` handlers are built on.
+- `conformance/chess-tools.json`: 106 python-chess vectors that the chess.js tools reproduce.
+
 ## 0.5.0 — 2026-10-17
 
 A rebuild on one small, normative spec: `docs/spec-v0.5.md` (drafted as v0.4), built along
