@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.2 — 2026-10-19
+
+Additions for harness-lab's context-v1 study. Every 0.5.1 harness stays valid and sees the same tokens.
+One compatibility note: the hook input has a new member, `turn`, so a handler whose declared `input`
+schema closes the hook input's top level (`additionalProperties: false`) now rejects it.
 
 ### Spec
 - `core_called_since` takes `since: "@turn"`: only calls made in the current turn count, and the failure
