@@ -170,18 +170,24 @@ def board_piece(args: Any, state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def board_history(args: Any, state: dict[str, Any]) -> dict[str, Any]:
-    board = _board(state)
+def movetext(board: chess.Board, last: int | None = None) -> str:
+    """The game's moves so far, numbered, in SAN (`1. e4 e5 2. Nf3`; a list that starts on Black's move
+    reads `10... e5`); with `last`, only the most recent `last` plies. `""` before the first move."""
     plies = []
     replay = board.root()
     for move in board.move_stack:
         plies.append((replay.fullmove_number, replay.turn, replay.san(move)))
         replay.push(move)
-    shown = plies[-args["last"]:] if args.get("last") else plies
+    shown = plies[-last:] if last else plies
     words: list[str] = []
     for i, (number, white, san) in enumerate(shown):
         words.append(f"{number}. {san}" if white else (san if i else f"{number}... {san}"))
-    return {"moves": " ".join(words), "plies": len(plies)}
+    return " ".join(words)
+
+
+def board_history(args: Any, state: dict[str, Any]) -> dict[str, Any]:
+    board = _board(state)
+    return {"moves": movetext(board, args.get("last")), "plies": len(board.move_stack)}
 
 
 def board_resign(args: Any, state: dict[str, Any]) -> dict[str, Any]:
@@ -234,9 +240,10 @@ def _count(n: int, word: str) -> str:
 
 
 def turn_brief(board: chess.Board, *, board_format: str, orientation: str, last_move: tuple[str, str] | None,
-               note_mode: str, note_text: str | None, note_lines_added: int | None) -> str:
-    """The text a `user_prompt` handler appends to the user message: the board, the opponent's last move
-    (`(san, uci)`), whether the side to move is in check, and the note as `note_mode` says."""
+               note_mode: str, note_text: str | None, note_lines_added: int | None, history: str = "none") -> str:
+    """The text a `user_prompt` handler appends to the user message: the board, with `history` `moves` the
+    game's moves so far, the opponent's last move (`(san, uci)`), whether the side to move is in check,
+    and the note as `note_mode` says."""
     mover, other = ("White", "Black") if board.turn else ("Black", "White")
     bottom = "White" if orientation == "white" else mover
     if board_format == "fen":
@@ -246,6 +253,11 @@ def turn_brief(board: chess.Board, *, board_format: str, orientation: str, last_
     else:
         legend = "" if board_format == "unicode" else " (uppercase: White, lowercase: Black)"
         parts = [f"Board, {bottom} at the bottom{legend}:", render_board(board, board_format, orientation)]
+    if history not in ("none", "moves"):
+        raise ValueError(f"unknown history {history!r}")
+    if history == "moves":
+        moves = movetext(board)
+        parts.append(f"Moves so far: {moves}" if moves else "Moves so far: none.")
     parts.append(f"Last move: {other} played {last_move[0]} ({last_move[1]})." if last_move else "Last move: none.")
     parts.append(f"{mover} to move. You are {'' if board.is_check() else 'not '}in check.")
     if note_mode not in ("none", "count", "count_added", "full"):

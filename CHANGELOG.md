@@ -18,6 +18,12 @@
   count; an interrupt that doesn't start a turn. Harness cases: `@turn` valid; `@turn` as a `tool`, on
   `core_count`, and another `@` value rejected.
 
+### Chess tools
+- `turn_brief(..., history="none")` takes `history: none | moves`. With `moves` the brief adds, after the board,
+  `Moves so far: 1. e4 e5 2. Nf3` (SAN, numbered, `10... e5` when the list starts on Black's move), or
+  `Moves so far: none.`; `board_history` and the brief share one `movetext`. The default leaves every brief as
+  it was. Needed by context-v1's arm with the move history. `conformance/chess-tools.json`: 111 vectors.
+
 ## 0.5.1 — 2026-10-18
 
 Additions for harness-lab's first harness series (minimal, strategist, squad). Every 0.5.0 harness

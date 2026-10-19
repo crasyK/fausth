@@ -1420,5 +1420,64 @@
    "note_lines_added": null
   },
   "expect": "Board, White at the bottom (uppercase: White, lowercase: Black):\n8 r n b q k b n r\n7 p p p . p . p p\n6 . . . . . . . .\n5 . . . p P p . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 P P P P . P P P\n1 R N B Q K B N R\n  a b c d e f g h\nFEN: rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3\nLast move: Black played f5 (f7f5).\nWhite to move. You are not in check.\nYour note has 2 lines."
+ },
+ {
+  "fen": null,
+  "moves": [
+   "e2e4",
+   "e7e5",
+   "g1f3"
+  ],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "pieces",
+   "orientation": "white",
+   "last_move": [
+    "Nf3",
+    "g1f3"
+   ],
+   "note_mode": "full",
+   "note_text": "Plan: castle short.",
+   "note_lines_added": null,
+   "history": "moves"
+  },
+  "expect": "Pieces:\nWhite: Ke1 Qd1 Ra1 Rh1 Bc1 Bf1 Nb1 Nf3, pawns a2 b2 c2 d2 e4 f2 g2 h2\nBlack: Ke8 Qd8 Ra8 Rh8 Bc8 Bf8 Nb8 Ng8, pawns a7 b7 c7 d7 e5 f7 g7 h7\nMoves so far: 1. e4 e5 2. Nf3\nLast move: White played Nf3 (g1f3).\nBlack to move. You are not in check.\nYour note:\nPlan: castle short."
+ },
+ {
+  "fen": null,
+  "moves": [],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "ascii",
+   "orientation": "white",
+   "last_move": null,
+   "note_mode": "none",
+   "note_text": null,
+   "note_lines_added": null,
+   "history": "moves"
+  },
+  "expect": "Board, White at the bottom (uppercase: White, lowercase: Black):\n8 r n b q k b n r\n7 p p p p p p p p\n6 . . . . . . . .\n5 . . . . . . . .\n4 . . . . . . . .\n3 . . . . . . . .\n2 P P P P P P P P\n1 R N B Q K B N R\n  a b c d e f g h\nMoves so far: none.\nLast move: none.\nWhite to move. You are not in check."
+ },
+ {
+  "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 3 10",
+  "moves": [
+   "g8f6",
+   "b1c3",
+   "f8c5"
+  ],
+  "call": "turn_brief",
+  "args": {
+   "board_format": "fen",
+   "orientation": "white",
+   "last_move": [
+    "Bc5",
+    "f8c5"
+   ],
+   "note_mode": "count",
+   "note_text": "x",
+   "note_lines_added": null,
+   "history": "moves"
+  },
+  "expect": "Position (FEN): r1bqk2r/pppp1ppp/2n2n2/2b1p3/4P3/2N2N2/PPPP1PPP/R1BQKB1R w KQkq - 6 12\nMoves so far: 10... Nf6 11. Nc3 Bc5\nLast move: Black played Bc5 (f8c5).\nWhite to move. You are not in check.\nYour note has 1 line."
  }
 ]

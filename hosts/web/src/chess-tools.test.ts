@@ -58,6 +58,7 @@ test("chess.js tools reproduce the python-chess vectors", async () => {
         boardFormat: String(a.board_format), orientation: String(a.orientation),
         lastMove: (a.last_move as [string, string] | null) ?? null, noteMode: String(a.note_mode),
         noteText: (a.note_text as string | null) ?? null, noteLinesAdded: (a.note_lines_added as number | null) ?? null,
+        ...(a.history !== undefined && { history: String(a.history) }),
       });
     } else {
       const call = tools[v.call as "board_check" | "board_piece" | "board_history" | "board_resign" | "board_move"];
@@ -66,5 +67,5 @@ test("chess.js tools reproduce the python-chess vectors", async () => {
     }
     assert.deepEqual(got, v.expect, `${v.call} ${JSON.stringify(a)} on ${v.fen ?? "start"} after ${v.moves.join(" ")}`);
   }
-  assert.equal(vectors.length, 108);
+  assert.equal(vectors.length, 111);
 });
