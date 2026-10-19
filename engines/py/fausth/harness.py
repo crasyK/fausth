@@ -20,6 +20,8 @@ from .schema import compile_schema, structure_validator
 from .values import canonical, number
 
 BUILT_INS = frozenset({"core_called_since", "core_last_result", "core_count", "core_deny", "core_context"})
+# `core_called_since`'s `since` for "since the current turn began" (§6); `@` can't occur in a tool id (§3.1).
+TURN = "@turn"
 
 # The built-in tool `core_spawn` as the model sees it (§10).
 SPAWN_DESCRIPTION = ("Run a child agent on a subtask. harness: the child's complete harness; it may use only tools "
@@ -221,7 +223,8 @@ def harness_errors(value: Any) -> list[str]:
             tool_refs += match if isinstance(match, list) else [match]
         if run in BUILT_INS:
             tool = hook.get("with", {}).get("tool")
-            tool_refs += [*(tool if isinstance(tool, list) else [tool]), hook.get("with", {}).get("since")]
+            since = hook.get("with", {}).get("since")
+            tool_refs += [*(tool if isinstance(tool, list) else [tool]), *([] if since == TURN else [since])]
         for tid in tool_refs:
             if isinstance(tid, str) and tid not in tools:
                 errors.append(f"hook {hook_id}: {tid} is not a declared tool")

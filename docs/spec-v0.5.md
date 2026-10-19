@@ -210,8 +210,9 @@ twice under two ids.
 
 `match` is only valid on `pre_tool` and `post_tool`, where every id MUST be a declared tool,
 and on `interrupt`, where the ids are sources (§11). A list is non-empty and doesn't contain
-`"*"`. A built-in's `with` holds exactly the members listed in §6, and its `tool` and `since`
-(every id of a `tool` list) MUST be declared tools.
+`"*"`. A built-in's `with` holds exactly the members listed in §6, and its `tool` (every id of
+a `tool` list) MUST be a declared tool; so MUST its `since`, unless it is the reserved value
+`"@turn"` (§6).
 
 ### 5.2 Order
 
@@ -233,6 +234,8 @@ The handler receives one object:
   "event": "pre_tool",
   "hook": "legal-moves-first",
   "with": {"tool": "board_legal_moves", "since": "board_move"},
+  "step": 3,
+  "turn": 0,
   "call": {"tool": "board_move", "args": {"move": "e2e4", "position_hash": "...", "reason": "..."}},
   "result": {"ok": true, "result": {}},
   "message": "<text>",
@@ -245,7 +248,7 @@ The handler receives one object:
 Only the members that apply to the event are present: `call` for tool events, `result` for
 `post_tool`, `message` for `user_prompt` and `stop`, `interrupt` for `interrupt`, `context`
 (the rendered conversation, §9) for `pre_request`. `event`, `hook`, `with` (`{}` when the hook
-has none), `step` and `view` are always present. `call.args` are the arguments as the chain has
+has none), `step`, `turn` and `view` are always present. `call.args` are the arguments as the chain has
 modified them so far (`post_tool`: the arguments the call ran with); `message` is the user's
 text (`user_prompt`) or the response's `text` (`stop`); `context` is the `messages` of the
 request as it would be rendered at that point, so it includes the chain's earlier
@@ -266,8 +269,11 @@ arguments the call ran with, i.e. after any `modify`. The entries are in the ord
 calls finished. A run's view holds only its own entries: a child run's calls are not in its
 parent's view, and the parent's calls are not in the child's (§10).
 
-The hook input also carries `step` (the current step) and, for `stop`, `continued` (how many
-`continue` decisions this turn has had so far, §8). Tool calls from the current step were
+The hook input also carries `step` (the current step), `turn` and, for `stop`, `continued` (how
+many `continue` decisions this turn has had so far, §8). `turn` is the current step at which the
+run's latest user message was admitted: 0 before any, so a run with one user message has `turn`
+0. Only an admitted user message starts a turn; an interrupt doesn't. A child run (§10) has its
+own, from its task. It is the turn whose start resets the `continue` count (§8). Tool calls from the current step were
 made in the same model response as the call being checked: **the model had not seen their
 results** when it made the call (see §6).
 
@@ -319,7 +325,7 @@ response fails the second move, and two calls in one response can't get past `ma
 
 | Built-in | `with` | Check passes iff | Failure text |
 |---|---|---|---|
-| `core_called_since` | `tool` (an id or a list of ids), optional `since` | a seen successful call of `tool` (of any listed tool) exists after the last successful call of `since` (or anywhere, without `since` or when `since` has no successful call) | `{tool} not called since the last {since}` / `{tool} not called yet` |
+| `core_called_since` | `tool` (an id or a list of ids), optional `since` | a seen successful call of `tool` (of any listed tool) exists after the last successful call of `since` (or anywhere, without `since` or when `since` has no successful call); with `since: "@turn"`, made in the current turn | `{tool} not called since the last {since}` / `{tool} not called yet`; with `"@turn"`, `{tool} not called this turn` |
 | `core_last_result` | `tool`, `path`, `eq` | the last seen successful call of `tool` has `eq` at `path` | `last {tool} result {path} is not {eq}` / `{tool} has no successful call yet` |
 | `core_count` | `tool`, `max` | fewer than `max` successful calls of `tool` exist | `{tool} limit reached ({max})` |
 | `core_deny` | `text` | never | `{text}` |
@@ -329,7 +335,10 @@ response fails the second move, and two calls in one response can't get past `ma
 value. `core_called_since` also takes a non-empty list of distinct tool ids as `tool`: the check
 passes if any of them qualifies, and `{tool}` renders as the ids joined by
 ` or ` in the listed order (`board_check or board_piece not called yet`); a one-id list behaves as
-the id. "Successful" is `ok: true` in the view. `core_called_since` uses its first failure text
+the id. `since` may also be the reserved value `"@turn"` (an `@` can't occur in a tool id, §3.1):
+then only calls made in the current turn count, those with `step` > `turn` (§5.3). A run that
+spans several user messages asks "this turn" that way, which no tool id can express.
+"Successful" is `ok: true` in the view. `core_called_since` uses its first failure text
 when `since` has a successful call, else the second. `path` is a `.`-separated list of object
 member names and array indexes (`0`, `1`, …, no leading zeros); `""` is the result itself; a
 path that leads nowhere fails the check, and `eq` is compared by canonical form.

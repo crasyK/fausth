@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Spec
+- `core_called_since` takes `since: "@turn"`: only calls made in the current turn count, and the failure
+  text is `{tool} not called this turn`. A run that spans several user messages (a whole game in one
+  context) can now ask "did the model move this turn?", which no tool id could express: after the first
+  move, `core_called_since {tool: board_move}` passed for the rest of the run. Needed by harness-lab's
+  context-v1 study. `@` can't occur in a tool id, so the value can't clash with one (§5.1, §6, schema).
+- The hook input always carries `turn`: the current step at which the run's latest user message was
+  admitted (0 before any; interrupts don't start a turn; a child run has its own), the same turn that
+  resets the `continue` count (§5.3, §8).
+
+### Conformance
+- Fixture `builtin-called-since-turn`: two user messages; a `stop` rule that passes on turn 1 and pushes
+  back on turn 2 until the model moves; the list form with `@turn`; a same-response call that doesn't
+  count; an interrupt that doesn't start a turn. Harness cases: `@turn` valid; `@turn` as a `tool`, on
+  `core_count`, and another `@` value rejected.
+
 ## 0.5.1 — 2026-10-18
 
 Additions for harness-lab's first harness series (minimal, strategist, squad). Every 0.5.0 harness
