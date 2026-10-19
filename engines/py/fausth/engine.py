@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Protocol
 
-from .harness import SPAWN_INPUT, harness_errors
+from .harness import SPAWN_INPUT, TURN, harness_errors
 from .log import TOP, Log, Scope, call_id, view
 from .render import hook_wrapper, render
 from .schema import compile_schema
@@ -83,6 +83,7 @@ class _Run:
         self.steps_used = 0  # requests and tool calls of this run and its children (§8, §10)
         self.tool_calls_used = 0
         self.last_text = ""
+        self.turn = 0  # the step at which this run's latest user message was admitted (§5.3)
         self._compile()
 
     def _compile(self) -> None:
@@ -132,6 +133,7 @@ class _Run:
                 if any(d["decision"] == "deny" for d in self._chain("user_prompt", {"message": text})):
                     continue
                 self.append("user", {"text": text})
+                self.turn = self.step
                 self._turn()
         except _Ended as e:
             reason = e.reason
@@ -291,7 +293,7 @@ class _Run:
             if hook["on"] != event or not _matches(hook.get("match", "*"), key):
                 continue
             inp: dict[str, Any] = {"event": event, "hook": hook["id"], "with": hook.get("with", {}), "step": self.step,
-                                   "view": view(self.log.entries, self.scope)}
+                                   "turn": self.turn, "view": view(self.log.entries, self.scope)}
             if current is not None:
                 inp["call"] = current
             if "result" in members:
@@ -337,7 +339,7 @@ class _Run:
             w = hook.get("with", {})
             if hook["run"] == "core_context":
                 return {"hook": hook, "decision": "add_context", "text": cap(w["text"])}
-            failure = _check(hook["run"], w, self.step, inp["view"])
+            failure = _check(hook["run"], w, self.step, self.turn, inp["view"])
             if failure is None:
                 return {"hook": hook, "decision": "allow"}
             return {"hook": hook, "decision": PUSH_BACK[event], "text": cap(failure)}
@@ -380,7 +382,7 @@ def _matches(match: Any, key: str | None) -> bool:
     return key is not None and (key in match if isinstance(match, list) else match == key)
 
 
-def _check(run: str, w: dict[str, Any], step: int, entries: list[dict[str, Any]]) -> str | None:
+def _check(run: str, w: dict[str, Any], step: int, turn: int, entries: list[dict[str, Any]]) -> str | None:
     """A built-in check (§6): None if it passes, else the failure text."""
     calls = [e for e in entries if "tool" in e]
 
@@ -392,12 +394,16 @@ def _check(run: str, w: dict[str, Any], step: int, entries: list[dict[str, Any]]
 
     if run == "core_called_since":
         tools = w["tool"] if isinstance(w["tool"], list) else [w["tool"]]
+        named = " or ".join(tools)
+        if w.get("since") == TURN:
+            if any(successful(t)(e) and seen(e) and e["step"] > turn for e in calls for t in tools):
+                return None
+            return f"{named} not called this turn"
         since = -1
         if "since" in w:
             since = max((i for i, e in enumerate(calls) if successful(w["since"])(e)), default=-1)
         if any(successful(t)(e) and seen(e) for e in calls[since + 1:] for t in tools):
             return None
-        named = " or ".join(tools)
         return f"{named} not called since the last {w['since']}" if since >= 0 else f"{named} not called yet"
     if run == "core_last_result":
         last = [e for e in calls if successful(w["tool"])(e) and seen(e)]

@@ -38,6 +38,8 @@ export interface Harness {
 }
 
 export const BUILT_INS = new Set(["core_called_since", "core_last_result", "core_count", "core_deny", "core_context"]);
+/** `core_called_since`'s `since` for "since the current turn began" (§6); `@` can't occur in a tool id (§3.1). */
+export const TURN = "@turn";
 
 /** The built-in tool `core_spawn` as the model sees it (§10). */
 export const SPAWN_DESCRIPTION =
@@ -122,7 +124,7 @@ export function harnessErrors(value: unknown): string[] {
     if ((hook.on === "pre_tool" || hook.on === "post_tool") && hook.match !== undefined && hook.match !== "*") {
       toolRefs.push(...[hook.match].flat());
     }
-    if (BUILT_INS.has(hook.run)) toolRefs.push(...[hook.with?.tool].flat(), hook.with?.since);
+    if (BUILT_INS.has(hook.run)) toolRefs.push(...[hook.with?.tool].flat(), ...(hook.with?.since === TURN ? [] : [hook.with?.since]));
     for (const id of toolRefs) {
       if (typeof id === "string" && !Object.hasOwn(tools, id)) errors.push(`hook ${hook.id}: ${id} is not a declared tool`);
     }

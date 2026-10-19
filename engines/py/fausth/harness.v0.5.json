@@ -106,7 +106,7 @@
                 { "$ref": "#/$defs/id" },
                 { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
               ] },
-              "since": { "$ref": "#/$defs/id" } } } } }
+              "since": { "anyOf": [{ "$ref": "#/$defs/id" }, { "const": "@turn" }] } } } } }
         },
         {
           "if": { "required": ["run"], "properties": { "run": { "const": "core_last_result" } } },

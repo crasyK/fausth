@@ -1,0 +1,9 @@
+spec: harness/0.5
+name: called-since-turn
+prompt: p
+tools:
+  board_check: { description: check, input: { type: object } }
+  board_move: { description: move, input: { type: object } }
+hooks:
+  - { id: moved-this-turn, on: stop, run: core_called_since, with: { tool: board_move, since: "@turn" } }
+  - { id: looked-this-turn, on: pre_tool, match: board_move, run: core_called_since, with: { tool: [board_check], since: "@turn" } }

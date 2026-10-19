@@ -91,6 +91,14 @@ CASES = [
                             "note_lines_added": None}),
         (EN_PASSANT, [], {"board_format": "ascii_fen", "orientation": "white", "last_move": ["f5", "f7f5"],
                           "note_mode": "count_added", "note_text": "a\nb", "note_lines_added": None}),
+        (START, OPENING[:3], {"board_format": "pieces", "orientation": "white", "last_move": ["Nf3", "g1f3"],
+                              "note_mode": "full", "note_text": "Plan: castle short.", "note_lines_added": None,
+                              "history": "moves"}),
+        (START, [], {"board_format": "ascii", "orientation": "white", "last_move": None,
+                     "note_mode": "none", "note_text": None, "note_lines_added": None, "history": "moves"}),
+        (MIDGAME, ["g8f6", "b1c3", "f8c5"], {"board_format": "fen", "orientation": "white", "last_move": ["Bc5", "f8c5"],
+                                             "note_mode": "count", "note_text": "x", "note_lines_added": None,
+                                             "history": "moves"}),
     ]],
 ]
 
@@ -167,6 +175,21 @@ def test_board_piece_and_resign_report_to_the_model_and_the_host():
     assert chess_tools.board_piece({"square": "e2"}, state)["pinned"] is True
     assert chess_tools.board_resign({"reason": "r"}, state) == {"resigned": True}
     assert state["resigned"] == "r"
+
+
+def test_the_brief_lists_the_moves_only_when_asked():
+    board = chess.Board()
+    for m in ["e2e4", "e7e5", "g1f3"]:
+        board.push_uci(m)
+    common = {"board_format": "pieces", "orientation": "white", "last_move": ("Nf3", "g1f3"), "note_mode": "none",
+              "note_text": None, "note_lines_added": None}
+    plain = chess_tools.turn_brief(board, **common)
+    assert chess_tools.turn_brief(board, **common, history="none") == plain
+    lines = chess_tools.turn_brief(board, **common, history="moves").splitlines()
+    assert lines[lines.index("Moves so far: 1. e4 e5 2. Nf3") + 1] == "Last move: White played Nf3 (g1f3)."
+    assert "Moves so far: none." in chess_tools.turn_brief(chess.Board(), **dict(common, last_move=None), history="moves")
+    with pytest.raises(ValueError):
+        chess_tools.turn_brief(board, **common, history="all")
 
 
 def test_board_move_without_position_hash_skips_the_staleness_check():

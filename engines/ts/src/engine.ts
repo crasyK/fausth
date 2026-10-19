@@ -1,5 +1,5 @@
 // The run loop (spec §8), hooks (§5, §6) and child runs (§10).
-import { SPAWN_INPUT, harnessErrors, type Event, type Harness, type Hook, type Limits } from "./harness.js";
+import { SPAWN_INPUT, TURN, harnessErrors, type Event, type Harness, type Hook, type Limits } from "./harness.js";
 import { Log, TOP, callId, view, type Scope, type ViewEntry } from "./log.js";
 import { hookWrapper, render, type Request, type ToolCall } from "./render.js";
 import { compileSchema, type Check } from "./schema.js";
@@ -82,6 +82,8 @@ class Run {
   stepsUsed = 0;
   toolCallsUsed = 0;
   lastText = "";
+  /** The step at which this run's latest user message was admitted (§5.3). */
+  turn = 0;
   schemas = new Map<string, Check>();
 
   constructor(
@@ -137,7 +139,8 @@ class Run {
         const decisions = await this.chain("user_prompt", { message: text });
         if (decisions.some((d) => d.decision === "deny")) continue;
         this.append("user", { text });
-        await this.turn();
+        this.turn = this.step;
+        await this.takeTurn();
       }
     } catch (e) {
       if (e instanceof Ended) reason = e.reason;
@@ -181,7 +184,7 @@ class Run {
     }
   }
 
-  private async turn(): Promise<void> {
+  private async takeTurn(): Promise<void> {
     let continued = 0;
     for (;;) {
       if (this.stepsUsed >= this.limits.max_steps) throw new Ended("limit");
@@ -299,7 +302,7 @@ class Run {
     for (const { hook, owner } of this.hooks) {
       if (hook.on !== event || !matches(hook.match, key)) continue;
       const input: { [k: string]: Json } = {
-        event, hook: hook.id, with: hook.with ?? {}, step: this.step, view: view(this.log.entries, this.scope) as Json,
+        event, hook: hook.id, with: hook.with ?? {}, step: this.step, turn: this.turn, view: view(this.log.entries, this.scope) as Json,
       };
       if (current) input.call = current;
       if (members.result) input.result = members.result;
@@ -335,7 +338,7 @@ class Run {
     if (hook.run.startsWith("core_")) {
       const w = hook.with ?? {};
       if (hook.run === "core_context") return { hook, decision: "add_context", text: cap(w.text as string) };
-      const failure = check(hook.run, w, this.step, input.view as ViewEntry[]);
+      const failure = check(hook.run, w, this.step, this.turn, input.view as ViewEntry[]);
       return failure === null ? { hook, decision: "allow" } : { hook, decision: PUSH_BACK[event]!, text: cap(failure) };
     }
     const schema = owner.schemas.get(`handlers.${hook.run}.input`);
@@ -372,15 +375,19 @@ function matches(match: string | string[] | undefined, key: string | undefined):
 type Call = Extract<ViewEntry, { tool: string }>;
 
 /** A built-in check (§6): null if it passes, else the failure text. */
-function check(run: string, w: { [k: string]: Json }, step: number, entries: ViewEntry[]): string | null {
+function check(run: string, w: { [k: string]: Json }, step: number, turn: number, entries: ViewEntry[]): string | null {
   const calls = entries.filter((e): e is Call => "tool" in e);
   const successful = (tool: Json) => (e: Call) => e.tool === tool && e.ok;
   const seen = (e: Call) => e.step < step;
   if (run === "core_called_since") {
     const tools = [w.tool!].flat();
+    const named = tools.join(" or ");
+    if (w.since === TURN) {
+      if (calls.some((e) => tools.some((t) => successful(t)(e)) && seen(e) && e.step > turn)) return null;
+      return `${named} not called this turn`;
+    }
     const since = w.since === undefined ? -1 : calls.findLastIndex(successful(w.since));
     if (calls.slice(since + 1).some((e) => tools.some((t) => successful(t)(e)) && seen(e))) return null;
-    const named = tools.join(" or ");
     return since >= 0 ? `${named} not called since the last ${w.since}` : `${named} not called yet`;
   }
   if (run === "core_last_result") {

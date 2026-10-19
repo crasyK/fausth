@@ -1,0 +1,25 @@
+{"depth":0,"harness_hash":"5ae1910b2f37881330df393dfefc12c1a022152c9fd9472269aba307ef431b48","seq":1,"type":"run_start"}
+{"seq":2,"text":"Play chess. Each user message is a new turn.","type":"system"}
+{"seq":3,"text":"Your move.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"square":"e2"},"call_id":"c4-0","tool":"board_piece"}],"type":"assistant"}
+{"call_id":"c4-0","ok":true,"result":{"moves":["e3","e4"],"piece":"white pawn"},"seq":5,"tool":"board_piece","type":"tool_result"}
+{"seq":6,"step":2,"text":"","tool_calls":[{"args":{"move":"e2e4"},"call_id":"c6-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c6-0","decision":"allow","event":"pre_tool","hook":"looked-this-turn","seq":7,"type":"hook"}
+{"call_id":"c6-0","ok":true,"result":{"played":"e2e4"},"seq":8,"tool":"board_move","type":"tool_result"}
+{"seq":9,"step":3,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"stop","hook":"moved-this-turn","seq":10,"type":"hook"}
+{"seq":11,"text":"Black played e5. Your move.","type":"user"}
+{"seq":12,"step":4,"text":"Waiting for your move.","tool_calls":[],"type":"assistant"}
+{"decision":"continue","event":"stop","hook":"moved-this-turn","seq":13,"text":"board_move not called this turn","type":"hook"}
+{"seq":14,"step":5,"text":"","tool_calls":[{"args":{"move":"d2d4"},"call_id":"c14-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c14-0","decision":"deny","event":"pre_tool","hook":"looked-this-turn","seq":15,"text":"board_check or board_piece not called this turn","type":"hook"}
+{"seq":16,"step":6,"text":"","tool_calls":[{"args":{"move":"d2d4"},"call_id":"c16-0","tool":"board_check"},{"args":{"move":"d2d4"},"call_id":"c16-1","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c16-0","ok":true,"result":{"legal":true,"san":"d4"},"seq":17,"tool":"board_check","type":"tool_result"}
+{"call_id":"c16-1","decision":"deny","event":"pre_tool","hook":"looked-this-turn","seq":18,"text":"board_check or board_piece not called this turn","type":"hook"}
+{"seq":19,"source":"timer","step":6,"text":"Ten minutes left.","type":"interrupt"}
+{"seq":20,"step":7,"text":"","tool_calls":[{"args":{"move":"d2d4"},"call_id":"c20-0","tool":"board_move"}],"type":"assistant"}
+{"call_id":"c20-0","decision":"allow","event":"pre_tool","hook":"looked-this-turn","seq":21,"type":"hook"}
+{"call_id":"c20-0","ok":true,"result":{"played":"d2d4"},"seq":22,"tool":"board_move","type":"tool_result"}
+{"seq":23,"step":8,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"stop","hook":"moved-this-turn","seq":24,"type":"hook"}
+{"reason":"stop","seq":25,"type":"run_end"}

@@ -139,6 +139,17 @@ function lineCount(text: string): number {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** The game's moves so far, numbered, in SAN ("1. e4 e5 2. Nf3"; a list that starts on Black's move reads
+ * "10... e5"); with last, only the most recent last plies. "" before the first move. */
+export function movetext(game: Chess, last?: number): string {
+  const plies = game.history({ verbose: true }).map((m) => {
+    const before = m.before.split(" ");
+    return { number: Number(before[5]), white: before[1] === "w", san: m.san };
+  });
+  const shown = last ? plies.slice(-last) : plies;
+  return shown.map((p, i) => (p.white ? `${p.number}. ${p.san}` : i ? p.san : `${p.number}... ${p.san}`)).join(" ");
+}
+
 export type BriefOptions = {
   boardFormat: string;
   orientation: string;
@@ -146,10 +157,12 @@ export type BriefOptions = {
   noteMode: string;
   noteText: string | null;
   noteLinesAdded: number | null;
+  history?: string;
 };
 
-/** The text a user_prompt handler appends to the user message: the board, the opponent's last move
- * ([san, uci]), whether the side to move is in check, and the note as noteMode says. */
+/** The text a user_prompt handler appends to the user message: the board, with history "moves" the game's
+ * moves so far, the opponent's last move ([san, uci]), whether the side to move is in check, and the note
+ * as noteMode says. */
 export function turnBrief(game: Chess, o: BriefOptions): string {
   const [mover, other] = game.turn() === "w" ? ["White", "Black"] : ["Black", "White"];
   const bottom = o.orientation === "white" ? "White" : mover;
@@ -159,6 +172,12 @@ export function turnBrief(game: Chess, o: BriefOptions): string {
   else {
     const legend = o.boardFormat === "unicode" ? "" : " (uppercase: White, lowercase: Black)";
     parts.push(`Board, ${bottom} at the bottom${legend}:`, renderBoard(game, o.boardFormat, o.orientation));
+  }
+  const history = o.history ?? "none";
+  if (!["none", "moves"].includes(history)) throw new Error(`unknown history ${history}`);
+  if (history === "moves") {
+    const moves = movetext(game);
+    parts.push(moves ? `Moves so far: ${moves}` : "Moves so far: none.");
   }
   parts.push(o.lastMove ? `Last move: ${other} played ${o.lastMove[0]} (${o.lastMove[1]}).` : "Last move: none.");
   parts.push(`${mover} to move. You are ${game.inCheck() ? "" : "not "}in check.`);
@@ -259,13 +278,8 @@ export function chessTools(fen?: string) {
       };
     },
     async board_history(args: Args): Promise<Answer> {
-      const plies = game.history({ verbose: true }).map((m) => {
-        const before = m.before.split(" ");
-        return { number: Number(before[5]), white: before[1] === "w", san: m.san };
-      });
-      const shown = typeof args.last === "number" && args.last > 0 ? plies.slice(-args.last) : plies;
-      const words = shown.map((p, i) => (p.white ? `${p.number}. ${p.san}` : i ? p.san : `${p.number}... ${p.san}`));
-      return { ok: true, result: { moves: words.join(" "), plies: plies.length } };
+      const last = typeof args.last === "number" && args.last > 0 ? args.last : undefined;
+      return { ok: true, result: { moves: movetext(game, last), plies: game.history().length } };
     },
     async board_resign(args: Args): Promise<Answer> {
       resigned = String(args.reason ?? "");
