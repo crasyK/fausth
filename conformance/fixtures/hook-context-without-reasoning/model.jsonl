@@ -1,0 +1,3 @@
+{"text": "Hello.", "reasoning": "A greeting needs a greeting."}
+{"text": "Hello again.", "reasoning": "Same answer.", "reasoning_opaque": {"provider": "kit", "data": [1]}}
+{"text": "Bye."}

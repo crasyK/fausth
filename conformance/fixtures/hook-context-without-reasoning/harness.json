@@ -1,0 +1,43 @@
+{
+  "spec": "harness/0.5",
+  "name": "hook-context-without-reasoning",
+  "prompt": "Answer briefly.",
+  "handlers": {
+    "sizer": {
+      "description": "Reads the conversation before each request.",
+      "input": {
+        "required": [
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "type": "array",
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "reasoning"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "reasoning_opaque"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "size",
+      "on": "pre_request",
+      "run": "sizer"
+    }
+  ]
+}
