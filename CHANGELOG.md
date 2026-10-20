@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.3 — 2026-10-20
+
+Logged reasoning can go back to the model. For harness-lab's test of sending GLM's earlier reasoning back
+(context-v1 found that in one conversation per game GLM almost stops reasoning). Every 0.5.2 harness stays valid,
+and with the default the model sees the same tokens as before.
+
+### Spec
+- The neutral request's assistant messages carry the log entry's `reasoning` and `reasoning_opaque` when it has
+  them (§9). Before, reasoning was left out, so no adapter could send it back as §9 and Appendix B intended.
+- Adapters take `reasoning_replay`: `none` (no logged reasoning goes back), `turn` (that of the assistant
+  messages after the request's last user message: the current tool loop, as GLM, DeepSeek and Anthropic expect)
+  or `all` (all of it, as GLM's "preserved thinking" and MiniMax recommend). The Chat Completions adapter sends
+  `reasoning` as `reasoning_content` and never `reasoning_opaque`. Its default stays `none`, the earlier
+  behaviour; the right default is a new open point (Appendix B).
+
+### Adapters
+- Python `to_chat(request, model, extra, reasoning_replay="none")` and `ChatModel(..., reasoning_replay=)`;
+  TypeScript `toChat(request, model, extra, reasoningReplay)` and `ChatOptions.reasoningReplay`. Any other value
+  is an error.
+- The command-line host's deployment takes `model.reasoning_replay`.
+
+### Conformance
+- `openai.json`: `replay`, one request over two turns mapped with each value, and invalid values.
+- The recorded requests of `chess`, `result-rendering` and `tools-only`, whose model logs reasoning, now carry
+  it on their assistant messages (nothing else changed).
+
 ## 0.5.2 — 2026-10-19
 
 Additions for harness-lab's context-v1 study. Every 0.5.1 harness stays valid and sees the same tokens.
