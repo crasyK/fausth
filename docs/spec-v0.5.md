@@ -1,8 +1,9 @@
 # Harness Spec v0.5
 
-**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.3 implement it (0.5.1 adds the list form of
+**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.4 implement it (0.5.1 adds the list form of
 `core_called_since`, 0.5.2 its `since: "@turn"` and the hook input's `turn`, §5.3, §6, 0.5.3 the logged
-reasoning in the request and the adapters' `reasoning_replay`, §9): the TypeScript and Python engines
+reasoning in the request and the adapters' `reasoning_replay`, §9, 0.5.4 keeps it out of the hook
+input, §5.3): the TypeScript and Python engines
 in this repository produce byte-identical logs and requests for every fixture in
 `conformance/`. Replaces spec v0.3, which is retired and kept only as a record of the journey
 (drafted as v0.4; the version follows the release). The decisions behind it are in
@@ -252,8 +253,8 @@ Only the members that apply to the event are present: `call` for tool events, `r
 has none), `step`, `turn` and `view` are always present. `call.args` are the arguments as the chain has
 modified them so far (`post_tool`: the arguments the call ran with); `message` is the user's
 text (`user_prompt`) or the response's `text` (`stop`); `context` is the `messages` of the
-request as it would be rendered at that point, so it includes the chain's earlier
-`add_context`. On `post_tool`, after a `replace` earlier in the chain, `replaced` holds the
+request as it would be rendered at that point, without the logged reasoning (§9), so it includes
+the chain's earlier `add_context`. On `post_tool`, after a `replace` earlier in the chain, `replaced` holds the
 text that replaces the result so far.
 
 If the handler declares an `input` schema, the engine validates this object against it before

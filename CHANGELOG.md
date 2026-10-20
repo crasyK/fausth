@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.4 — 2026-10-20
+
+A fix to 0.5.3. With this, every 0.5.2 harness behaves as before unless an adapter is told to send reasoning back.
+
+### Spec
+- The hook input's `context` (`pre_request`) is the request's messages *without* the logged reasoning (§5.3).
+  0.5.3 rendered it with the reasoning, so a handler saw a different context than in 0.5.2. A handler whose input
+  schema rejected the extra members failed, and one that measured the context (harness-lab's `compact`) would have
+  compacted at other points. Reasoning goes only to adapters.
+
+### Conformance
+- Fixture `hook-context-without-reasoning`: a `pre_request` handler whose input schema rejects `reasoning` and
+  `reasoning_opaque` in the context, over three turns whose model logs both. On 0.5.3 its second hook fails.
+
 ## 0.5.3 — 2026-10-20
 
 Logged reasoning can go back to the model. For harness-lab's test of sending GLM's earlier reasoning back
