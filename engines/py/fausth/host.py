@@ -1,7 +1,7 @@
 """The command-line host (spec §13): a deployment file binds every tool and handler id, names the
 model transport, and seeds per-run state for script bindings.
 
-    model:    {base_url, api_key_env, model, provider?, extra?, timeout_s?}
+    model:    {base_url, api_key_env, model, provider?, extra?, timeout_s?, reasoning_replay?}
     state:    {...}                        # given to every script binding, shared within the run
     bindings: {<id>: {script: "module:function"} | {recorded: "answers.jsonl"} | {model: {prompt, model?}}}
 
@@ -61,7 +61,8 @@ def _transport(config: dict[str, Any], model: str | None = None) -> ChatModel:
     if not key:
         raise DeploymentError(f"the environment variable {config['api_key_env']} is not set")
     return ChatModel(config["base_url"], key, model or config["model"], config.get("provider", "openai-compatible"),
-                     extra=config.get("extra"), timeout=config.get("timeout_s", 120))
+                     extra=config.get("extra"), timeout=config.get("timeout_s", 120),
+                     reasoning_replay=config.get("reasoning_replay", "none"))
 
 
 class CliHost:

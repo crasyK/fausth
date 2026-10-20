@@ -21,3 +21,14 @@ def test_answer_to_response(case):
             from_chat(case["answer"], "kit")
         return
     assert from_chat(case["answer"], "kit") == case["response"]
+
+
+@pytest.mark.parametrize("case", VECTORS["replay"]["cases"], ids=lambda c: c["reasoning_replay"])
+def test_logged_reasoning_sent_back(case):
+    assert to_chat(VECTORS["replay"]["request"], "m", None, case["reasoning_replay"]) == case["chat"]
+
+
+@pytest.mark.parametrize("value", VECTORS["replay"]["invalid"])
+def test_an_unknown_reasoning_replay_is_an_error(value):
+    with pytest.raises(ValueError):
+        to_chat(VECTORS["replay"]["request"], "m", None, value)

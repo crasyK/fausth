@@ -1,5 +1,5 @@
 {
- "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true.",
+ "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true. `replay` (0.5.3): `replay.request` with model `m` and no extra, mapped with each `reasoning_replay`: `none` sends no logged reasoning back, `turn` that of the assistant messages after the last user message, `all` all of it, as `reasoning_content`; `reasoning_opaque` is never sent back by this adapter, and any other value is an error.",
  "request": {
   "system": "You are playing chess.",
   "tools": [
@@ -354,5 +354,346 @@
    ],
    "error": true
   }
- ]
+ ],
+ "replay": {
+  "request": {
+   "system": "You are playing chess.",
+   "tools": [
+    {
+     "name": "board_move",
+     "description": "Play a move.",
+     "input": {
+      "type": "object",
+      "required": [
+       "move"
+      ]
+     }
+    }
+   ],
+   "messages": [
+    {
+     "role": "user",
+     "text": "Play."
+    },
+    {
+     "role": "assistant",
+     "text": "",
+     "tool_calls": [
+      {
+       "call_id": "c4-0",
+       "tool": "board_move",
+       "args": {
+        "move": "e2e4"
+       }
+      }
+     ],
+     "reasoning": "e4 takes the centre."
+    },
+    {
+     "role": "tool",
+     "call_id": "c4-0",
+     "tool": "board_move",
+     "text": "{\"played\":\"e2e4\"}"
+    },
+    {
+     "role": "assistant",
+     "text": "Done.",
+     "tool_calls": [],
+     "reasoning": "The move is made; end the turn."
+    },
+    {
+     "role": "user",
+     "text": "Black played e5. Your move."
+    },
+    {
+     "role": "assistant",
+     "text": "",
+     "tool_calls": [
+      {
+       "call_id": "c9-0",
+       "tool": "board_move",
+       "args": {
+        "move": "g1f3"
+       }
+      }
+     ],
+     "reasoning": "Nf3 attacks e5.",
+     "reasoning_opaque": {
+      "provider": "kit",
+      "data": [
+       {
+        "type": "reasoning.text",
+        "text": "Nf3 attacks e5."
+       }
+      ]
+     }
+    },
+    {
+     "role": "tool",
+     "call_id": "c9-0",
+     "tool": "board_move",
+     "text": "{\"played\":\"g1f3\"}"
+    },
+    {
+     "role": "assistant",
+     "text": "Done.",
+     "tool_calls": []
+    }
+   ]
+  },
+  "cases": [
+   {
+    "reasoning_replay": "none",
+    "chat": {
+     "model": "m",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are playing chess."
+      },
+      {
+       "role": "user",
+       "content": "Play."
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "c4-0",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\":\"e2e4\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c4-0",
+       "content": "{\"played\":\"e2e4\"}"
+      },
+      {
+       "role": "assistant",
+       "content": "Done."
+      },
+      {
+       "role": "user",
+       "content": "Black played e5. Your move."
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "c9-0",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\":\"g1f3\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c9-0",
+       "content": "{\"played\":\"g1f3\"}"
+      },
+      {
+       "role": "assistant",
+       "content": "Done."
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "board_move",
+        "description": "Play a move.",
+        "parameters": {
+         "type": "object",
+         "required": [
+          "move"
+         ]
+        }
+       }
+      }
+     ]
+    }
+   },
+   {
+    "reasoning_replay": "turn",
+    "chat": {
+     "model": "m",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are playing chess."
+      },
+      {
+       "role": "user",
+       "content": "Play."
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "c4-0",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\":\"e2e4\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c4-0",
+       "content": "{\"played\":\"e2e4\"}"
+      },
+      {
+       "role": "assistant",
+       "content": "Done."
+      },
+      {
+       "role": "user",
+       "content": "Black played e5. Your move."
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "c9-0",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\":\"g1f3\"}"
+         }
+        }
+       ],
+       "reasoning_content": "Nf3 attacks e5."
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c9-0",
+       "content": "{\"played\":\"g1f3\"}"
+      },
+      {
+       "role": "assistant",
+       "content": "Done."
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "board_move",
+        "description": "Play a move.",
+        "parameters": {
+         "type": "object",
+         "required": [
+          "move"
+         ]
+        }
+       }
+      }
+     ]
+    }
+   },
+   {
+    "reasoning_replay": "all",
+    "chat": {
+     "model": "m",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are playing chess."
+      },
+      {
+       "role": "user",
+       "content": "Play."
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "c4-0",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\":\"e2e4\"}"
+         }
+        }
+       ],
+       "reasoning_content": "e4 takes the centre."
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c4-0",
+       "content": "{\"played\":\"e2e4\"}"
+      },
+      {
+       "role": "assistant",
+       "content": "Done.",
+       "reasoning_content": "The move is made; end the turn."
+      },
+      {
+       "role": "user",
+       "content": "Black played e5. Your move."
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "c9-0",
+         "type": "function",
+         "function": {
+          "name": "board_move",
+          "arguments": "{\"move\":\"g1f3\"}"
+         }
+        }
+       ],
+       "reasoning_content": "Nf3 attacks e5."
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c9-0",
+       "content": "{\"played\":\"g1f3\"}"
+      },
+      {
+       "role": "assistant",
+       "content": "Done."
+      }
+     ],
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "board_move",
+        "description": "Play a move.",
+        "parameters": {
+         "type": "object",
+         "required": [
+          "move"
+         ]
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "invalid": [
+   "",
+   "last",
+   "None"
+  ]
+ }
 }

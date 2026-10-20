@@ -14,12 +14,18 @@ from .values import canonical, parse_json
 _RETRY_STATUS = (408, 429, 500, 502, 503, 504)
 # Gateways that answer 400 for their own trouble (KIT: "ServiceUnavailable", "Server Connection Error").
 _TRANSIENT = ("unavailable", "connection error", "overloaded", "try again", "timeout", "bad gateway")
+REASONING_REPLAY = ("none", "turn", "all")
 
 
-def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The Chat Completions body for a neutral request."""
+def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = None,
+            reasoning_replay: str = "none") -> dict[str, Any]:
+    """The Chat Completions body for a neutral request. `reasoning_replay` says which logged reasoning goes back
+    as `reasoning_content` (§9): none, the current turn's (after the last user message), or all of it."""
+    if reasoning_replay not in REASONING_REPLAY:
+        raise ValueError(f"reasoning_replay must be one of {', '.join(REASONING_REPLAY)}")
+    last_user = max((i for i, m in enumerate(request["messages"]) if m["role"] == "user"), default=-1)
     messages: list[dict[str, Any]] = [{"role": "system", "content": request["system"]}] if request["system"] else []
-    for m in request["messages"]:
+    for i, m in enumerate(request["messages"]):
         if m["role"] == "user":
             messages.append({"role": "user", "content": m["text"]})
         elif m["role"] == "assistant":
@@ -28,6 +34,8 @@ def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = 
                 message["tool_calls"] = [
                     {"id": c["call_id"], "type": "function", "function": {"name": c["tool"], "arguments": canonical(c["args"])}}
                     for c in m["tool_calls"]]
+            if m.get("reasoning") and (reasoning_replay == "all" or (reasoning_replay == "turn" and i > last_user)):
+                message["reasoning_content"] = m["reasoning"]
             messages.append(message)
         else:
             messages.append({"role": "tool", "tool_call_id": m["call_id"], "content": m["text"]})
@@ -79,13 +87,16 @@ class ChatModel:
     (the binding's job, §5.4); anything left is an infrastructure failure."""
 
     def __init__(self, base_url: str, api_key: str, model: str, provider: str, *, extra: dict[str, Any] | None = None,
-                 timeout: float = 120, retries: int = 3) -> None:
+                 timeout: float = 120, retries: int = 3, reasoning_replay: str = "none") -> None:
+        if reasoning_replay not in REASONING_REPLAY:
+            raise ValueError(f"reasoning_replay must be one of {', '.join(REASONING_REPLAY)}")
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.api_key, self.model, self.provider = api_key, model, provider
         self.extra, self.timeout, self.retries = extra or {}, timeout, retries
+        self.reasoning_replay = reasoning_replay
 
     def __call__(self, request: dict[str, Any]) -> dict[str, Any]:
-        data = json.dumps(to_chat(request, self.model, self.extra)).encode("utf-8")
+        data = json.dumps(to_chat(request, self.model, self.extra, self.reasoning_replay)).encode("utf-8")
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
