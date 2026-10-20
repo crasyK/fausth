@@ -49,7 +49,9 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
             items.append({"role": "user", "text": interrupt_wrapper(e["source"], e["text"]) + _joined(interrupt_contexts)})
             interrupt_contexts = []
         elif t == "assistant":
-            items.append({"role": "assistant", "text": e["text"], "tool_calls": e["tool_calls"]})
+            item = {"role": "assistant", "text": e["text"], "tool_calls": e["tool_calls"]}
+            item.update((k, e[k]) for k in ("reasoning", "reasoning_opaque") if k in e)  # the adapter decides (§9)
+            items.append(item)
             for c in e["tool_calls"]:
                 slot = {"call_id": c["call_id"], "tool": c["tool"], "modifies": [], "contexts": []}
                 slots[c["call_id"]] = slot

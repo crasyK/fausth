@@ -9,11 +9,16 @@ type Obj = { [k: string]: Json };
 const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 // Gateways that answer 400 for their own trouble (KIT: "ServiceUnavailable", "Server Connection Error").
 const TRANSIENT = ["unavailable", "connection error", "overloaded", "try again", "timeout", "bad gateway"];
+export const REASONING_REPLAY = ["none", "turn", "all"] as const;
+export type ReasoningReplay = (typeof REASONING_REPLAY)[number];
 
-/** The Chat Completions body for a neutral request. */
-export function toChat(request: Request, model: string, extra: Obj = {}): Obj {
+/** The Chat Completions body for a neutral request. `reasoningReplay` says which logged reasoning goes back as
+ * `reasoning_content` (§9): none, the current turn's (after the last user message), or all of it. */
+export function toChat(request: Request, model: string, extra: Obj = {}, reasoningReplay: ReasoningReplay = "none"): Obj {
+  if (!REASONING_REPLAY.includes(reasoningReplay)) throw new Error(`reasoning_replay must be one of ${REASONING_REPLAY.join(", ")}`);
+  const lastUser = request.messages.findLastIndex((m) => m.role === "user");
   const messages: Obj[] = request.system ? [{ role: "system", content: request.system }] : [];
-  for (const m of request.messages) {
+  for (const [i, m] of request.messages.entries()) {
     if (m.role === "user") messages.push({ role: "user", content: m.text });
     else if (m.role === "assistant") {
       const message: Obj = { role: "assistant", content: m.text || m.tool_calls.length === 0 ? m.text : null };
@@ -22,6 +27,7 @@ export function toChat(request: Request, model: string, extra: Obj = {}): Obj {
           id: c.call_id, type: "function", function: { name: c.tool, arguments: canonical(c.args) },
         }));
       }
+      if (m.reasoning && (reasoningReplay === "all" || (reasoningReplay === "turn" && i > lastUser))) message.reasoning_content = m.reasoning;
       messages.push(message);
     } else messages.push({ role: "tool", tool_call_id: m.call_id, content: m.text });
   }
@@ -65,7 +71,9 @@ export function fromChat(body: unknown, provider: string): Obj {
   return out;
 }
 
-export interface ChatOptions { extra?: Obj; timeoutMs?: number; retries?: number; headers?: Record<string, string> }
+export interface ChatOptions {
+  extra?: Obj; timeoutMs?: number; retries?: number; headers?: Record<string, string>; reasoningReplay?: ReasoningReplay;
+}
 
 /** A model transport for one OpenAI-compatible endpoint and model. Retries transient failures (the
  * binding's job, §5.4); anything left is an infrastructure failure. */
@@ -77,7 +85,7 @@ export class ChatModel {
   }
 
   async call(request: Request): Promise<Obj> {
-    const body = JSON.stringify(toChat(request, this.model, this.options.extra));
+    const body = JSON.stringify(toChat(request, this.model, this.options.extra, this.options.reasoningReplay));
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}`, ...this.options.headers };
     const retries = this.options.retries ?? 3;
     for (let attempt = 0; ; attempt += 1) {

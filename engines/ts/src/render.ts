@@ -6,7 +6,7 @@ import { canonical, type Json } from "./values.js";
 export type ToolCall = { call_id: string; tool: string; args: Json };
 export type Message =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; tool_calls: ToolCall[] }
+  | { role: "assistant"; text: string; tool_calls: ToolCall[]; reasoning?: string; reasoning_opaque?: Json }
   | { role: "tool"; call_id: string; tool: string; text: string };
 export interface Request {
   system: string;
@@ -40,7 +40,9 @@ interface Slot {
   replaced?: string;
   contexts: string[];
 }
-type Item = { role: "user"; text: string } | { role: "assistant"; text: string; tool_calls: ToolCall[] } | { role: "tool"; slot: Slot };
+type Item = { role: "user"; text: string }
+  | { role: "assistant"; text: string; tool_calls: ToolCall[]; reasoning?: string; reasoning_opaque?: Json }
+  | { role: "tool"; slot: Slot };
 
 const joined = (parts: string[]) => parts.map((p) => `\n\n${p}`).join("");
 
@@ -62,7 +64,11 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
       interruptContexts = [];
     } else if (e.type === "assistant") {
       const calls = e.tool_calls as ToolCall[];
-      items.push({ role: "assistant", text: e.text as string, tool_calls: calls });
+      items.push({ // the adapter decides whether the reasoning goes back (§9)
+        role: "assistant", text: e.text as string, tool_calls: calls,
+        ...(e.reasoning !== undefined && { reasoning: e.reasoning as string }),
+        ...(e.reasoning_opaque !== undefined && { reasoning_opaque: e.reasoning_opaque as Json }),
+      });
       for (const c of calls) {
         const slot: Slot = { call_id: c.call_id, tool: c.tool, modifies: [], contexts: [] };
         slots.set(c.call_id, slot);
