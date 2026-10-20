@@ -310,7 +310,15 @@ class Run {
       if (members.message !== undefined) input.message = members.message;
       if (members.interrupt) input.interrupt = { ...members.interrupt };
       if (members.continued !== undefined) input.continued = members.continued;
-      if (event === "pre_request") input.context = render(this.harness, this.log.entries, this.scope).messages as Json;
+      // The request's messages without the logged reasoning, which only adapters send on (§5.3, §9).
+      if (event === "pre_request") {
+        input.context = render(this.harness, this.log.entries, this.scope).messages.map((m) => {
+          const copy: { [k: string]: unknown } = { ...m };
+          delete copy.reasoning;
+          delete copy.reasoning_opaque;
+          return copy;
+        }) as Json;
+      }
 
       const d = await this.decide(hook, owner, event, input, current?.tool);
       const where: { [k: string]: Json } = call ? { call_id: call.call_id } : {};

@@ -306,7 +306,9 @@ class _Run:
             if "interrupt" in members:
                 inp["interrupt"] = dict(members["interrupt"])
             if event == "pre_request":
-                inp["context"] = render(self.harness, self.log.entries, self.scope)["messages"]
+                # The request's messages without the logged reasoning, which only adapters send on (§5.3, §9).
+                inp["context"] = [{k: v for k, v in m.items() if k not in ("reasoning", "reasoning_opaque")}
+                                  for m in render(self.harness, self.log.entries, self.scope)["messages"]]
 
             d = self._decide(hook, owner, event, inp, current["tool"] if current else None)
             where = {"call_id": call["call_id"]} if call else {}
