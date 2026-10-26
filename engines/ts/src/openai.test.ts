@@ -10,7 +10,7 @@ const vectors = JSON.parse(readFileSync(new URL("../../../conformance/openai.jso
   request: Request;
   chat: unknown;
   answers: { name: string; answer: unknown; response?: unknown; error?: true }[];
-  replay: { request: Request; cases: { reasoning_replay: ReasoningReplay; chat: unknown }[]; invalid: string[] };
+  replay: { request: Request; cases: { reasoning_replay: ReasoningReplay; chat: unknown }[]; invalid: string[]; default: ReasoningReplay };
 };
 
 test("neutral request to Chat Completions", () => {
@@ -32,4 +32,9 @@ for (const c of vectors.replay.cases) {
 
 test("an unknown reasoning_replay is an error", () => {
   for (const v of vectors.replay.invalid) assert.throws(() => toChat(vectors.replay.request, "m", {}, v as ReasoningReplay));
+});
+
+test("the default sends the current turn's reasoning back", () => {
+  const c = vectors.replay.cases.find((x) => x.reasoning_replay === vectors.replay.default);
+  assert.deepEqual(toChat(vectors.replay.request, "m"), c?.chat);
 });

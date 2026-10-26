@@ -15,10 +15,11 @@ _RETRY_STATUS = (408, 429, 500, 502, 503, 504)
 # Gateways that answer 400 for their own trouble (KIT: "ServiceUnavailable", "Server Connection Error").
 _TRANSIENT = ("unavailable", "connection error", "overloaded", "try again", "timeout", "bad gateway")
 REASONING_REPLAY = ("none", "turn", "all")
+DEFAULT_REASONING_REPLAY = "turn"  # what providers ask for within a tool loop (§9)
 
 
 def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = None,
-            reasoning_replay: str = "none") -> dict[str, Any]:
+            reasoning_replay: str = DEFAULT_REASONING_REPLAY) -> dict[str, Any]:
     """The Chat Completions body for a neutral request. `reasoning_replay` says which logged reasoning goes back
     as `reasoning_content` (§9): none, the current turn's (after the last user message), or all of it."""
     if reasoning_replay not in REASONING_REPLAY:
@@ -87,7 +88,7 @@ class ChatModel:
     (the binding's job, §5.4); anything left is an infrastructure failure."""
 
     def __init__(self, base_url: str, api_key: str, model: str, provider: str, *, extra: dict[str, Any] | None = None,
-                 timeout: float = 120, retries: int = 3, reasoning_replay: str = "none") -> None:
+                 timeout: float = 120, retries: int = 3, reasoning_replay: str = DEFAULT_REASONING_REPLAY) -> None:
         if reasoning_replay not in REASONING_REPLAY:
             raise ValueError(f"reasoning_replay must be one of {', '.join(REASONING_REPLAY)}")
         self.url = base_url.rstrip("/") + "/chat/completions"

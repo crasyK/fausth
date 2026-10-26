@@ -1,5 +1,5 @@
 {
- "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true. `replay` (0.5.3): `replay.request` with model `m` and no extra, mapped with each `reasoning_replay`: `none` sends no logged reasoning back, `turn` that of the assistant messages after the last user message, `all` all of it, as `reasoning_content`; `reasoning_opaque` is never sent back by this adapter, and any other value is an error.",
+ "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true. `replay` (0.5.3): `replay.request` with model `m` and no extra, mapped with each `reasoning_replay`: `none` sends no logged reasoning back, `turn` that of the assistant messages after the last user message, `all` all of it, as `reasoning_content`; `reasoning_opaque` is never sent back by this adapter, and any other value is an error. With no value given, an adapter maps it as `turn` (`replay.default`, 0.5.5).",
  "request": {
   "system": "You are playing chess.",
   "tools": [
@@ -694,6 +694,7 @@
    "",
    "last",
    "None"
-  ]
+  ],
+  "default": "turn"
  }
 }

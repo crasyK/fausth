@@ -11,10 +11,11 @@ const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 const TRANSIENT = ["unavailable", "connection error", "overloaded", "try again", "timeout", "bad gateway"];
 export const REASONING_REPLAY = ["none", "turn", "all"] as const;
 export type ReasoningReplay = (typeof REASONING_REPLAY)[number];
+export const DEFAULT_REASONING_REPLAY: ReasoningReplay = "turn"; // what providers ask for within a tool loop (§9)
 
 /** The Chat Completions body for a neutral request. `reasoningReplay` says which logged reasoning goes back as
  * `reasoning_content` (§9): none, the current turn's (after the last user message), or all of it. */
-export function toChat(request: Request, model: string, extra: Obj = {}, reasoningReplay: ReasoningReplay = "none"): Obj {
+export function toChat(request: Request, model: string, extra: Obj = {}, reasoningReplay: ReasoningReplay = DEFAULT_REASONING_REPLAY): Obj {
   if (!REASONING_REPLAY.includes(reasoningReplay)) throw new Error(`reasoning_replay must be one of ${REASONING_REPLAY.join(", ")}`);
   const lastUser = request.messages.findLastIndex((m) => m.role === "user");
   const messages: Obj[] = request.system ? [{ role: "system", content: request.system }] : [];

@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterator
 
 from .engine import HostEnd, InfraFailure
 from .harness import BUILT_INS, read_harness
-from .openai import ChatModel
+from .openai import DEFAULT_REASONING_REPLAY, ChatModel
 from .values import canonical, parse_json
 
 _FENCE = re.compile(r"\A```(?:json)?\s*\n(.*)\n```\s*\Z", re.S)
@@ -62,7 +62,7 @@ def _transport(config: dict[str, Any], model: str | None = None) -> ChatModel:
         raise DeploymentError(f"the environment variable {config['api_key_env']} is not set")
     return ChatModel(config["base_url"], key, model or config["model"], config.get("provider", "openai-compatible"),
                      extra=config.get("extra"), timeout=config.get("timeout_s", 120),
-                     reasoning_replay=config.get("reasoning_replay", "none"))
+                     reasoning_replay=config.get("reasoning_replay", DEFAULT_REASONING_REPLAY))
 
 
 class CliHost:
