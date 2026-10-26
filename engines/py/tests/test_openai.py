@@ -32,3 +32,8 @@ def test_logged_reasoning_sent_back(case):
 def test_an_unknown_reasoning_replay_is_an_error(value):
     with pytest.raises(ValueError):
         to_chat(VECTORS["replay"]["request"], "m", None, value)
+
+
+def test_the_default_sends_the_current_turns_reasoning_back():
+    case = next(c for c in VECTORS["replay"]["cases"] if c["reasoning_replay"] == VECTORS["replay"]["default"])
+    assert to_chat(VECTORS["replay"]["request"], "m") == case["chat"]
