@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.5 — 2026-10-26
+
+The adapters' default `reasoning_replay` is now `turn`: the reasoning of the current turn's tool loop goes back to
+the model, as GLM, DeepSeek and Anthropic ask. The user's decision after harness-lab's reasoning-replay-v1, which found
+that sending all earlier reasoning back restored much of GLM's reasoning in one conversation per game, at twice the
+tokens. A host that wants the old behaviour passes `none`; `all` stays an explicit choice.
+
+### Spec
+- §9: the Chat Completions adapter's default is `turn` (was `none`). Appendix B: the open point is resolved.
+
+### Adapters
+- Python `DEFAULT_REASONING_REPLAY` and TypeScript `DEFAULT_REASONING_REPLAY` (`"turn"`): the default of `to_chat` /
+  `toChat`, `ChatModel` and the command-line host's `model.reasoning_replay`.
+
+### Conformance
+- `openai.json`: `replay.default` (`turn`); with no value, a mapping must equal that case.
+
 ## 0.5.4 — 2026-10-20
 
 A fix to 0.5.3. With this, every 0.5.2 harness behaves as before unless an adapter is told to send reasoning back.

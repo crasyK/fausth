@@ -1,9 +1,9 @@
 # Harness Spec v0.5
 
-**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.4 implement it (0.5.1 adds the list form of
+**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.5 implement it (0.5.1 adds the list form of
 `core_called_since`, 0.5.2 its `since: "@turn"` and the hook input's `turn`, §5.3, §6, 0.5.3 the logged
 reasoning in the request and the adapters' `reasoning_replay`, §9, 0.5.4 keeps it out of the hook
-input, §5.3): the TypeScript and Python engines
+input, §5.3, 0.5.5 makes `turn` the adapters' default, §9): the TypeScript and Python engines
 in this repository produce byte-identical logs and requests for every fixture in
 `conformance/`. Replaces spec v0.3, which is retired and kept only as a record of the journey
 (drafted as v0.4; the version follows the release). The decisions behind it are in
@@ -470,8 +470,9 @@ An adapter takes `reasoning_replay`:
 - `all`: all of it.
 
 The Chat Completions adapter sends `reasoning` as the assistant message's `reasoning_content` and
-never sends `reasoning_opaque` back. Its default is `none`, the behaviour before 0.5.3; which default
-adapters should have is open (Appendix B). Other provider extras (caching) are out of scope.
+never sends `reasoning_opaque` back. Its default is `turn` (0.5.5; before, `none`): what GLM, DeepSeek
+and Anthropic ask for within a tool loop, at few extra tokens. A host that wants another value says so.
+Other provider extras (caching) are out of scope.
 
 ### 9.1 System prompt
 
@@ -726,8 +727,10 @@ the fixtures replayable in the page. Both give the model the same tokens for the
 KIT gateway's CORS policy admits only its own origin, so the page talks to endpoints such as
 OpenRouter that allow browser calls.
 
+**Resolved 2026-10-26 (the user, after harness-lab's reasoning-replay-v1):** the adapters' default
+`reasoning_replay` is `turn` (§9). Sending all earlier reasoning back restored much of GLM's reasoning
+in one long conversation, but it doubled the tokens, so `all` stays a host's explicit choice.
+
 **Still open:**
 1. **Images and other non-text results:** planned for a later version, after more host runs.
    Needs a fixed adapter rule for providers that don't accept images in tool results.
-2. **The adapters' default `reasoning_replay`** (§9). 0.5.3 keeps `none`, the earlier behaviour,
-   until harness-lab's test of sending GLM's reasoning back has results.
