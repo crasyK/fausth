@@ -2,7 +2,7 @@
 import { SPAWN_INPUT, TURN, harnessErrors, type Event, type Harness, type Hook, type Limits } from "./harness.js";
 import { Log, TOP, callId, view, type Scope, type ViewEntry } from "./log.js";
 import { hookWrapper, render, type Request, type ToolCall } from "./render.js";
-import { compileSchema, type Check } from "./schema.js";
+import { argumentReasons, compileSchema, type Check } from "./schema.js";
 import { canonical, excerpt, hash, type Json } from "./values.js";
 
 export interface ModelResponse {
@@ -224,7 +224,8 @@ class Run {
       return;
     }
     if (!this.schemas.get(`tools.${call.tool}.input`)!(call.args)) {
-      this.result(call, { ok: false, error: "invalid arguments: does not match the input schema" });
+      const schema = call.tool === "core_spawn" ? SPAWN_INPUT : this.harness.tools![call.tool]!.input;
+      this.result(call, { ok: false, error: "invalid arguments: " + argumentReasons(schema, call.args) });
       return;
     }
     const pre = await this.chain("pre_tool", { call: { tool: call.tool, args: call.args } }, call);

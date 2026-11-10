@@ -1,0 +1,44 @@
+{
+  "spec": "harness/0.5",
+  "name": "invalid-argument-reasons",
+  "prompt": "Play a move.",
+  "tools": {
+    "board_move": {
+      "description": "Play a move in UCI, with a reason.",
+      "input": {
+        "type": "object",
+        "required": ["move", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "move": {"type": "string", "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$"},
+          "reason": {"type": "string", "minLength": 20, "maxLength": 80}
+        }
+      }
+    },
+    "note_write": {
+      "description": "Write the note.",
+      "input": {
+        "type": "object",
+        "required": ["text", "mode"],
+        "additionalProperties": false,
+        "properties": {
+          "text": {"type": ["string", "null"]},
+          "mode": {"enum": ["append", "replace"]},
+          "lines": {"type": "integer", "minimum": 1, "exclusiveMaximum": 10},
+          "weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 2.5},
+          "tags": {"type": "array", "minItems": 1, "maxItems": 2},
+          "pinned": {"const": true},
+          "Zeta": false
+        }
+      }
+    },
+    "deep": {
+      "description": "A schema the rules can't explain.",
+      "input": {"type": "object", "allOf": [{"required": ["a"]}]}
+    },
+    "closed": {
+      "description": "Takes no members.",
+      "input": {"type": "object", "additionalProperties": false}
+    }
+  }
+}

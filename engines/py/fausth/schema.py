@@ -9,6 +9,8 @@ from jsonschema_specifications import REGISTRY
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
+from .values import _utf16, canonical
+
 _LINE_TERMINATORS = "\n\r" + chr(0x2028) + chr(0x2029)
 _JS_SPACE = "\t\n\v\f\r " + "".join(
     chr(c) for c in (0xA0, 0x1680, *range(0x2000, 0x200B), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF)
@@ -109,3 +111,89 @@ def compile_schema(schema: dict) -> Callable[[Any], bool]:
 def structure_validator(schema: dict) -> Draft202012Validator:
     """A validator for the harness schema itself, with its patterns translated."""
     return Draft202012Validator(_translated(schema))
+
+
+_TYPE_NAMES = {"string": "a string", "integer": "an integer", "number": "a number", "boolean": "a boolean",
+               "object": "an object", "array": "an array", "null": "null"}
+
+
+def _is_number(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _has_type(v: Any, t: str) -> bool:
+    if t == "string":
+        return isinstance(v, str)
+    if t == "integer":
+        return _is_number(v) and (isinstance(v, int) or float(v).is_integer())
+    if t == "number":
+        return _is_number(v)
+    if t == "boolean":
+        return isinstance(v, bool)
+    if t == "object":
+        return isinstance(v, dict)
+    if t == "array":
+        return isinstance(v, list)
+    return t == "null" and v is None
+
+
+def _member_reason(p: Any, v: Any) -> str | None:
+    """The first row of §8.1's table that the value fails, or None."""
+    if p is False:
+        return "not allowed"
+    if not isinstance(p, dict):
+        return None
+    types = p.get("type")
+    if isinstance(types, str):
+        types = [types]
+    if isinstance(types, list) and types and not any(_has_type(v, t) for t in types):
+        return "must be " + " or ".join(_TYPE_NAMES.get(t, str(t)) for t in types)
+    if isinstance(p.get("enum"), list) and canonical(v) not in [canonical(e) for e in p["enum"]]:
+        return "must be one of " + ", ".join(canonical(e) for e in p["enum"])
+    if "const" in p and canonical(p["const"]) != canonical(v):
+        return "must be " + canonical(p["const"])
+    if isinstance(v, str):
+        k = len(v)  # code points
+        if _is_number(p.get("minLength")) and k < p["minLength"]:
+            return f"at least {canonical(p['minLength'])} characters (it has {k})"
+        if _is_number(p.get("maxLength")) and k > p["maxLength"]:
+            return f"at most {canonical(p['maxLength'])} characters (it has {k})"
+        if isinstance(p.get("pattern"), str) and not re.search(js_regex(p["pattern"]), v):
+            return f"must match the pattern {p['pattern']}"
+    if _is_number(v):
+        for key, fails, word in (("minimum", lambda n: v < n, "at least"), ("exclusiveMinimum", lambda n: v <= n, "more than"),
+                                 ("maximum", lambda n: v > n, "at most"), ("exclusiveMaximum", lambda n: v >= n, "less than")):
+            if _is_number(p.get(key)) and fails(p[key]):
+                return f"{word} {canonical(p[key])}"
+    if isinstance(v, list):
+        k = len(v)
+        if _is_number(p.get("minItems")) and k < p["minItems"]:
+            return f"at least {canonical(p['minItems'])} items (it has {k})"
+        if _is_number(p.get("maxItems")) and k > p["maxItems"]:
+            return f"at most {canonical(p['maxItems'])} items (it has {k})"
+    return None
+
+
+def argument_reasons(schema: Any, args: Any) -> str:
+    """Why arguments fail a tool's input schema (spec §8.1), for arguments JSON Schema has rejected."""
+    if not isinstance(schema, dict):
+        return "does not match the input schema"
+    if schema.get("type") == "object" and not isinstance(args, dict):
+        return "the arguments must be a JSON object"
+    out: list[str] = []
+    if isinstance(args, dict):
+        props = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+        for name in schema.get("required") or []:
+            if isinstance(name, str) and name not in args:
+                out.append(f"missing required member {name}")
+        if schema.get("additionalProperties") is False and "patternProperties" not in schema:
+            names = ", ".join(sorted(props, key=_utf16))
+            for name in sorted(args, key=_utf16):
+                if name not in props:
+                    out.append(f"unknown member {name} " + (f"(members: {names})" if props else "(no members)"))
+        for name in sorted(args, key=_utf16):
+            if name in props:
+                reason = _member_reason(props[name], args[name])
+                if reason is not None:
+                    out.append(f"{name}: {reason}")
+    return "; ".join(out) if out else "does not match the input schema"
