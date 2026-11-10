@@ -7,7 +7,7 @@ from typing import Any, Callable, Protocol
 from .harness import SPAWN_INPUT, TURN, harness_errors
 from .log import TOP, Log, Scope, call_id, view
 from .render import hook_wrapper, render
-from .schema import compile_schema
+from .schema import argument_reasons, compile_schema
 from .values import canonical, excerpt, hash
 
 
@@ -215,7 +215,8 @@ class _Run:
             self._result(call, {"ok": False, "error": "invalid arguments: unknown tool"})
             return
         if not self.schemas[f"tools.{tool}.input"](call["args"]):
-            self._result(call, {"ok": False, "error": "invalid arguments: does not match the input schema"})
+            schema = SPAWN_INPUT if tool == "core_spawn" else self.harness["tools"][tool].get("input")
+            self._result(call, {"ok": False, "error": "invalid arguments: " + argument_reasons(schema, call["args"])})
             return
         pre = self._chain("pre_tool", {"call": {"tool": tool, "args": call["args"]}}, call)
         if any(d["decision"] == "deny" for d in pre):

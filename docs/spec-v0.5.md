@@ -415,9 +415,9 @@ optional member is left out, never `null`. Every line ends with `\n`.
       - If `tool_calls_used ≥ max_tool_calls`, end with `limit`.
       - `tool_calls_used += 1`.
       - Unknown tool → `tool_result` with `ok: false`, `error: "invalid arguments: unknown
-        tool"`; arguments that fail the input schema → `error: "invalid arguments: does not
-        match the input schema"`. No hooks run. (The texts are fixed so that every engine and
-        every schema library produces the same tokens.)
+        tool"`; arguments that fail the input schema → `error: "invalid arguments: "` followed by
+        the reasons of §8.1. No hooks run. (The texts are fixed so that every engine and every
+        schema library produces the same tokens.)
       - Run `pre_tool` hooks. If denied → no execution; the deny is the result (§9.3).
       - Execute. Log `tool_result`. Run `post_tool` hooks.
    5. If there were tool calls → next step.
@@ -437,6 +437,51 @@ the run ends with `host_end` (§12.2).
 `n + 1`). The `step` members of the log and the hook input hold this number, so `step` `n` is
 line `n` of `expected.requests.jsonl`. `steps_used` and `tool_calls_used` count a run's own
 requests and calls and those of its children.
+
+### 8.1 Why arguments fail
+
+Whether arguments fit a tool's input schema is JSON Schema's verdict (§3.2). Why they don't is the
+engine's own text, built from the schema and the arguments by the rules below, never from a schema
+library's messages: so the model learns what to fix, and every engine says it in the same tokens.
+The reasons are joined with `; `. When the rules find none, the reason is `does not match the
+input schema`.
+
+Let `S` be the input schema and `A` the arguments.
+
+1. If `S` has `type: "object"` and `A` is not an object: `the arguments must be a JSON object`.
+   No other rule applies.
+2. If `A` is an object:
+   1. each name in `S.required`, in its order, that `A` lacks: `missing required member <name>`;
+   2. if `S.additionalProperties` is `false` and `S` has no `patternProperties`: each member of
+      `A` that `S.properties` doesn't declare, its names in the order of canonical JSON (§1):
+      `unknown member <name> (members: <names>)`, where `<names>` are `S.properties`' names in
+      that order joined with `, ` (`(no members)` when it declares none);
+   3. each member of `A` that `S.properties` declares, in the same order, checked against its
+      schema `P`: the first row below that fails gives `<name>: <reason>`, and a value that fails
+      none gives no reason.
+
+| Row | Applies when | Fails when | Reason |
+|---|---|---|---|
+| `P` is `false` | always | always | `not allowed` |
+| `type` | always | the value is of none of the types (an integer is a number without a fractional part) | `must be ` + `a string`, `an integer`, `a number`, `a boolean`, `an object`, `an array` or `null`, several joined with ` or ` in `type`'s order |
+| `enum` | always | no entry has the value's canonical form | `must be one of ` + the entries' canonical forms joined with `, ` |
+| `const` | always | its canonical form differs from the value's | `must be ` + its canonical form |
+| `minLength` | the value is a string | it has fewer code points | `at least <n> characters (it has <k>)` |
+| `maxLength` | the value is a string | it has more code points | `at most <n> characters (it has <k>)` |
+| `pattern` | the value is a string | the pattern doesn't match (§3.2) | `must match the pattern <pattern>` |
+| `minimum` | the value is a number | value < n | `at least <n>` |
+| `exclusiveMinimum` | the value is a number | value ≤ n | `more than <n>` |
+| `maximum` | the value is a number | value > n | `at most <n>` |
+| `exclusiveMaximum` | the value is a number | value ≥ n | `less than <n>` |
+| `minItems` | the value is an array | it has fewer items | `at least <n> items (it has <k>)` |
+| `maxItems` | the value is an array | it has more items | `at most <n> items (it has <k>)` |
+
+Numbers are written in canonical form (§1). Every reason names a real violation, so it can be
+incomplete (a nested schema, `allOf`, a `$ref`) but never wrong. For example, with
+`required: [move, reason]`, `additionalProperties: false` and `reason: {type: string, minLength: 20}`,
+the arguments `{"move": "e2e4", "value": 3}` get `invalid arguments: missing required member
+reason; unknown member value (members: move, reason)`, and `{"move": "e2e4", "reason": "aaaa"}`
+get `invalid arguments: reason: at least 20 characters (it has 4)`.
 
 ---
 
