@@ -1,10 +1,10 @@
 # Harness Spec v0.5
 
-**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.5 implement it (0.5.1 adds the list form of
+**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.6 implement it (0.5.1 adds the list form of
 `core_called_since`, 0.5.2 its `since: "@turn"` and the hook input's `turn`, §5.3, §6, 0.5.3 the logged
 reasoning in the request and the adapters' `reasoning_replay`, §9, 0.5.4 keeps it out of the hook
-input, §5.3, 0.5.5 makes `turn` the adapters' default, §9): the TypeScript and Python engines
-in this repository produce byte-identical logs and requests for every fixture in
+input, §5.3, 0.5.5 makes `turn` the adapters' default, §9, 0.5.6 says why arguments fail, §8.1): the
+TypeScript and Python engines in this repository produce byte-identical logs and requests for every fixture in
 `conformance/`. Replaces spec v0.3, which is retired and kept only as a record of the journey
 (drafted as v0.4; the version follows the release). The decisions behind it are in
 [`primitives-inventory.md`](primitives-inventory.md) §6–§8.

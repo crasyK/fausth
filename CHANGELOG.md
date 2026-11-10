@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.6 — 2026-11-10
+
+Invalid arguments now say why. A tool call whose arguments failed the input schema was answered only
+`invalid arguments: does not match the input schema`, so a model couldn't tell what to fix. harness-lab found it:
+in minimal-plus-v1 Nemotron got that bare answer 59 times in 36 of 450 games, nearly always for an extra member
+(`board_try` with a `reason`, `board_move` with a `value`), and after a failed `board_try` it mostly didn't try again.
+
+### Spec
+- §8 step 4 and the new §8.1: the error is `invalid arguments: ` followed by reasons built from the schema and the
+  arguments by fixed rules, never from a schema library's messages: missing required members, unknown members
+  (with the declared ones), then each member's first failing `type`, `enum`, `const`, `minLength`, `maxLength`,
+  `pattern`, `minimum`, `exclusiveMinimum`, `maximum`, `exclusiveMaximum`, `minItems` or `maxItems`, joined with
+  `; `. JSON Schema still decides validity; when the rules find no reason, the text is the old one.
+
+### Engines
+- Python `fausth.schema.argument_reasons`, TypeScript `argumentReasons`, used for invalid tool arguments.
+
+### Conformance
+- New fixture `invalid-argument-reasons`. `chess`, `invalid-arguments` and `spawn-denied` carry the new texts.
+
 ## 0.5.5 — 2026-10-26
 
 The adapters' default `reasoning_replay` is now `turn`: the reasoning of the current turn's tool loop goes back to
