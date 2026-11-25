@@ -4,7 +4,7 @@
 session executes.
 
 **Read first, in this order:**
-1. [`spec-v0.5.md`](spec-v0.5.md) (drafted as `spec-v0.4-draft.md`): what to build. This is the
+1. [`spec-v0.5.md`](archive/specs/spec-v0.5.md) (drafted as `spec-v0.4-draft.md`): what to build. This is the
    source of truth.
 2. [`primitives-inventory.md`](primitives-inventory.md) §6–§8: why. Read it only when a spec
    sentence seems odd.

@@ -1,15 +1,16 @@
-# Harness Spec v0.5
+# Harness Spec v0.6
 
-**Status:** Normative, 2026-10-17. Releases 0.5.0 to 0.5.6 implement it (0.5.1 adds the list form of
-`core_called_since`, 0.5.2 its `since: "@turn"` and the hook input's `turn`, §5.3, §6, 0.5.3 the logged
-reasoning in the request and the adapters' `reasoning_replay`, §9, 0.5.4 keeps it out of the hook
-input, §5.3, 0.5.5 makes `turn` the adapters' default, §9, 0.5.6 says why arguments fail, §8.1): the
-TypeScript and Python engines in this repository produce byte-identical logs and requests for every fixture in
-`conformance/`. Replaces spec v0.3, which is retired and kept only as a record of the journey
-(drafted as v0.4; the version follows the release). The decisions behind it are in
-[`primitives-inventory.md`](primitives-inventory.md) §6–§8.
+**Status:** Normative, 2026-11-25. Release 0.6.0 implements it: the TypeScript and Python engines in this
+repository produce byte-identical logs and requests for every fixture in `conformance/`. It is spec v0.5
+([archived](archive/specs/spec-v0.5.md)) with five changes, the user's decision of 2026-11-25 after Mouseion
+rebuilt the pi coding agent (pi 1.5.2) token for token on Fausth: tools are offered in the order the file
+declares them (§9), the provider's tool-call ids are kept (§7), arguments go back as the model sent them
+(§9.4), the engine's own texts can be worded in the file (§8.2), and `replace_context` can keep the newest
+messages and leave its text unwrapped, with the last response's usage and the logged reasoning in the
+`pre_request` hook input (§5.3, §5.4). A 0.6 engine still runs `harness/0.5` files, exactly as release 0.5.6
+did (§15). The decisions behind v0.5 are in [`primitives-inventory.md`](primitives-inventory.md) §6–§8.
 **Project name:** undecided. Built-ins use the neutral `core_` prefix; harness files declare
-`spec: harness/0.5`.
+`spec: harness/0.6`.
 **Design target:** someone can write a conforming engine in a weekend. If a section makes that
 impossible, the section is wrong.
 
@@ -54,6 +55,13 @@ non-finite number, a string with a lone surrogate) is an error.
 `excerpt(s, n)` = `s` if it has at most `n` code points, else its first `n` code points followed
 by `…[truncated]`.
 
+**Member order.** Where this spec gives an object's members an order (the tools a model is offered, §9;
+the argument text, §9.4), it is the order in which they appear in the document, except that members whose
+names are array indexes (`0`, or digits without a leading zero, below 2^32 − 1) come first, in ascending
+numeric order. That is the order ECMAScript gives an object's own keys, so `JSON.parse`, and a YAML reader
+that builds plain objects, keep it without further work. A name that occurs twice keeps its first place and
+its last value.
+
 ---
 
 ## 2. The harness file
@@ -62,26 +70,29 @@ YAML 1.2 (core schema; duplicate keys are an error) or JSON, which is read as YA
 duplicate keys are an error there too). The document MUST denote a JSON value: string keys
 only, finite numbers only, no tags outside the core schema. Authoring tools MAY support
 includes (e.g. a prompt in a separate file). What an engine runs is the **resolved harness**:
-one JSON document with includes inlined. `harness_hash` = `hash(resolved harness)`.
-[`schema/harness.v0.5.json`](../schema/harness.v0.5.json) is the JSON Schema of the file; the
-cross-references (§3.1, §5.1, §6) are checked in addition.
+one JSON document with includes inlined, in which the order of `tools` counts (§9).
+`harness_hash` = `hash([<resolved harness>, <the ids of its tools in member order>])`: the canonical
+form alone drops that order (§1). [`schema/harness.v0.6.json`](../schema/harness.v0.6.json) is the
+JSON Schema of the file; the cross-references (§3.1, §5.1, §6) and the placeholders of `texts` (§8.2)
+are checked in addition.
 
 Top-level fields (closed set; anything else is a validation error):
 
 | Field | Required | Meaning |
 |---|---|---|
-| `spec` | yes | `harness/0.5` |
+| `spec` | yes | `harness/0.6` (a 0.6 engine also runs `harness/0.5`, §15) |
 | `name` | yes | Non-empty string. Not shown to the model. |
 | `prompt` | yes | The system prompt text (§9.1). |
-| `tools` | no | Model-facing tools (§3). The model is offered exactly these. |
+| `tools` | no | Model-facing tools (§3). The model is offered exactly these, in this order (§9). |
 | `handlers` | no | Hook-only tools (§3). Never offered to the model. |
 | `hooks` | no | Ordered list (§5). |
 | `limits` | no | §12. |
+| `texts` | no | The engine's own texts, worded for this harness (§8.2). |
 
 ### Example: the chess harness from `cb-ability-v1` (arm S1G1p, with the stricter rule)
 
 ```yaml
-spec: harness/0.5
+spec: harness/0.6
 name: chess-legal-first
 prompt: |
   You are playing chess. Find the best move for the side to move and play it.
@@ -139,7 +150,8 @@ handlers:
     input: <JSON Schema>             # optional; validated hook input (§5.3)
 ```
 
-Both maps are closed: no other members. Schemas are JSON objects. An engine compiles every schema
+Both maps are closed: no other members. The order of `tools` is the order in which the model is
+offered them (§9). Schemas are JSON objects. An engine compiles every schema
 when it loads the harness; a schema that doesn't compile (invalid against the 2020-12
 meta-schema, an unresolvable `$ref`, a `pattern` that isn't a valid regular expression) makes
 the harness invalid. Regular expressions are ECMA-262 with the `u` flag, as JSON Schema
@@ -243,19 +255,23 @@ The handler receives one object:
   "message": "<text>",
   "interrupt": {"source": "timer", "text": "..."},
   "context": [ <messages> ],
+  "usage": {"prompt_tokens": 41230, "completion_tokens": 812},
   "view": [ <view entries> ]
 }
 ```
 
 Only the members that apply to the event are present: `call` for tool events, `result` for
 `post_tool`, `message` for `user_prompt` and `stop`, `interrupt` for `interrupt`, `context`
-(the rendered conversation, §9) for `pre_request`. `event`, `hook`, `with` (`{}` when the hook
+(the rendered conversation, §9) and `usage` for `pre_request`. `event`, `hook`, `with` (`{}` when the hook
 has none), `step`, `turn` and `view` are always present. `call.args` are the arguments as the chain has
 modified them so far (`post_tool`: the arguments the call ran with); `message` is the user's
 text (`user_prompt`) or the response's `text` (`stop`); `context` is the `messages` of the
-request as it would be rendered at that point, without the logged reasoning (§9), so it includes
-the chain's earlier `add_context`. On `post_tool`, after a `replace` earlier in the chain, `replaced` holds the
-text that replaces the result so far.
+request as it would be rendered at that point, logged reasoning included (§9), so it includes
+the chain's earlier `add_context`; `usage` is the `usage` of the run's last `assistant` entry (§7),
+the token counts the provider reported for the last response as the host gave them, absent when that
+entry has none or there is none. A compaction handler measures the context with the two (Appendix
+A.3). On `post_tool`, after a `replace` earlier in the chain, `replaced` holds the text that replaces
+the result so far.
 
 If the handler declares an `input` schema, the engine validates this object against it before
 calling the binding; if it doesn't match, the hook failed (§5.4) and the binding is not called.
@@ -296,19 +312,26 @@ The handler's `result` is this object. It holds exactly the members its decision
 | `modify` | `args`, optional `text` | the call executes with `args` (validated against the tool's input schema again) |
 | `replace` | `text` | the model sees `text` instead of the result |
 | `continue` | `text` | the model is asked to keep going |
-| `replace_context` | `text` | the conversation after the system prompt is replaced by `text` |
+| `replace_context` | `text`, optional `keep`, `wrap` | the conversation after the system prompt is replaced by `text`, except its newest `keep` messages (§9.3) |
 
-A decision not allowed for the event, missing members, or an invalid `modify` → the hook
-**failed**. The same holds when the handler is unreachable, returns `ok: false`, answers in
-neither form of §3.3, or its hook input fails its `input` schema (§5.3). (Retrying is the
-host's job inside the binding, before it reports a failure.) A failed hook writes a `hook` entry
-with `decision: "failed"` and no `text`; then:
+`keep` is a non-negative integer, at most the number of messages in the hook input's `context`: those
+newest messages stay as they are, and the text replaces only the ones before them. `wrap` is a boolean:
+`wrap: false` renders the text as the user message as it is, without the wrapper (§9.2), for a summary
+that brings its own framing.
+
+A decision not allowed for the event, missing members, a member of the wrong type, a `keep` above the
+context's length, or an invalid `modify` → the hook **failed**. The same holds when the handler is
+unreachable, returns `ok: false`, answers in neither form of §3.3, or its hook input fails its `input`
+schema (§5.3). (Retrying is the host's job inside the binding, before it reports a failure.) A failed
+hook writes a `hook` entry with `decision: "failed"` and no `text`; then:
 - `on_failure: end` (default): the run ends with `infra_failure`. A rule that can't be checked
   must not silently pass, and an infrastructure problem must not show up in the model's tokens.
 - `on_failure: skip`: the hook is treated as `allow`; the model sees nothing. Meant for
   advisory hooks (tips, context), never for rules.
 
-`text` is excerpted to `limits.max_hook_text` code points (default 4000) before it is logged.
+`text` is excerpted to `limits.max_hook_text` code points (default 4000) before it is logged, except
+the text of a `replace_context` with `wrap: false`, which is logged and rendered whole: it replaces the
+conversation, and a summary is often longer.
 
 ---
 
@@ -371,8 +394,8 @@ JSON Lines, one canonical object per line, `seq` from 1. Entry types:
 | `run_start` | `harness_hash`, `depth` |
 | `system` | `text` (the assembled system prompt, §9.1) |
 | `user` | `text` |
-| `assistant` | `step`, `text`, `tool_calls: [{call_id, tool, args}]`, `reasoning?`, `reasoning_opaque?` |
-| `hook` | `hook`, `event`, `decision`, `text?`, `args?`, `call_id?` |
+| `assistant` | `step`, `text`, `tool_calls: [{call_id, tool, args, args_text?, malformed?}]`, `reasoning?`, `reasoning_opaque?`, `usage?` |
+| `hook` | `hook`, `event`, `decision`, `text?`, `args?`, `keep?`, `wrap?`, `call_id?` |
 | `tool_result` | `call_id`, `tool`, `ok`, `result` or `error` |
 | `interrupt` | `source`, `text`, `step` |
 | `harness_changed` | `harness_hash` (§12.3) |
@@ -384,9 +407,16 @@ plain text as `reasoning`, an encrypted or signed blob as `reasoning_opaque: {pr
 most valuable part. A response that breaks this shape (§14 gives it) is an infrastructure
 failure.
 
-`call_id` is `c<seq of the assistant entry>-<index>`, with `index` counting the response's tool
-calls from 0. It is assigned by the engine, not by the provider, so logs stay identical across
-providers.
+`call_id` is the id the model response gave the call (§14) if that is a non-empty string which no
+earlier call in the log has (calls earlier in the same response included) and which isn't of the
+engine's form `c<digits>-<digits>`. Otherwise the engine names the call `c<seq of the assistant
+entry>-<index>`, with `index` counting the response's tool calls from 0. The model sees the ids it
+wrote; the engine's form stays free for calls without one; and ids unique in the log keep each call's
+entries, and a child's `parent_call` (§10), apart.
+
+`args_text` is the call's argument text (§9.4), present only when it differs from the canonical form of
+`args`. A call whose argument text wasn't JSON (§14) is logged with `args: {}` and `malformed`: the text
+as the model sent it. `usage` is the model response's `usage` (§14), as the host gave it.
 
 Entries of a child run (§10) are written inline with `depth` = parent depth + 1 and
 `parent_call` = the `call_id` of the `core_spawn` call. Top-level entries carry neither member,
@@ -395,8 +425,9 @@ except `run_start`, which always carries `depth`.
 Member details: `assistant.text` is `""` when the response has no text, and `tool_calls` is
 `[]` when it has no calls. A `hook` entry is written for **every** hook that runs, `allow`
 included, in chain order (§5.2); it carries `call_id` on tool events, `text` when its decision
-has one, and `args` for `modify`. A `tool_result` carries `result` iff `ok`, else `error`. An
-optional member is left out, never `null`. Every line ends with `\n`.
+has one, `args` for `modify`, and `keep` and `wrap` when a `replace_context` has them. A
+`tool_result` carries `result` iff `ok`, else `error`. An optional member is left out, never `null`.
+Every line ends with `\n`.
 
 ---
 
@@ -414,10 +445,11 @@ optional member is left out, never `null`. Every line ends with `\n`.
    4. For each tool call, **in order**:
       - If `tool_calls_used ≥ max_tool_calls`, end with `limit`.
       - `tool_calls_used += 1`.
-      - Unknown tool → `tool_result` with `ok: false`, `error: "invalid arguments: unknown
-        tool"`; arguments that fail the input schema → `error: "invalid arguments: "` followed by
-        the reasons of §8.1. No hooks run. (The texts are fixed so that every engine and every
-        schema library produces the same tokens.)
+      - Unknown tool → `tool_result` with `ok: false` and the `unknown_tool` text as `error`
+        (§8.2); a call whose argument text wasn't JSON (`malformed`, §14) → the
+        `malformed_arguments` text; arguments that fail the input schema → the
+        `invalid_arguments` text, with the reasons of §8.1. No hooks run. (The default texts are
+        fixed so that every engine and every schema library produces the same tokens.)
       - Run `pre_tool` hooks. If denied → no execution; the deny is the result (§9.3).
       - Execute. Log `tool_result`. Run `post_tool` hooks.
    5. If there were tool calls → next step.
@@ -483,6 +515,41 @@ the arguments `{"move": "e2e4", "value": 3}` get `invalid arguments: missing req
 reason; unknown member value (members: move, reason)`, and `{"move": "e2e4", "reason": "aaaa"}`
 get `invalid arguments: reason: at least 20 characters (it has 4)`.
 
+A host MAY supply the reasons instead, as one text: its own validator's messages, as a rebuild of
+another harness needs them. The engine then uses that text for `{reasons}` (§8.2), and the rules
+above when the host gives none. The reasons reach the model only through the logged `error`, so a
+replay of the log doesn't need the host.
+
+### 8.2 The engine's texts
+
+The texts the engine writes into tool results can be worded in the file's `texts`. Each is a
+template: `{name}` (a name of lowercase letters and `_`) is a placeholder, replaced by its value;
+every other character stays as written. Values are not escaped and not read again. A template may use
+only its own placeholders; any other `{name}` makes the harness invalid.
+
+| `texts` member | For | Placeholders | Default |
+|---|---|---|---|
+| `unknown_tool` | a call of a tool the harness doesn't offer | `tool`, `args`, `args_indented` | `invalid arguments: unknown tool` |
+| `invalid_arguments` | arguments that fail the input schema | `tool`, `args`, `args_indented`, `reasons` | `invalid arguments: {reasons}` |
+| `malformed_arguments` | an argument text that isn't JSON (§14) | `tool`, `text`, `parse_error` | `invalid arguments: the arguments must be a JSON object` |
+| `tool_error` | how a failed result is shown (§9.3) | `error` | none: the canonical form of `{"error": <error>}` |
+
+`tool` is the tool's name as the model called it; `args` is the argument text (§9.4) and
+`args_indented` the same with two-space indentation; `reasons` are those of §8.1, joined with `; `,
+or the host's; `text` is the argument text as the model sent it and `parse_error` the response's
+`parse_error`, `""` when it has none (§14); `error` is the result's `error`. The first three make the
+`error` that is logged. `tool_error` applies whenever a failed result is rendered, whoever wrote its
+error, so a harness whose model sees errors as plain text says `tool_error: "{error}"`. pi 1.5.2's
+words, for example (its validator's reasons come from the host, §8.1):
+
+```yaml
+texts:
+  unknown_tool: "Tool {tool} not found"
+  invalid_arguments: "Validation failed for tool \"{tool}\":\n{reasons}\n\nReceived arguments:\n{args_indented}"
+  malformed_arguments: "Invalid arguments for tool \"{tool}\": {parse_error}\n\nReceived arguments:\n{text}"
+  tool_error: "{error}"
+```
+
 ---
 
 ## 9. Rendering: what the model sees
@@ -495,15 +562,19 @@ changing any text. Its exact shape, which `expected.requests.jsonl` records (§1
 {"system": "<text>",
  "tools": [{"name": "<id>", "description": "<text>", "input": {}}],
  "messages": [{"role": "user", "text": "<text>"},
-              {"role": "assistant", "text": "<text>", "tool_calls": [{"call_id": "c4-0", "tool": "<id>", "args": {}}],
+              {"role": "assistant", "text": "<text>",
+               "tool_calls": [{"call_id": "call_8f2a", "tool": "<id>", "args": {}, "args_text": "<text>"}],
                "reasoning": "<text>"},
-              {"role": "tool", "call_id": "c4-0", "tool": "<id>", "text": "<text>"}]}
+              {"role": "tool", "call_id": "call_8f2a", "tool": "<id>", "text": "<text>"}]}
 ```
 
-`tools` holds every entry of the harness's `tools` in sorted id order (the order of canonical
-JSON, §1: `harness_hash` doesn't see declaration order, so the request mustn't either); `output`
-schemas are not shown. An assistant message repeats its log entry's `text` and `tool_calls`, and
-its `reasoning` and `reasoning_opaque` when the entry has them (§7).
+`tools` holds every entry of the harness's `tools` in member order (§1): the order the file declares
+them, a tool whose id is an array index (`2`, `10`) first. `harness_hash` sees that order (§2).
+After a live reload the tools are the new harness's, in its order: a tool it adds appears where it
+declares it, and one it drops is gone (§12.3); a child run offers its own harness's (§10). `output`
+schemas are not shown. An assistant message repeats its log entry's `text` and `tool_calls` (without
+`malformed`), and its `reasoning` and `reasoning_opaque` when the entry has them (§7). An adapter sends
+a call's argument text (§9.4) where the provider takes the arguments as text.
 
 Logged reasoning rides in the neutral request, but it reaches the model only as the host adapter
 sends it, following the provider's rules (some require it within a tool loop, some reject it).
@@ -543,7 +614,7 @@ same escape for `</interrupt>`.
 | Situation | What the model sees |
 |---|---|
 | tool result, `ok: true` | the result: a string as-is, anything else as canonical JSON |
-| tool result, `ok: false` | `{"error":"<error>"}` |
+| tool result, `ok: false` | `{"error":"<error>"}` (canonical JSON), or the harness's `tool_error` text (§8.2) |
 | `pre_tool` `deny` | the tool message for that call is the wrapper alone |
 | `pre_tool` `modify` | the tool message is the wrapper (`text` or `args changed`), `"\n"`, then the result |
 | `post_tool` `replace` | the tool message is the wrapper alone |
@@ -552,7 +623,7 @@ same escape for `</interrupt>`.
 | `add_context` on `interrupt` | appended to the interrupt's message: `"\n\n"` + wrapper |
 | `add_context` on `pre_request`, `stop`; `stop` `continue` | a user-role message with the wrapper |
 | delivered interrupt | a user-role message with the interrupt wrapper |
-| `replace_context` | all messages after the system prompt are replaced by one user-role message with the wrapper |
+| `replace_context` | the messages after the system prompt, except the newest `keep`, are replaced by one user-role message: the wrapper, or with `wrap: false` the text itself |
 | `allow`, `failed`, a `deny` on `user_prompt` or `interrupt` | nothing |
 
 When several decisions concern one call, its tool message is built from its log entries in log
@@ -563,8 +634,23 @@ call order; a call that never finished (the run ended first) has none. The `add_
 decisions of a denied user message or interrupt are dropped with it.
 
 Several user-role contributions in a row are **merged** into one user message, joined by
-`"\n\n"`, in log order; the user's own messages count as contributions. The engine never emits
-system messages mid-conversation.
+`"\n\n"`, in log order; the user's own messages count as contributions. The messages a
+`replace_context` keeps stay as they were: the first of them doesn't merge into the replacing message.
+The engine never emits system messages mid-conversation.
+
+### 9.4 Arguments as the model sent them
+
+The **argument text** of a call is its arguments as compact JSON: no whitespace between tokens,
+members in member order (§1), strings and numbers as in the canonical form. For the value a JSON
+reader makes of the model's text, it is what ECMAScript's `JSON.stringify` writes: keys in the model's
+order (array indexes first), non-ASCII characters as they are, `1.0` as `1` and `1e2` as `100`. With
+two-space indentation (`{args_indented}`, §8.2) it is `JSON.stringify(value, null, 2)`: each member
+and item on its own line, `": "` after a name, `[]` and `{}` for empty ones.
+
+The log keeps it as `args_text` when it differs from the canonical form of `args` (§7), and the request
+carries it the same way: a call's argument text is its `args_text`, else the canonical form of its
+`args`. A call whose text wasn't JSON goes back as `{}` (its `args`): a provider that reads the
+arguments of earlier calls would reject the broken text, and the error tells the model (§8.2).
 
 ---
 
@@ -604,8 +690,9 @@ value; `timeout_ms` is the host's. A limit the child leaves out is the parent's 
 the parent has left. `{value}` renders as canonical JSON.
 
 **The child run** is a run (§8) whose only user message is `task`, at `depth` = parent depth + 1,
-logged inline (§7). Its view holds only its own calls (§5.3); the current step counts every
-request in the log, the child's included (§8).
+logged inline (§7), with its own harness's tools, order and texts; it may declare `harness/0.5`
+(§15). Its view holds only its own calls (§5.3); the current step counts every request in the log,
+the child's included (§8).
 
 **Inherited hooks.** The parent's hooks, including those it inherited itself, run **before** the
 child's own hooks, on every matching child event. A parent can't drop its own rules by writing a
@@ -661,8 +748,9 @@ A host MAY replace the harness during a run (for example after the agent edited 
 The new harness takes effect at the next step boundary of the top-level run (§8 step 3.1,
 before interrupts are delivered, so the new `interrupt` hooks apply). The engine logs
 `harness_changed` with the new hash, runs the new harness's `session_start` hooks,
-re-assembles the system prompt (logged as a new `system` entry) and offers the new tool set,
-hooks and limits from then on; the counters of the run go on, so a run that has already used up
+re-assembles the system prompt (logged as a new `system` entry) and offers the new tool set (in its
+order, §9), hooks, limits and texts from then on (a new `tool_error` shows every failed result in the
+conversation, earlier ones included); the counters of the run go on, so a run that has already used up
 the new `max_steps` ends with `limit` right there. A replacement that isn't a valid harness is
 an infrastructure failure. Whether and how a harness edits itself is not part of
 this spec.
@@ -702,7 +790,7 @@ itself**, i.e. exactly what a fine-tuned model would see.
 
 | File | Line | Meaning |
 |---|---|---|
-| `model.jsonl` | `{text?, tool_calls?: [{tool, args}], reasoning?, reasoning_opaque?}` | the next response; `text` defaults to `""`, `tool_calls` to `[]` |
+| `model.jsonl` | `{text?, tool_calls?: [call], reasoning?, reasoning_opaque?, usage?}` | the next response; `text` defaults to `""`, `tool_calls` to `[]` |
 | | `{error}` | the model API failed |
 | `tools.jsonl` | `{id, ok: true, result}` / `{id, ok: false, error}` | the next answer of a tool or handler binding |
 | | `{id, unreachable: true}` | the binding couldn't be reached |
@@ -711,11 +799,37 @@ itself**, i.e. exactly what a fine-tuned model would see.
 | `interrupts.jsonl` | `{step, source, text}` | pushed while the run was at `step` (§8): queued once the current step reaches it |
 | `reloads.jsonl` | `{step, harness}` | a replacement harness, taken at the first top-level step boundary where the current step has reached `step` |
 
+A `call` is `{tool, args, call_id?}`, or `{tool, malformed, parse_error?, call_id?}` when the
+model's argument text isn't JSON: `call_id` is the provider's id for the call (§7), `malformed` the
+text, `parse_error` (a string) the host's JSON reader's message for it, and `usage` (an object) the
+token counts the provider reported (§5.3). A host's model response has the same shape; anything else
+is an infrastructure failure.
+
 The replay host answers from these files in order. A model `error`, an `unreachable` line, a
 tools line whose `id` isn't the id being called, and a missing line in `model.jsonl` or
 `tools.jsonl` are infrastructure failures. When `user.jsonl` has no more lines, the conversation
 is over (§8 step 2). `expected.requests.jsonl` holds one canonical line per model request, in
 order, child runs included.
+
+---
+
+## 15. Files of spec 0.5
+
+A 0.6 engine also runs a harness that declares `spec: harness/0.5`, exactly as release 0.5.6 did: the
+same log and the same requests, for the same model responses. For such a harness (also a child or a
+replacement that declares it, each run following its own):
+- the schema is [`schema/harness.v0.5.json`](../schema/harness.v0.5.json): there is no `texts`;
+- `harness_hash` is `hash(resolved harness)`, and the tools are offered in sorted id order (the order
+  of canonical JSON, §1);
+- every call id is the engine's (`c<seq>-<index>`), and there is no `args_text`: arguments go back in
+  canonical form;
+- a `malformed` call is logged with its text as `args` (which then fail their schema, §8.1), the reasons
+  are always the engine's (§8.1), and `usage` isn't logged;
+- the `pre_request` hook input's `context` leaves out the logged reasoning (`reasoning`,
+  `reasoning_opaque`), and there is no `usage`;
+- `replace_context` takes only `text`.
+
+The conformance fixtures written before 0.6 are such files; their expected files didn't change.
 
 ---
 
@@ -728,8 +842,11 @@ handler that lists skill names and descriptions → `add_context`.
 {key}`, implemented by the host (JSON, sqlite, markdown). A `pre_tool` hook on `memory_save`
 runs a handler `judge_reason` (bound to a model) that denies weak reasons.
 
-**A.3 Compaction.** A `pre_request` hook runs a handler that counts the tokens in `context`;
-above a threshold it asks a model for a summary and returns `replace_context`.
+**A.3 Compaction.** A `pre_request` hook runs a handler that measures `context`, starting from
+`usage`, the tokens the provider counted for the last response; above a threshold it asks a model for
+a summary and returns `replace_context` with the summary, `keep` for the newest messages it leaves as
+they are, and `wrap: false` when the summary brings its own framing. Mouseion's rebuild of pi 1.5.2
+compacts like pi this way (its handler's binding holds pi's trigger, cut and summary requests).
 
 **A.4 Completion gate.** A `stop` hook runs `core_last_result {tool: tests_run, path: exit_code,
 eq: 0}`. If the tests didn't pass, the failed check becomes `continue` (§6). If the model can't
@@ -776,6 +893,24 @@ OpenRouter that allow browser calls.
 `reasoning_replay` is `turn` (§9). Sending all earlier reasoning back restored much of GLM's reasoning
 in one long conversation, but it doubled the tokens, so `all` stays a host's explicit choice.
 
+**Resolved 2026-11-25 (the user, after Mouseion's rebuild of pi 1.5.2, its gaps 1, 2, 3, 5 and 7):**
+tools in the order the file declares them (§9); the provider's call ids kept (§7); arguments sent back
+as the model sent them (§9.4); the engine's texts worded in the file (§8.2); `replace_context` with
+`keep` and `wrap: false`, and `usage` and the logged reasoning in the `pre_request` hook input (§5.3,
+§5.4). A 0.6 engine runs `harness/0.5` files as 0.5.6 did (§15). Gaps 4 (pi repairs arguments before
+checking them) and 6 (host values in the prompt) get no spec change.
+
 **Still open:**
 1. **Images and other non-text results:** planned for a later version, after more host runs.
    Needs a fixed adapter rule for providers that don't accept images in tool results.
+2. **A check after the last reply.** pi checks the context again after a run's last reply and may
+   compact then. `stop` allows only `continue` and `add_context`, and its input has no `context`. In a
+   one-shot run this changes nothing the model sees (no one reads that summary). In a conversation the
+   next request's `pre_request` hook can compact instead, but by then the context holds the next user
+   message, which pi's summary leaves out, so trigger and cut can differ. Proposal, not adopted: `stop`
+   also allows `replace_context`, with `context` and `usage` in its input as for `pre_request`.
+3. **Asking again after compacting.** pi drops a reply cut off below its token limit, compacts and asks
+   again. An engine step can't be asked again, so a rebuild can't do this on the engine's side; it never
+   happened in Mouseion's recordings.
+4. **Validators' own messages.** Identical texts for invalid arguments need the original's validator
+   messages (pi-schema's); a host supplies them (§8.1). No general rule for them is planned.
