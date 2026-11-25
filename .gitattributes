@@ -1,3 +1,6 @@
 * text=auto eol=lf
 *.{ts,js,mjs,json,yml,yaml,md,py} text eol=lf
 *.jsonl text eol=lf
+
+# Line-ending test input for the Rust engine: kept byte for byte
+engines/rs/examples/differential/yaml/crlf.yaml -text

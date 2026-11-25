@@ -1,0 +1,13 @@
+# top
+spec: harness/0.6 # trailing
+name: c # x
+prompt: >
+  a # not a comment
+  b
+tools:   # comment
+  t:
+    description: "d"
+    input:
+      type: object
+      properties:
+        n: {type: integer, minimum: 1}   # c

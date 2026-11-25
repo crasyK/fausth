@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.1 — 2026-11-25
+
+A third engine, in Rust (`engines/rs/`), for spec v0.6. No change to the spec, the files or the other two engines:
+a 0.6.0 file runs unchanged and logs the same bytes. Released at the user's decision (2026-11-25). It exists so that
+Mouseion can give a Rust harness (Codex first) a runner in its own language.
+
+- **Conformance:** every vector in `conformance/` and all 61 fixtures replayed byte for byte (the log and the
+  rendered requests), including the launch pair of §13.1 with the binding live. `cargo test`, and `fausth replay
+  <fixture dirs>` from the command line (silent when identical; prints what differs and exits 1).
+- **CI:** a `rs` job (format check, tests, replay of every fixture).
+- **Scope:** the engine, the Chat Completions mapping (`to_chat`, `from_chat`, with `reasoning_replay`), the replay
+  host and `harness_binding` (§13.1). No HTTP transport: the host makes the calls. Details in `engines/rs/README.md`.
+
+### Found while building it (spec points, for the user's next spec review; no change made)
+- **`multipleOf` on doubles** (§3.2 says "standard semantics", which doesn't settle it): Ajv and Python's
+  `jsonschema` test whether the quotient of the two doubles is an integer, and the Rust engine does the same, but for
+  quotients of 10²¹ and more the TypeScript and Python engines disagree with each other (Ajv's `q === parseInt(q)`
+  fails there; Python uses `x % d` for an integer divisor). The Rust engine passes an integral quotient.
+- **Which patterns are valid:** ECMA-262 is the stated dialect, but each engine accepts some patterns ECMA-262
+  rejects and rejects some it accepts: Python accepts `\-` and `\A` and rejects `[]` and `[^]`, which TypeScript
+  accepts; Rust accepts `\-`, `\z`, `\A` and `(?i)`. A harness using only plain ECMA-262 patterns is unaffected.
+
 ## 0.6.0 — 2026-11-25
 
 Spec v0.6 (`docs/spec-v0.6.md`; v0.5 moves to `docs/archive/specs/`). Nine changes, the user's decisions of

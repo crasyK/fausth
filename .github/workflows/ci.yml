@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
 
-# Both engines, the browser host, and the conformance set they must reproduce (docs/spec-v0.6.md §14).
+# The three engines, the browser host, and the conformance set they must reproduce (docs/spec-v0.6.md §14).
 
 jobs:
   ts:
@@ -30,6 +30,24 @@ jobs:
           python-version: "3.12"
       - run: pip install -e "engines/py[dev]"
       - run: pytest engines/py/tests -q
+
+  rs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engines/rs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engines/rs
+      - run: cargo fmt --check
+      - run: cargo test --locked
+      - name: Replay every fixture with the command-line tool
+        run: cargo run --locked -- replay ../../conformance/fixtures/*/
 
   web:
     runs-on: ubuntu-latest

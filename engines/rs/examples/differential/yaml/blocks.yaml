@@ -1,0 +1,48 @@
+%YAML 1.2
+---
+spec: harness/0.6
+name: blocks
+prompt: |2
+    indented by two extra
+  normal
+handlers: { h: {} }
+hooks:
+  - id: x
+    on: stop
+    run: h
+    with:
+      keep: |+
+        a
+
+      strip: >-
+        folded
+        lines
+
+        para
+      folded_more: >
+        a
+          more indented
+        b
+      dq: "multi
+        line   folded
+
+        with blank\
+        escaped break \x41\U0001F600\t\"q\""
+      sq: 'it''s
+        two lines'
+      plain: a:b c#d http://x.y/z?q=1 - not a list
+      nested:
+        - - a
+          - b
+        - [c, {d: e}]
+        - ? complex
+          : value
+      anchors: &s scalar
+      again: *s
+      tab_in_quote: "a	b"
+      empty_flow: {}
+      empty_seq: []
+      nulls: { a: , b: ~ }
+      numbers: [0x10, 0o10, 10, 1.5e3, -.5, +3, 1_000, 08, 0.0, -0.0, 1e-7]
+      keys_quoted: { "1": one, '2': two, "true": t }
+...

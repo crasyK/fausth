@@ -1,11 +1,11 @@
 # Faust Harness (`fausth`)
 
 A harness file declares what a model sees: the prompt, the tools, and the hooks that check
-every step. Two small engines (TypeScript and Python) run the same file and must produce
+every step. Three small engines (TypeScript, Python and Rust) run the same file and must produce
 byte-identical logs and model requests.
 
-**Status:** release 0.6.0 implements [`docs/spec-v0.6.md`](docs/spec-v0.6.md), the normative
-spec: both engines reproduce every fixture in [`conformance/`](conformance/) byte for byte.
+**Status:** release 0.6.1 implements [`docs/spec-v0.6.md`](docs/spec-v0.6.md), the normative
+spec: all three engines reproduce every fixture in [`conformance/`](conformance/) byte for byte.
 Built along [`docs/build-plan-v0.4.md`](docs/build-plan-v0.4.md) (0.5.0) and changed per the [CHANGELOG](CHANGELOG.md). Not production-safe.
 
 **Versions.** Until the spec is declared stable, each version may break files of the previous one,
@@ -23,8 +23,9 @@ tag; its documents are in [`docs/archive/`](docs/archive/).
 docs/          spec-v0.6.md (normative), build plan, design notes, archive (spec v0.5 and older)
 engines/ts/    TypeScript engine (+ OpenAI-compatible adapter)
 engines/py/    Python engine (+ adapter, command-line host, python-chess tools)
+engines/rs/    Rust engine (+ Chat Completions mapping, `fausth replay`); see its README
 hosts/web/     the browser host: one HTML page with the TS engine and chess.js tools
-conformance/   shared vectors and recorded fixtures both engines must reproduce
+conformance/   shared vectors and recorded fixtures every engine must reproduce
 examples/      the chess harness (spec §2) with a KIT deployment
 ```
 
@@ -34,6 +35,7 @@ examples/      the chess harness (spec §2) with a KIT deployment
 corepack enable && pnpm install   # Node 22+
 pnpm test                         # TypeScript engine
 pip install -e "engines/py[dev]" && pytest engines/py/tests -q
+cargo test --manifest-path engines/rs/Cargo.toml   # Rust engine (stable Rust 1.85+)
 ```
 
 ## Play the chess harness (Python host)
