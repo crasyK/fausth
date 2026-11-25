@@ -47,7 +47,9 @@ python -m fausth run examples/chess/harness.yaml --deployment examples/chess/dep
 
 `examples/chess/harness.yaml` is the spec's §2 harness. The deployment binds its tools to
 python-chess (`fausth.chess_tools`) and names the model; see `engines/py/fausth/host.py` for the
-binding kinds (`script`, `recorded`, `model`).
+binding kinds (`script`, `recorded`, `model`). A binding that launches another Fausth run, the
+harness it is handed, with its own log (spec §13.1), is a helper in both engines for hosts that
+build their own: `fausth.launch.harness_binding` and `harnessBinding` in `engines/ts/src/launch.ts`.
 
 ## Play it in the browser (TypeScript host)
 

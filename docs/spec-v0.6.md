@@ -8,9 +8,12 @@ declares them (§9), the provider's tool-call ids are kept (§7), a call's argum
 original harness writes them (§9.4), the engine's own texts can be worded in the file (§8.2), and
 `replace_context` can keep the newest messages and leave its text unwrapped, with the last response's usage
 and the logged reasoning in the `pre_request` hook input (§5.3, §5.4). Before 0.6 was tagged the user decided
-two more things for Mouseion's second rebuild, Hermes Agent 0.22.6: the argument text has exactly two
-defined forms, which a harness chooses with `argument_text` (§9.4), and 0.6 drops 0.5's files (Versions,
-below). The decisions behind v0.5 are in [`primitives-inventory.md`](primitives-inventory.md) §6–§8.
+more for Mouseion's second rebuild, Hermes Agent 0.22.6: the argument text has exactly two defined forms,
+which a harness chooses with `argument_text` (§9.4); 0.6 drops 0.5's files (Versions, below); and for the
+requests real harnesses send after the model's last reply, the `stop` hook input carries `context` and
+`usage` too (§5.3), and a tool or handler can be bound to another Fausth run, launched by the environment
+with the harness it is handed (§13.1). The decisions behind v0.5 are in
+[`primitives-inventory.md`](primitives-inventory.md) §6–§8.
 **Versions:** until the user declares the spec stable, each version may break files of the previous one, and
 an engine runs only files of its own version: a 0.6 engine rejects a `harness/0.5` file (§2). Backwards
 compatibility starts once the spec is declared stable. (The user's decision, 2026-11-25.) How to move a file
@@ -999,6 +1002,65 @@ until `max_steps`.
 
 **A.6 Code-only agent (Prime Agent style).** `tools: {python_exec: …}` and nothing else.
 
+**A.7 A title after the turn.** Hermes Agent 0.22.6 names a session once its turn is over, with a request
+of its own: the title prompt as system prompt, the opening user message (wrappers such as
+`<system-reminder>` stripped, cut to 1000 characters) as the only user message, no tools, not streamed,
+`reasoning_effort: "none"`, a JSON `response_format`. The title never enters the conversation. One file per
+agent:
+
+```yaml
+# title.yaml: the title agent
+spec: harness/0.6
+name: session-title
+prompt: |
+  You name chat sessions. Given the user's opening message, write a title of 3 to 7 words.
+
+  Reply with JSON only: {"title": "..."}
+handlers:
+  save_title:
+    description: Reads the title from the reply and stores it for the environment.
+hooks:
+  - id: save
+    on: stop
+    run: save_title
+limits: { max_steps: 1, max_tool_calls: 0, max_continues: 1 }
+```
+
+```yaml
+# main.yaml: the agent (its tools, prompt and other hooks left out)
+handlers:
+  make_title:
+    description: Launches the harness it is handed on the opening user message (§13.1).
+hooks:
+  # stop hooks that may continue come first: a continue ends the chain (§5.2)
+  - id: title
+    on: stop
+    run: make_title
+    on_failure: skip          # a title is advice, not a rule
+    with:
+      harness: <title.yaml>   # the whole file, inlined by the authoring tool (§2)
+      max_chars: 1000
+```
+
+The deployment binds `make_title` to a launched run (§13.1): its task is the first user message in the hook
+input's `context`, wrappers stripped and cut to `with.max_chars`; its answer is `allow`; and once the
+environment has a title it answers `allow` without launching. In the title run, the `stop` hook hands the
+reply (`message`) to `save_title`, which stores the title for the environment and answers `allow`, so the
+title run's request stays tool-free, as Hermes's is; its deployment sends that request not streamed, with
+`reasoning_effort: "none"` and Hermes's `response_format`. The main run's log records only the `allow`; the
+title run's log is its own, and its `run_start` carries the hash of `title.yaml`, which the main file's hash
+covers. Since the answer doesn't depend on the title, a host MAY run it in the background, as Hermes does. A
+turn that has used up `max_continues` skips its `stop` hooks (§8), so it makes no title; the next turn does.
+The fixtures `v06-stop-context` (the main run, with `max_chars: 40`) and `v06-stop-title-run` (the title run)
+are such a pair; both engines' tests run the two together with the binding live (`harness_binding` in
+`fausth.launch`, `harnessBinding` in `launch.ts`).
+
+*Or the main model writes the title.* That works with 0.6 as it is, next to the completion gate (A.4): a
+model-facing tool `write_title {title}`, and a `stop` hook `core_called_since {tool: write_title}`, whose
+failed check becomes `continue` with `write_title not called yet` (a handler that checks the `view` can word
+its own reminder). The title then costs the main conversation a step and the model sees the reminder;
+Hermes's title never enters the conversation.
+
 ---
 
 ## Appendix B: Open points
@@ -1057,17 +1119,44 @@ version (Versions, above). In the user's words: compatibility can still break up
 the spec needs no more changes for now, backwards compatibility starts. So 0.6 has no section for 0.5
 files, and the conformance fixtures written for 0.5 declare `harness/0.6`.
 
+**Resolved 2026-11-25, before 0.6 was tagged (the user, for requests after the model's last reply):** real
+harnesses send requests after the last reply: Hermes Agent 0.22.6 a title request once the turn is over,
+pi 1.5.2 possibly a compaction summary (open point 2), and no `stop` handler could build either.
+- `raw`, the model's own argument text on a response call (§14), is accepted as built.
+- The `stop` hook input carries `context` and `usage`, exactly as `pre_request`'s (§5.3). `stop` keeps its
+  decisions (`continue`, `add_context`); `replace_context` on `stop` is still not adopted (open point 2).
+- Side requests are other Fausth runs, launched by the environment, not by the engine. In the user's words:
+  "we allow a tool call that in the environment can launch another Fausth agent with its own harness". A
+  tool or handler can be bound to another run with its own harness, log and limits (§13.1). The engine gains
+  no `spawn` decision and §8 doesn't change; `core_spawn` stays as it is (§10 contrasts the two). The
+  launched run inherits no hooks: the author wrote it, not the model, so the safety reason for §10's
+  inheritance doesn't apply, and a `stop` hook's title run would otherwise ask for a title of itself.
+- One file per agent, and all of a system's harnesses in one place. In the user's words: "a single file per
+  agent helps us better see and compare agents' behaviours". So the binding runs the harness it is handed by
+  the caller, not one fixed in the deployment: a handler's from its hook's `with`, so the calling file names
+  its sub-agent and includes its file (the resolved harness and its hash hold them all, §2); a tool's from
+  its arguments, so an orchestrator's model can write a sub-agent at runtime (§13.1).
+
 **Still open:**
 1. **Images and other non-text results:** planned for a later version, after more host runs.
    Needs a fixed adapter rule for providers that don't accept images in tool results.
 2. **A check after the last reply.** pi checks the context again after a run's last reply and may
-   compact then. `stop` allows only `continue` and `add_context`, and its input has no `context`. In a
-   one-shot run this changes nothing the model sees (no one reads that summary). In a conversation the
-   next request's `pre_request` hook can compact instead, but by then the context holds the next user
-   message, which pi's summary leaves out, so trigger and cut can differ. Proposal, not adopted: `stop`
-   also allows `replace_context`, with `context` and `usage` in its input as for `pre_request`.
+   compact then. Since 0.6 a `stop` handler gets `context` and `usage` (§5.3), so it can measure as pi does
+   and send pi's summary request through a launched run (§13.1); but `stop` allows only `continue` and
+   `add_context`, so the summary can't replace the context (the user's decision, 2026-11-25). In a one-shot
+   run this changes nothing the model sees (no one reads that summary). In a conversation the next request's
+   `pre_request` hook can compact instead, but by then the context holds the next user message, which pi's
+   summary leaves out, so trigger and cut can differ. Proposal, not adopted: `stop` also allows
+   `replace_context`.
 3. **Asking again after compacting.** pi drops a reply cut off below its token limit, compacts and asks
    again. An engine step can't be asked again, so a rebuild can't do this on the engine's side; it never
    happened in Mouseion's recordings.
 4. **Validators' own messages.** Identical texts for invalid arguments need the original's validator
    messages (pi-schema's); a host supplies them (§8.1). No general rule for them is planned.
+5. **A standard include syntax.** §2 leaves includes to authoring tools, so two tools may resolve the same
+   files differently. With sub-agents included in a hook's `with` (§13.1), whether one include syntax should
+   be standardised, so that every engine resolves a system's files to the same document and hash, is open.
+6. **A launched run from a model-facing tool.** When a tool's binding launches the harness the model wrote
+   (§13.1), no narrowing check and no inherited hook applies: the run reaches what its deployment binds. The
+   reason for not inheriting (the author wrote it, not the model) holds for a handler's sub-agent; whether a
+   tool's should be narrowed like `core_spawn`'s child is open.

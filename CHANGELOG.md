@@ -2,13 +2,16 @@
 
 ## 0.6.0 — 2026-11-25
 
-Spec v0.6 (`docs/spec-v0.6.md`; v0.5 moves to `docs/archive/specs/`). Seven changes, the user's decisions of
+Spec v0.6 (`docs/spec-v0.6.md`; v0.5 moves to `docs/archive/specs/`). Nine changes, the user's decisions of
 2026-11-25. Five came from Mouseion's rebuild of the pi coding agent (pi 1.5.2) as a Fausth harness, replayed
 against recordings of the original; each closes one of the gaps in Mouseion's `harnesses/pi/1.5.2/NOTES.md` that the
 rebuild had to work around on the host's side: tool order (gap 1), call ids (gap 2), argument text (gap 3), the
 engine's texts (gap 5) and compaction (gap 7). Gaps 4 (pi repairs arguments before checking them) and 6 (host values
-in the prompt) get no spec change. Two came before the tag, for Mouseion's second rebuild, Hermes Agent 0.22.6: the
-argument text has exactly two defined forms, chosen per harness, and 0.6 drops 0.5's files.
+in the prompt) get no spec change. Four came before the tag, for Mouseion's second rebuild, Hermes Agent 0.22.6: the
+argument text has exactly two defined forms, chosen per harness; 0.6 drops 0.5's files; and for the requests real
+harnesses send after the model's last reply (Hermes's session title, pi's check after the last reply), the `stop` hook
+input carries `context` and `usage`, and a tool or handler can be bound to another Fausth run that the environment
+launches with the harness it is handed.
 
 **Versions.** Until the user declares the spec stable, each version may break files of the previous one, and an
 engine runs only files of its own version: a 0.6 engine runs `spec: harness/0.6` and rejects `harness/0.5`.
@@ -63,17 +66,38 @@ harness-lab pins `v0.5.6`, so it is unaffected until it moves its pin; Mouseion'
   reported token usage (the model response and the `assistant` entry gain `usage`).
 - **No 0.5 files** (Status, "Versions"): 0.6 has no section for them; `schema/harness.v0.5.json` moves to
   `docs/archive/specs/`.
+- **The `stop` hook input carries `context` and `usage`** (§5.3), exactly as `pre_request`'s: the conversation as it
+  would be rendered after the reply without tool calls (logged reasoning and the chain's earlier `add_context`
+  included) and that reply's usage. `stop` keeps its decisions; `replace_context` on `stop` is not adopted.
+- **A binding that launches another Fausth run** (binding kind `harness`, §13.1). Requests after the model's last
+  reply are other Fausth runs, launched by the environment, not by the engine: a tool or handler bound this way runs
+  the harness it is handed (a handler's from its hook's `with`, by convention `with.harness`; a tool's from its
+  arguments, by convention `harness`) as a separate top-level run, its only user message a task the binding makes
+  from its input, with its own log and limits and none of the caller's hooks. A handed harness that isn't valid or
+  declares an id its deployment doesn't bind gets `ok: false`, `child harness is not valid` (`core_spawn`'s words); a
+  launched run that ends with `infra_failure` or `host_end` is the binding's infrastructure failure. The caller's log
+  records only the binding's answer; replay records it in `tools.jsonl`. One file per agent: the calling file
+  includes its sub-agents' files in a hook's `with`, so the resolved harness and its `harness_hash` hold a whole
+  system (§2). The engine gains no `spawn` decision and §8 is unchanged; §10 contrasts the binding with `core_spawn`.
+  Appendix A.7: a session title after the turn, as Hermes makes it, and the alternative with a model-facing
+  `write_title` tool and a `stop` gate.
 - Appendix B: pi's check after the last reply (`stop` can't replace the context), asking again after compacting,
-  and validators' own messages are open points; a proposal for the first is noted, not adopted. The user's
-  decisions of 2026-11-25 are logged there.
+  validators' own messages, a standard include syntax, and whether a tool's launched run should be narrowed like
+  `core_spawn`'s child are open points; a proposal for the first is noted, not adopted. The user's decisions of
+  2026-11-25 are logged there, including `raw` accepted as built.
 
 ### Engines
 - TypeScript and Python: `toolIds`/`tool_ids`, `harnessHash`/`harness_hash`, `argumentText`/`argument_text` (the
   Python one writes ECMAScript's key order and number format), `sortedAsciiText`/`sorted_ascii_text` (TypeScript: a
   reader that keeps number tokens and Python's writer; Python: `json.loads`/`json.dumps`), `fill`, `TEXTS`; the run
   loop keeps provider ids, logs `args_text` in the harness's form, `malformed` and `usage`, checks a call's `raw`,
-  words its texts, asks an optional host `reasons(tool, args)`, renders `keep` and `wrap`. Only `harness/0.6` files
-  are valid; the 0.5 code paths are gone. Schema `schema/harness.v0.6.json` (with `argument_text`).
+  words its texts, asks an optional host `reasons(tool, args)`, renders `keep` and `wrap`, and gives `stop` hooks
+  `context` and `usage`. Only `harness/0.6` files are valid; the 0.5 code paths are gone. Schema
+  `schema/harness.v0.6.json` (with `argument_text`).
+- Launched runs (§13.1): Python `fausth.launch` (`harness_binding`, `handed_harness`, `final_text`) and TypeScript
+  `launch.ts` (`harnessBinding`, `handedHarness`, `finalText`). `harness_binding(host, task, *, harness, answer,
+  binds, on_log)` returns a binding that runs the handed harness on `host` with `task(input)` as its only user
+  message and hands the host every launched run's log.
 
 ### Adapters
 - Chat Completions (`toChat`/`to_chat`, `fromChat`/`from_chat`): calls go back with their argument text; an answer's
@@ -87,7 +111,9 @@ harness-lab pins `v0.5.6`, so it is unaffected until it moves its pin; Mouseion'
   reasoning). `v05-on-0.6`, which tested only the dropped compatibility, is gone; `invalid/spec-0.5` is new.
 - New fixtures `v06-tool-order`, `v06-call-ids`, `v06-argument-text`, `v06-argument-text-sorted-ascii`,
   `v06-argument-text-reload`, `v06-texts`, `v06-replace-context-keep`, `v06-hook-context-usage`,
-  `infra-model-raw-mismatch`.
+  `infra-model-raw-mismatch`, `v06-stop-context` (a `stop` hook's `context` and `usage`; its title hook hands a
+  harness over in `with`) and `v06-stop-title-run` (that harness's launched run, a tool-free request). Both engines'
+  launch tests run the last two together with the binding live and get both fixtures' expected files.
 - `values.json`: `argument_text` vectors (member order, repeated names, numbers, escapes, indentation) and
   `sorted_ascii` vectors (code-point member order, non-ASCII including astral and DEL, control characters, exact
   integers, floats in Python's edge forms, repeated names). `openai.json`: provider ids, the argument text, `raw`,
