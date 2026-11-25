@@ -1,6 +1,6 @@
 // The run loop (spec §8), hooks (§5, §6) and child runs (§10).
 import {
-  SPAWN_INPUT, TEXTS, TURN, fill, harnessErrors, harnessHash, isV05, type Event, type Harness, type Hook, type TextName,
+  SPAWN_INPUT, TEXTS, TURN, fill, harnessErrors, harnessHash, type Event, type Harness, type Hook, type TextName,
 } from "./harness.js";
 import { Log, TOP, callId, inScope, view, type Scope, type ViewEntry } from "./log.js";
 import { hookWrapper, render, type LoggedCall, type Request } from "./render.js";
@@ -128,11 +128,6 @@ class Run {
     return this.counter.step;
   }
 
-  /** This run's harness is a `harness/0.5` file, run as 0.5.6 ran it (§15). */
-  get v05(): boolean {
-    return isV05(this.harness);
-  }
-
   /** One of the engine's texts (§8.2): the harness's wording, else the default. */
   text(name: TextName, values: Record<string, string>): string {
     return fill(this.harness.texts?.[name] ?? TEXTS[name].default!, values);
@@ -223,7 +218,7 @@ class Run {
         tool_calls: calls as Json,
         ...(response.reasoning !== undefined && { reasoning: response.reasoning }),
         ...(response.reasoning_opaque !== undefined && { reasoning_opaque: response.reasoning_opaque }),
-        ...(response.usage !== undefined && !this.v05 && { usage: response.usage }),
+        ...(response.usage !== undefined && { usage: response.usage }),
       });
       for (const [i, call] of calls.entries()) await this.toolCall(call, response.tool_calls![i]!);
       if (calls.length > 0) continue;
@@ -246,16 +241,16 @@ class Run {
       if (e.type === "assistant") for (const c of e.tool_calls as LoggedCall[]) used.add(c.call_id);
     }
     return calls.map((c, i) => {
-      // The provider's id, unless it is empty, taken, or of the engine's form; a 0.5 file never keeps it (§7, §15).
-      const given = this.v05 ? undefined : c.call_id;
+      // The provider's id, unless it is empty, taken, or of the engine's form (§7).
+      const given = c.call_id;
       const id = given && !used.has(given) && !ENGINE_ID.test(given) ? given : callId(seq, i);
       used.add(id);
       if ("malformed" in c) {
-        // Its arguments go back as {} (§9.4); a 0.5 file takes the text as the arguments, as 0.5.6 did.
-        return this.v05 ? { call_id: id, tool: c.tool, args: c.malformed } : { call_id: id, tool: c.tool, args: {}, malformed: c.malformed };
+        // Its arguments go back as {} (§9.4).
+        return { call_id: id, tool: c.tool, args: {}, malformed: c.malformed };
       }
-      const text = this.v05 ? undefined : argumentText(c.args);
-      return { call_id: id, tool: c.tool, args: c.args, ...(text !== undefined && text !== canonical(c.args) && { args_text: text }) };
+      const text = argumentText(c.args);
+      return { call_id: id, tool: c.tool, args: c.args, ...(text !== canonical(c.args) && { args_text: text }) };
     });
   }
 
@@ -274,7 +269,7 @@ class Run {
     }
     if (!this.schemas.get(`tools.${call.tool}.input`)!(call.args)) {
       const schema = call.tool === "core_spawn" ? SPAWN_INPUT : this.harness.tools![call.tool]!.input;
-      const own = this.v05 ? undefined : this.host.reasons?.(call.tool, call.args); // §15: the engine's for 0.5
+      const own = this.host.reasons?.(call.tool, call.args);
       if (own !== undefined && own !== null && (typeof own !== "string" || !isJson(own))) throw new InfraFailure("malformed reasons from the host");
       const reasons = own ?? argumentReasons(schema, call.args);
       this.result(call, { ok: false, error: this.text("invalid_arguments", { ...shown(), reasons }) });
@@ -363,17 +358,10 @@ class Run {
       if (members.message !== undefined) input.message = members.message;
       if (members.interrupt) input.interrupt = { ...members.interrupt };
       if (members.continued !== undefined) input.continued = members.continued;
-      // The request's messages, and the usage the run's last response reported (§5.3). A 0.5 file gets them
-      // without the logged reasoning and without usage, as from 0.5.6 (§15).
+      // The request's messages, and the usage the run's last response reported (§5.3).
       if (event === "pre_request") {
-        const messages = render(this.harness, this.log.entries, this.scope).messages;
-        input.context = (this.v05 ? messages.map((m) => {
-          const copy: { [k: string]: unknown } = { ...m };
-          delete copy.reasoning;
-          delete copy.reasoning_opaque;
-          return copy;
-        }) : messages) as Json;
-        const usage = this.v05 ? undefined : this.log.entries.findLast((e) => e.type === "assistant" && inScope(e, this.scope))?.usage;
+        input.context = render(this.harness, this.log.entries, this.scope).messages as Json;
+        const usage = this.log.entries.findLast((e) => e.type === "assistant" && inScope(e, this.scope))?.usage;
         if (usage !== undefined) input.usage = usage;
       }
 
@@ -428,7 +416,7 @@ class Run {
       if (!isJson(out.args) || !this.schemas.get(`tools.${tool}.input`)!(out.args)) return null;
       return { hook, decision, args: out.args as Json, ...(out.text !== undefined && { text: cap(out.text as string) }) };
     }
-    if (decision === "replace_context" && !this.v05 && members !== "text") {
+    if (decision === "replace_context" && members !== "text") {
       // Optional `keep` (at most the context's messages) and `wrap` (§5.4); unwrapped text is not excerpted.
       const names = members.split(",");
       if (!names.includes("text") || names.some((m) => m !== "text" && m !== "keep" && m !== "wrap")) return null;

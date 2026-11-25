@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.5",
+  "spec": "harness/0.6",
   "name": "infra-tool-malformed",
   "prompt": "Use echo.",
   "tools": {

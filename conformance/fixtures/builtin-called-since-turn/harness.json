@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.5",
+  "spec": "harness/0.6",
   "name": "builtin-called-since-turn",
   "prompt": "Play chess. Each user message is a new turn.",
   "tools": {

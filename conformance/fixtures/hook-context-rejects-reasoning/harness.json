@@ -1,10 +1,10 @@
 {
-  "spec": "harness/0.5",
-  "name": "hook-context-without-reasoning",
+  "spec": "harness/0.6",
+  "name": "hook-context-rejects-reasoning",
   "prompt": "Answer briefly.",
   "handlers": {
     "sizer": {
-      "description": "Reads the conversation before each request.",
+      "description": "Reads the conversation before each request; its input schema rejects messages with reasoning, which 0.6 sends (§5.3).",
       "input": {
         "required": [
           "context"

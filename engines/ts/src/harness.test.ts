@@ -30,8 +30,8 @@ for (const f of files("invalid")) {
   });
 }
 
-// 0.6 (§2, §8.2, §9, §15): the tool order, the hash that sees it, and the texts' placeholders.
-const ordered = (spec: string) => readHarness(`spec: ${spec}
+// 0.6 (§2, §8.2, §9): the tool order, the hash that sees it, and the texts' placeholders.
+const ordered = (spec = "harness/0.6") => readHarness(`spec: ${spec}
 name: n
 prompt: p
 tools:
@@ -43,17 +43,16 @@ tools:
 `) as unknown as Harness;
 
 test("tools come in member order: array-index ids first, the rest as declared", () => {
-  assert.deepEqual(toolIds(ordered("harness/0.6")), ["2", "10", "zeta", "Alpha", "007"]);
+  assert.deepEqual(toolIds(ordered()), ["2", "10", "zeta", "Alpha", "007"]);
 });
 
-test("a harness/0.5 file keeps 0.5's sorted order and hash", async () => {
-  const h = ordered("harness/0.5");
-  assert.deepEqual(toolIds(h), ["007", "10", "2", "Alpha", "zeta"]);
-  assert.equal(await harnessHash(h), await hash(h));
+test("a 0.6 engine runs only harness/0.6 files", () => {
+  assert.deepEqual(harnessErrors(ordered()), []);
+  assert.notDeepEqual(harnessErrors(ordered("harness/0.5")), []);
 });
 
 test("harness_hash sees the tool order", async () => {
-  const h = ordered("harness/0.6");
+  const h = ordered();
   assert.equal(await harnessHash(h), await hash([h as never, ["2", "10", "zeta", "Alpha", "007"]]));
   const swapped = { ...h, tools: { Alpha: h.tools!.Alpha!, zeta: h.tools!.zeta! } };
   const same = { ...h, tools: { zeta: h.tools!.zeta!, Alpha: h.tools!.Alpha! } };

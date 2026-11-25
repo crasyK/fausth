@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"6994ebcc61f7e20ffaea9f7d9d5452213125e1408285ade43e9eb732873e6ff1","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"a8253a2ef3b7b8a2635ef18566a803ce09850e2e7bcd6ecc16c7f4a9cbadf23e","seq":1,"type":"run_start"}
 {"seq":2,"text":"Use echo.","type":"system"}
 {"seq":3,"text":"Clean up.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{"path":"/tmp/x"},"call_id":"c4-0","tool":"rm"},{"args":{"n":1},"call_id":"c4-1","tool":"echo"}],"type":"assistant"}

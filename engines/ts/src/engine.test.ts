@@ -44,8 +44,3 @@ test("null from the host means the engine's reasons; anything else not a string 
   const log = await run(harness, host(() => 3 as unknown as string));
   assert.equal(log.entries.at(-1)?.reason, "infra_failure");
 });
-
-test("a harness/0.5 file always gets the engine's reasons (§15)", async () => {
-  const v05: Harness = { spec: "harness/0.5", name: "n", prompt: "p", tools: harness.tools };
-  assert.equal(errorOf(await run(v05, host(() => "  - path: expected string"))), "invalid arguments: path: must be a string");
-});

@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Protocol
 
-from .harness import SPAWN_INPUT, TEXTS, TURN, fill, harness_errors, harness_hash, is_v05
+from .harness import SPAWN_INPUT, TEXTS, TURN, fill, harness_errors, harness_hash
 from .log import TOP, Log, Scope, call_id, in_scope, view
 from .render import hook_wrapper, render
 from .schema import argument_reasons, compile_schema
@@ -105,11 +105,6 @@ class _Run:
     def step(self) -> int:
         return self.counter["step"]
 
-    @property
-    def v05(self) -> bool:
-        """This run's harness is a `harness/0.5` file, run as 0.5.6 ran it (§15)."""
-        return is_v05(self.harness)
-
     def text(self, name: str, values: dict[str, str]) -> str:
         """One of the engine's texts (§8.2): the harness's wording, else the default."""
         return fill(self.harness.get("texts", {}).get(name, TEXTS[name][1]), values)
@@ -204,7 +199,7 @@ class _Run:
             self.last_text = response.get("text", "")
             members = {"step": self.step, "text": self.last_text, "tool_calls": calls}
             members.update((k, response[k]) for k in ("reasoning", "reasoning_opaque") if k in response)
-            if "usage" in response and not self.v05:
+            if "usage" in response:
                 members["usage"] = response["usage"]
             self.append("assistant", members)
             for call, c in zip(calls, given):
@@ -224,20 +219,18 @@ class _Run:
         used = {c["call_id"] for e in self.log.entries if e["type"] == "assistant" for c in e["tool_calls"]}
         out = []
         for i, c in enumerate(calls):
-            # The provider's id, unless it is empty, taken, or of the engine's form; a 0.5 file never keeps it (§7, §15).
-            given = None if self.v05 else c.get("call_id")
+            # The provider's id, unless it is empty, taken, or of the engine's form (§7).
+            given = c.get("call_id")
             cid = given if given and given not in used and not _ENGINE_ID.match(given) else call_id(seq, i)
             used.add(cid)
             if "malformed" in c:
-                # Its arguments go back as {} (§9.4); a 0.5 file takes the text as the arguments, as 0.5.6 did.
-                out.append({"call_id": cid, "tool": c["tool"], "args": c["malformed"]} if self.v05
-                           else {"call_id": cid, "tool": c["tool"], "args": {}, "malformed": c["malformed"]})
+                # Its arguments go back as {} (§9.4).
+                out.append({"call_id": cid, "tool": c["tool"], "args": {}, "malformed": c["malformed"]})
                 continue
             call = {"call_id": cid, "tool": c["tool"], "args": c["args"]}
-            if not self.v05:
-                text = argument_text(c["args"])
-                if text != canonical(c["args"]):
-                    call["args_text"] = text
+            text = argument_text(c["args"])
+            if text != canonical(c["args"]):
+                call["args_text"] = text
             out.append(call)
         return out
 
@@ -260,7 +253,7 @@ class _Run:
             return
         if not self.schemas[f"tools.{tool}.input"](call["args"]):
             schema = SPAWN_INPUT if tool == "core_spawn" else self.harness["tools"][tool].get("input")
-            own_reasons = None if self.v05 else getattr(self.host, "reasons", None)  # §15: the engine's for 0.5
+            own_reasons = getattr(self.host, "reasons", None)
             own = own_reasons(tool, call["args"]) if own_reasons is not None else None
             if own is not None and (not isinstance(own, str) or not _is_json(own)):
                 raise InfraFailure("malformed reasons from the host")
@@ -356,16 +349,12 @@ class _Run:
             if "interrupt" in members:
                 inp["interrupt"] = dict(members["interrupt"])
             if event == "pre_request":
-                # The request's messages, and the usage the run's last response reported (§5.3). A 0.5 file gets
-                # them without the logged reasoning and without usage, as from 0.5.6 (§15).
-                messages = render(self.harness, self.log.entries, self.scope)["messages"]
-                inp["context"] = [{k: v for k, v in m.items() if k not in ("reasoning", "reasoning_opaque")}
-                                  for m in messages] if self.v05 else messages
-                if not self.v05:
-                    last = next((e for e in reversed(self.log.entries)
-                                 if e["type"] == "assistant" and in_scope(e, self.scope)), None)
-                    if last is not None and "usage" in last:
-                        inp["usage"] = last["usage"]
+                # The request's messages, and the usage the run's last response reported (§5.3).
+                inp["context"] = render(self.harness, self.log.entries, self.scope)["messages"]
+                last = next((e for e in reversed(self.log.entries)
+                             if e["type"] == "assistant" and in_scope(e, self.scope)), None)
+                if last is not None and "usage" in last:
+                    inp["usage"] = last["usage"]
 
             d = self._decide(hook, owner, event, inp, current["tool"] if current else None)
             where = {"call_id": call["call_id"]} if call else {}
@@ -430,7 +419,7 @@ class _Run:
             if "text" in out:
                 d["text"] = cap(out["text"])
             return d
-        if decision == "replace_context" and not self.v05 and members != ["text"]:
+        if decision == "replace_context" and members != ["text"]:
             # Optional `keep` (at most the context's messages) and `wrap` (§5.4); unwrapped text is not excerpted.
             if "text" not in members or not set(members) <= {"text", "keep", "wrap"}:
                 return None

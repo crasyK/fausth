@@ -4,11 +4,15 @@
 repository produce byte-identical logs and requests for every fixture in `conformance/`. It is spec v0.5
 ([archived](archive/specs/spec-v0.5.md)) with five changes, the user's decision of 2026-11-25 after Mouseion
 rebuilt the pi coding agent (pi 1.5.2) token for token on Fausth: tools are offered in the order the file
-declares them (§9), the provider's tool-call ids are kept (§7), arguments go back as the model sent them
+declares them (§9), the provider's tool-call ids are kept (§7), arguments go back as the model wrote them
 (§9.4), the engine's own texts can be worded in the file (§8.2), and `replace_context` can keep the newest
 messages and leave its text unwrapped, with the last response's usage and the logged reasoning in the
-`pre_request` hook input (§5.3, §5.4). A 0.6 engine still runs `harness/0.5` files, exactly as release 0.5.6
-did (§15). The decisions behind v0.5 are in [`primitives-inventory.md`](primitives-inventory.md) §6–§8.
+`pre_request` hook input (§5.3, §5.4). The decisions behind v0.5 are in
+[`primitives-inventory.md`](primitives-inventory.md) §6–§8.
+**Versions:** until the user declares the spec stable, each version may break files of the previous one, and
+an engine runs only files of its own version: a 0.6 engine rejects a `harness/0.5` file (§2). Backwards
+compatibility starts once the spec is declared stable. (The user's decision, 2026-11-25.) How to move a file
+from 0.5 to 0.6, and what then changes in the model's tokens, is in the CHANGELOG (0.6.0).
 **Project name:** undecided. Built-ins use the neutral `core_` prefix; harness files declare
 `spec: harness/0.6`.
 **Design target:** someone can write a conforming engine in a weekend. If a section makes that
@@ -80,7 +84,7 @@ Top-level fields (closed set; anything else is a validation error):
 
 | Field | Required | Meaning |
 |---|---|---|
-| `spec` | yes | `harness/0.6` (a 0.6 engine also runs `harness/0.5`, §15) |
+| `spec` | yes | `harness/0.6`. A 0.6 engine runs no other value (see Versions, above). |
 | `name` | yes | Non-empty string. Not shown to the model. |
 | `prompt` | yes | The system prompt text (§9.1). |
 | `tools` | no | Model-facing tools (§3). The model is offered exactly these, in this order (§9). |
@@ -690,8 +694,7 @@ value; `timeout_ms` is the host's. A limit the child leaves out is the parent's 
 the parent has left. `{value}` renders as canonical JSON.
 
 **The child run** is a run (§8) whose only user message is `task`, at `depth` = parent depth + 1,
-logged inline (§7), with its own harness's tools, order and texts; it may declare `harness/0.5`
-(§15). Its view holds only its own calls (§5.3); the current step counts every request in the log,
+logged inline (§7), with its own harness's tools, order and texts. Its view holds only its own calls (§5.3); the current step counts every request in the log,
 the child's included (§8).
 
 **Inherited hooks.** The parent's hooks, including those it inherited itself, run **before** the
@@ -813,26 +816,6 @@ order, child runs included.
 
 ---
 
-## 15. Files of spec 0.5
-
-A 0.6 engine also runs a harness that declares `spec: harness/0.5`, exactly as release 0.5.6 did: the
-same log and the same requests, for the same model responses. For such a harness (also a child or a
-replacement that declares it, each run following its own):
-- the schema is [`schema/harness.v0.5.json`](../schema/harness.v0.5.json): there is no `texts`;
-- `harness_hash` is `hash(resolved harness)`, and the tools are offered in sorted id order (the order
-  of canonical JSON, §1);
-- every call id is the engine's (`c<seq>-<index>`), and there is no `args_text`: arguments go back in
-  canonical form;
-- a `malformed` call is logged with its text as `args` (which then fail their schema, §8.1), the reasons
-  are always the engine's (§8.1), and `usage` isn't logged;
-- the `pre_request` hook input's `context` leaves out the logged reasoning (`reasoning`,
-  `reasoning_opaque`), and there is no `usage`;
-- `replace_context` takes only `text`.
-
-The conformance fixtures written before 0.6 are such files; their expected files didn't change.
-
----
-
 ## Appendix A: Recipes (non-normative)
 
 **A.1 Skills.** A tool `skill_read {name}` returns a `SKILL.md`. A `session_start` hook runs a
@@ -897,8 +880,14 @@ in one long conversation, but it doubled the tokens, so `all` stays a host's exp
 tools in the order the file declares them (§9); the provider's call ids kept (§7); arguments sent back
 as the model sent them (§9.4); the engine's texts worded in the file (§8.2); `replace_context` with
 `keep` and `wrap: false`, and `usage` and the logged reasoning in the `pre_request` hook input (§5.3,
-§5.4). A 0.6 engine runs `harness/0.5` files as 0.5.6 did (§15). Gaps 4 (pi repairs arguments before
-checking them) and 6 (host values in the prompt) get no spec change.
+§5.4). Gaps 4 (pi repairs arguments before checking them) and 6 (host values in the prompt) get no spec
+change.
+
+**Resolved 2026-11-25, before 0.6 was tagged (the user):** no compatibility with 0.5. Each version may
+break files of the previous one until the user declares the spec stable, and an engine runs only its own
+version (Versions, above). In the user's words: compatibility can still break upwards each version; when
+the spec needs no more changes for now, backwards compatibility starts. So 0.6 has no section for 0.5
+files, and the conformance fixtures written for 0.5 declare `harness/0.6`.
 
 **Still open:**
 1. **Images and other non-text results:** planned for a later version, after more host runs.

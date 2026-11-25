@@ -1,4 +1,4 @@
-"""The harness file (spec §2, §3, §5.1, §6, §8.2, §15): reading it and checking it."""
+"""The harness file (spec §2, §3, §5.1, §6, §8.2): reading it and checking it."""
 from __future__ import annotations
 
 import json
@@ -19,8 +19,7 @@ from yaml.scanner import Scanner
 from .schema import compile_schema, structure_validator
 from .values import canonical, hash, member_names, number
 
-SPEC = "harness/0.6"
-SPEC_05 = "harness/0.5"  # the previous spec value, which a 0.6 engine runs as release 0.5.6 did (§15)
+SPEC = "harness/0.6"  # the only spec value this engine runs (spec, Versions)
 
 # The engine's texts (§8.2): each one's placeholders and its default (`tool_error` has none: §9.3).
 TEXTS = {
@@ -32,29 +31,19 @@ TEXTS = {
 _PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 
 
-def is_v05(harness: dict[str, Any]) -> bool:
-    """A `harness/0.5` file: run as 0.5.6 ran it (§15)."""
-    return harness.get("spec") == SPEC_05
-
-
 def fill(template: str, values: dict[str, str]) -> str:
     """A text of `texts` (or its default) with its placeholders filled in (§8.2); values are not escaped."""
     return _PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), template)
 
 
 def tool_ids(harness: dict[str, Any]) -> list[str]:
-    """The ids of `tools` in the order the model is offered them (§9): member order (§1); sorted for a 0.5 file."""
-    tools = harness.get("tools", {})
-    return sorted(tools, key=_utf16_key) if is_v05(harness) else member_names(tools)
+    """The ids of `tools` in the order the model is offered them (§9): member order (§1)."""
+    return member_names(harness.get("tools", {}))
 
 
 def harness_hash(harness: dict[str, Any]) -> str:
-    """`harness_hash` (§2): the hash of the resolved harness with its tool order; of the harness alone for a 0.5 file."""
-    return hash(harness) if is_v05(harness) else hash([harness, tool_ids(harness)])
-
-
-def _utf16_key(k: str) -> bytes:
-    return k.encode("utf-16-be", "surrogatepass")
+    """`harness_hash` (§2): the hash of the resolved harness with its tool order."""
+    return hash([harness, tool_ids(harness)])
 
 
 BUILT_INS = frozenset({"core_called_since", "core_last_result", "core_count", "core_deny", "core_context"})
@@ -218,8 +207,7 @@ def read_harness(text: str) -> Any:
         loader.dispose()
 
 
-_STRUCTURE = {spec: structure_validator(json.loads((files("fausth") / f"harness.v{spec[-3:]}.json").read_text("utf-8")))
-              for spec in (SPEC, SPEC_05)}
+_STRUCTURE = structure_validator(json.loads((files("fausth") / "harness.v0.6.json").read_text("utf-8")))
 
 
 def harness_errors(value: Any) -> list[str]:
@@ -228,8 +216,7 @@ def harness_errors(value: Any) -> list[str]:
         canonical(value)
     except ValueError as e:
         return [f"no canonical form (§1): {e}"]
-    structure = _STRUCTURE[SPEC_05 if isinstance(value, dict) and value.get("spec") == SPEC_05 else SPEC]
-    problems = [f"{e.json_path}: {e.message}" for e in structure.iter_errors(value)]
+    problems = [f"{e.json_path}: {e.message}" for e in _STRUCTURE.iter_errors(value)]
     if problems:
         return problems
     tools = value.get("tools", {})

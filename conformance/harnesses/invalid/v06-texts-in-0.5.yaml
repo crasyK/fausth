@@ -1,5 +1,0 @@
-spec: harness/0.5
-name: m
-prompt: hi
-texts:
-  unknown_tool: "Tool {tool} not found"

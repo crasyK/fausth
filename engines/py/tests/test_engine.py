@@ -49,8 +49,3 @@ def test_a_host_may_give_its_own_validators_reasons():
 def test_none_means_the_engines_reasons_and_a_non_string_is_an_infrastructure_failure():
     assert error_of(run(HARNESS, _Host(lambda tool, args: None))) == 'Validation failed for tool "edit":\npath: must be a string'
     assert run(HARNESS, _Host(lambda tool, args: 3)).entries[-1]["reason"] == "infra_failure"
-
-
-def test_a_0_5_file_always_gets_the_engines_reasons():
-    v05 = {"spec": "harness/0.5", "name": "n", "prompt": "p", "tools": HARNESS["tools"]}
-    assert error_of(run(v05, _Host(lambda tool, args: "  - path: expected string"))) == "invalid arguments: path: must be a string"

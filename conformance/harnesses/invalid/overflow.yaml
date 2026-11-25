@@ -1,5 +1,5 @@
 # 1e400 overflows to infinity
-spec: harness/0.5
+spec: harness/0.6
 name: base
 prompt: p
 handlers: { h: {} }

@@ -1,4 +1,4 @@
-spec: harness/0.5
+spec: harness/0.6
 name: d
 prompt: p
 tools:

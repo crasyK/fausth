@@ -1,7 +1,6 @@
-// The harness file (spec §2, §3, §5.1, §6, §8.2, §15): reading it and checking it.
+// The harness file (spec §2, §3, §5.1, §6, §8.2): reading it and checking it.
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parseDocument } from "yaml";
-import schema05 from "../../../schema/harness.v0.5.json" with { type: "json" };
 import schema06 from "../../../schema/harness.v0.6.json" with { type: "json" };
 import { compileSchema } from "./schema.js";
 import { canonical, hash, type Json } from "./values.js";
@@ -40,12 +39,8 @@ export interface Harness {
   texts?: { [name in TextName]?: string };
 }
 
+/** The only spec value this engine runs: a 0.6 engine runs only `harness/0.6` files (spec, Versions). */
 export const SPEC = "harness/0.6";
-/** The previous spec value, which a 0.6 engine runs as release 0.5.6 did (§15). */
-export const SPEC_05 = "harness/0.5";
-
-/** A `harness/0.5` file: run as 0.5.6 ran it (§15). */
-export const isV05 = (h: Harness): boolean => h.spec === SPEC_05;
 
 /** The engine's texts (§8.2): each one's placeholders and its default (`tool_error` has none: §9.3). */
 export const TEXTS: Record<TextName, { placeholders: string[]; default?: string }> = {
@@ -63,15 +58,14 @@ export function fill(template: string, values: Record<string, string>): string {
   return template.replace(PLACEHOLDER, (whole, name: string) => (Object.hasOwn(values, name) ? values[name]! : whole));
 }
 
-/** The ids of `tools` in the order the model is offered them (§9): member order (§1); sorted for a 0.5 file. */
+/** The ids of `tools` in the order the model is offered them (§9): member order (§1), which `Object.keys` gives. */
 export function toolIds(h: Harness): string[] {
-  const ids = Object.keys(h.tools ?? {});
-  return isV05(h) ? ids.sort() : ids;
+  return Object.keys(h.tools ?? {});
 }
 
-/** `harness_hash` (§2): the hash of the resolved harness with its tool order; of the harness alone for a 0.5 file. */
+/** `harness_hash` (§2): the hash of the resolved harness with its tool order. */
 export function harnessHash(h: Harness): Promise<string> {
-  return isV05(h) ? hash(h) : hash([h as unknown as Json, toolIds(h)]);
+  return hash([h as unknown as Json, toolIds(h)]);
 }
 
 export const BUILT_INS = new Set(["core_called_since", "core_last_result", "core_count", "core_deny", "core_context"]);
@@ -119,8 +113,7 @@ function toJson(v: unknown): Json {
 }
 
 const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
-const checkV06 = ajv.compile(schema06);
-const checkV05 = ajv.compile(schema05);
+const checkStructure = ajv.compile(schema06);
 
 /** What is wrong with a harness; empty if it is valid. */
 export function harnessErrors(value: unknown): string[] {
@@ -129,7 +122,6 @@ export function harnessErrors(value: unknown): string[] {
   } catch (e) {
     return [`no canonical form (§1): ${e instanceof Error ? e.message : String(e)}`];
   }
-  const checkStructure = (value as { spec?: unknown } | null)?.spec === SPEC_05 ? checkV05 : checkV06;
   if (!checkStructure(value)) {
     return (checkStructure.errors ?? []).map((e) => `${e.instancePath || "/"}: ${e.message ?? "invalid"}`);
   }

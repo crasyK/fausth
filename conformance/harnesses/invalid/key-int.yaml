@@ -1,5 +1,5 @@
 # a mapping key that is not a string
-spec: harness/0.5
+spec: harness/0.6
 name: base
 prompt: p
 handlers: { h: {} }

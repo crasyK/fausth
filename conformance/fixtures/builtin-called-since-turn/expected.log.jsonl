@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"5ae1910b2f37881330df393dfefc12c1a022152c9fd9472269aba307ef431b48","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"c0742e59f66952b200ea5c11d9090817009a8366b48a404042668775a2d7c69b","seq":1,"type":"run_start"}
 {"seq":2,"text":"Play chess. Each user message is a new turn.","type":"system"}
 {"seq":3,"text":"Your move.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{"square":"e2"},"call_id":"c4-0","tool":"board_piece"}],"type":"assistant"}

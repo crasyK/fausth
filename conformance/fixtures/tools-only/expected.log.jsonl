@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"f331690c99e1fdf382e94a2520e368deb2057c74361251cb637ec96678f444f2","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"25fc44a191cdd38dad7dc8b51fbb9468b64b4967466c89ef023db2ffe35330e0","seq":1,"type":"run_start"}
 {"seq":2,"text":"You are playing chess. Find the best move for the side to move and play it.\n","type":"system"}
 {"seq":3,"text":"Play one move for White.","type":"user"}
 {"reasoning":"Look at the board first.","seq":4,"step":1,"text":"","tool_calls":[{"args":{},"call_id":"c4-0","tool":"board_observe"}],"type":"assistant"}

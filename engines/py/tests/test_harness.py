@@ -35,14 +35,13 @@ def test_invalid(name):
         load((DIR / "invalid" / name).read_text("utf-8"))
 
 
-@pytest.mark.parametrize("version", ["0.5", "0.6"])
-def test_packaged_schema_is_the_repo_schema(version):
-    packaged = Path(__file__).resolve().parents[1] / "fausth" / f"harness.v{version}.json"
-    assert packaged.read_bytes() == (ROOT / "schema" / f"harness.v{version}.json").read_bytes()
+def test_packaged_schema_is_the_repo_schema():
+    packaged = Path(__file__).resolve().parents[1] / "fausth" / "harness.v0.6.json"
+    assert packaged.read_bytes() == (ROOT / "schema" / "harness.v0.6.json").read_bytes()
 
 
-# 0.6 (§2, §8.2, §9, §15): the tool order, the hash that sees it, and the texts' placeholders.
-def ordered(spec):
+# 0.6 (§2, §8.2, §9): the tool order, the hash that sees it, and the texts' placeholders.
+def ordered(spec="harness/0.6"):
     return read_harness(f"""spec: {spec}
 name: n
 prompt: p
@@ -56,17 +55,16 @@ tools:
 
 
 def test_tools_come_in_member_order():
-    assert tool_ids(ordered("harness/0.6")) == ["2", "10", "zeta", "Alpha", "007"]
+    assert tool_ids(ordered()) == ["2", "10", "zeta", "Alpha", "007"]
 
 
-def test_a_0_5_file_keeps_the_sorted_order_and_hash():
-    h = ordered("harness/0.5")
-    assert tool_ids(h) == ["007", "10", "2", "Alpha", "zeta"]
-    assert harness_hash(h) == hash(h)
+def test_a_0_6_engine_runs_only_harness_0_6_files():
+    assert harness_errors(ordered()) == []
+    assert harness_errors(ordered("harness/0.5"))
 
 
 def test_harness_hash_sees_the_tool_order():
-    h = ordered("harness/0.6")
+    h = ordered()
     assert harness_hash(h) == hash([h, ["2", "10", "zeta", "Alpha", "007"]])
     swapped = {**h, "tools": {"Alpha": h["tools"]["Alpha"], "zeta": h["tools"]["zeta"]}}
     same = {**h, "tools": {"zeta": h["tools"]["zeta"], "Alpha": h["tools"]["Alpha"]}}

@@ -5,9 +5,13 @@ every step. Two small engines (TypeScript and Python) run the same file and must
 byte-identical logs and model requests.
 
 **Status:** release 0.6.0 implements [`docs/spec-v0.6.md`](docs/spec-v0.6.md), the normative
-spec, and still runs `harness/0.5` files as 0.5.6 did: both engines reproduce every fixture in
-[`conformance/`](conformance/) byte for byte. Built along [`docs/build-plan-v0.4.md`](docs/build-plan-v0.4.md)
-(0.5.0) and changed per the [CHANGELOG](CHANGELOG.md). Not production-safe.
+spec: both engines reproduce every fixture in [`conformance/`](conformance/) byte for byte.
+Built along [`docs/build-plan-v0.4.md`](docs/build-plan-v0.4.md) (0.5.0) and changed per the [CHANGELOG](CHANGELOG.md). Not production-safe.
+
+**Versions.** Until the spec is declared stable, each version may break files of the previous one,
+and an engine runs only files of its own version: a 0.6 engine runs `spec: harness/0.6` and
+rejects `harness/0.5`. Backwards compatibility starts once the spec is declared stable. A host pins
+a release tag and moves its files when it moves the tag; the CHANGELOG says how for each version.
 
 The previous system (spec v0.1–v0.3, release `v0.4.0-alpha`) is retired. Its code stays
 reachable through the [`v0.4.0-alpha`](https://github.com/crasyK/fausth/releases/tag/v0.4.0-alpha)

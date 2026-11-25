@@ -1,5 +1,5 @@
 # binary is not in the core schema
-spec: harness/0.5
+spec: harness/0.6
 name: base
 prompt: p
 handlers: { h: {} }

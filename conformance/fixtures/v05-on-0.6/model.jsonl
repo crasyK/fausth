@@ -1,2 +1,0 @@
-{"text": "Notes.", "reasoning": "Two notes.", "usage": {"prompt_tokens": 9, "completion_tokens": 4}, "tool_calls": [{"tool": "zeta", "args": {"k": 1, "b": 2, "a": 3}, "call_id": "call_X"}, {"tool": "zeta", "malformed": "{\"k\": ", "parse_error": "Unexpected end of JSON input", "call_id": "call_Y"}, {"tool": "alpha", "args": {}, "call_id": "c3-0"}]}
-{"text": "Done.", "usage": {"prompt_tokens": 30, "completion_tokens": 2}}

@@ -66,7 +66,7 @@ duplicate keys are an error there too). The document MUST denote a JSON value: s
 only, finite numbers only, no tags outside the core schema. Authoring tools MAY support
 includes (e.g. a prompt in a separate file). What an engine runs is the **resolved harness**:
 one JSON document with includes inlined. `harness_hash` = `hash(resolved harness)`.
-[`schema/harness.v0.5.json`](../../../schema/harness.v0.5.json) is the JSON Schema of the file; the
+[`schema/harness.v0.5.json`](harness.v0.5.json) is the JSON Schema of the file; the
 cross-references (§3.1, §5.1, §6) are checked in addition.
 
 Top-level fields (closed set; anything else is a validation error):

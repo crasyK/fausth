@@ -11,12 +11,13 @@ Both engines must reproduce every expected file here byte for byte.
 | `openai.json` | not the engines: the Chat Completions adapters (§9, §13), request and answer mappings |
 | `fixtures/<name>/` | recorded runs: `harness.json`, `model.jsonl`, `tools.jsonl`, optional `user.jsonl` / `interrupts.jsonl` / `reloads.jsonl`, and the expected `expected.log.jsonl` and `expected.requests.jsonl` |
 
-The fixtures written before 0.6 declare `spec: harness/0.5` and kept their expected files byte for
-byte: a 0.6 engine runs them as 0.5.6 did (§15). `v05-on-0.6` shows that with responses that carry
-0.6's members (provider ids, usage, malformed arguments); its expected files are also what the
-0.5.6 engine writes for it. The `v06-*` fixtures declare `harness/0.6`: tool order and the hash that
-sees it, provider call ids, the argument text, the engine's texts, `replace_context` with `keep` and
-`wrap`, and the `pre_request` hook input's reasoning and `usage`.
+Every harness here declares `spec: harness/0.6`: a 0.6 engine runs no other version (spec, Versions).
+The fixtures written for 0.5 were converted when 0.6 dropped 0.5's files; their expected files changed
+only where 0.6 differs (the hash, tool order, `args_text`), and `hook-context-rejects-reasoning`
+(formerly `hook-context-without-reasoning`) now shows a `pre_request` handler written for 0.5, whose
+input schema rejects the reasoning 0.6 puts in `context`, failing. The `v06-*` fixtures cover what 0.6
+added: tool order and the hash that sees it, provider call ids, the argument text, the engine's texts,
+`replace_context` with `keep` and `wrap`, and the `pre_request` hook input's reasoning and `usage`.
 
 Replay a fixture and compare (`--write` rewrites the expected files):
 

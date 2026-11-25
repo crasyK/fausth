@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.5",
+  "spec": "harness/0.6",
   "name": "multi-turn",
   "prompt": "Use echo.",
   "tools": {
