@@ -1,0 +1,6 @@
+spec: harness/0.6
+name: hermes-arguments
+prompt: p
+argument_text: sorted_ascii
+tools:
+  terminal: { description: Run a command., input: { type: object, required: [command] } }

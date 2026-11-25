@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from fausth.values import argument_text, canonical, excerpt, hash, parse_json
+from fausth.values import argument_text, canonical, excerpt, hash, parse_json, sorted_ascii_text
 
 VECTORS = json.loads((Path(__file__).resolve().parents[3] / "conformance" / "values.json").read_text("utf-8"))
 
@@ -30,6 +30,18 @@ def test_argument_text(case):
     value = parse_json(case["json"])
     assert argument_text(value) == case["text"]
     assert argument_text(value, True) == case["indented"]
+
+
+@pytest.mark.parametrize("case", VECTORS["sorted_ascii"], ids=lambda c: c["name"])
+def test_sorted_ascii(case):
+    assert sorted_ascii_text(case["raw"]) == case["text"]
+    assert sorted_ascii_text(case["raw"], True) == case["indented"]
+
+
+@pytest.mark.parametrize("raw", ["NaN", "[Infinity]", "1e400", '"\\ud800"', "{", "", "[1,]"])
+def test_sorted_ascii_needs_json_text_with_a_canonical_form(raw):
+    with pytest.raises(ValueError):
+        sorted_ascii_text(raw)
 
 
 def test_the_argument_text_needs_a_canonical_form():

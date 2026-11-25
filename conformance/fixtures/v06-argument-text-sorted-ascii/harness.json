@@ -1,0 +1,35 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-argument-text-sorted-ascii",
+  "prompt": "Write files.",
+  "argument_text": "sorted_ascii",
+  "tools": {
+    "write": {
+      "description": "Write a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "n": {
+            "type": "array"
+          },
+          "meta": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "texts": {
+    "unknown_tool": "Unknown tool {tool}: {args}\n{args_indented}",
+    "invalid_arguments": "{reasons}\n{args}\n{args_indented}"
+  }
+}

@@ -1,0 +1,1 @@
+{"step": 1, "harness": {"spec": "harness/0.6", "name": "v06-argument-text-reloaded", "prompt": "Take notes.", "argument_text": "sorted_ascii", "tools": {"note": {"description": "Take a note.", "input": {"type": "object"}}}}}

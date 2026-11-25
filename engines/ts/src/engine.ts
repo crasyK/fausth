@@ -3,13 +3,14 @@ import {
   SPAWN_INPUT, TEXTS, TURN, fill, harnessErrors, harnessHash, type Event, type Harness, type Hook, type TextName,
 } from "./harness.js";
 import { Log, TOP, callId, inScope, view, type Scope, type ViewEntry } from "./log.js";
-import { hookWrapper, render, type LoggedCall, type Request } from "./render.js";
+import { argsText, hookWrapper, render, type LoggedCall, type Request } from "./render.js";
 import { argumentReasons, compileSchema, type Check } from "./schema.js";
-import { argumentText, canonical, excerpt, type Json } from "./values.js";
+import { argumentText, canonical, excerpt, sortedAsciiText, type Json } from "./values.js";
 
-/** A tool call as the model response gives it (§14): its arguments, or the text that wasn't JSON. */
+/** A tool call as the model response gives it (§14): its arguments, with the model's text for them (`raw`), or
+ * the text that wasn't JSON. */
 export type ResponseCall =
-  | { tool: string; args: Json; call_id?: string }
+  | { tool: string; args: Json; raw?: string; call_id?: string }
   | { tool: string; malformed: string; parse_error?: string; call_id?: string };
 export interface ModelResponse {
   text?: string;
@@ -126,6 +127,12 @@ class Run {
 
   get step(): number {
     return this.counter.step;
+  }
+
+  /** A call's argument text in this run's harness's form (§9.4), compact or indented. */
+  argumentText(call: { args: Json; raw?: string }, indented = false): string {
+    if (this.harness.argument_text !== "sorted_ascii") return argumentText(call.args, indented);
+    return sortedAsciiText(call.raw ?? argumentText(call.args), indented);
   }
 
   /** One of the engine's texts (§8.2): the harness's wording, else the default. */
@@ -249,7 +256,7 @@ class Run {
         // Its arguments go back as {} (§9.4).
         return { call_id: id, tool: c.tool, args: {}, malformed: c.malformed };
       }
-      const text = argumentText(c.args);
+      const text = this.argumentText(c); // written now, in the form of the harness that runs the call (§9.4)
       return { call_id: id, tool: c.tool, args: c.args, ...(text !== canonical(c.args) && { args_text: text }) };
     });
   }
@@ -257,7 +264,10 @@ class Run {
   private async toolCall(call: LoggedCall, response: ResponseCall): Promise<void> {
     if (this.toolCallsUsed >= this.limits.max_tool_calls) throw new Ended("limit");
     for (let r: Run | undefined = this; r; r = r.parent) r.toolCallsUsed += 1;
-    const shown = () => ({ tool: call.tool, args: argumentText(call.args), args_indented: argumentText(call.args, true) });
+    const shown = () => ({
+      tool: call.tool, args: argsText(call),
+      args_indented: this.argumentText("malformed" in response ? call : response, true),
+    });
     if (!Object.hasOwn(this.harness.tools ?? {}, call.tool)) {
       this.result(call, { ok: false, error: this.text("unknown_tool", shown()) });
       return;
@@ -483,12 +493,24 @@ function at(value: Json, path: string): Json | undefined {
 
 const isObject = (v: unknown): v is { [k: string]: unknown } => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** A tool call of a model response (§14): `args`, or `malformed` text with an optional `parse_error`; an optional id. */
+/** A tool call of a model response (§14): `args` with an optional `raw`, or `malformed` text with an optional
+ * `parse_error`; an optional id. */
 function isResponseCall(c: unknown): boolean {
   if (!isObject(c) || typeof c.tool !== "string" || ("args" in c) === ("malformed" in c)) return false;
   if (c.call_id !== undefined && typeof c.call_id !== "string") return false;
-  if ("malformed" in c) return typeof c.malformed === "string" && (c.parse_error === undefined || typeof c.parse_error === "string");
-  return c.parse_error === undefined;
+  if ("malformed" in c) {
+    return typeof c.malformed === "string" && (c.parse_error === undefined || typeof c.parse_error === "string") && c.raw === undefined;
+  }
+  return c.parse_error === undefined && (c.raw === undefined || (typeof c.raw === "string" && reads(c.raw, c.args)));
+}
+
+/** `raw` is JSON text whose value (read as §1 reads numbers) is `args`. */
+function reads(raw: string, args: unknown): boolean {
+  try {
+    return canonical(JSON.parse(raw)) === canonical(args);
+  } catch {
+    return false;
+  }
 }
 
 /** A model response as the transport delivered it; anything else breaks the interface. */

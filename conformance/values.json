@@ -1,5 +1,5 @@
 {
- "about": "Shared test vectors for spec v0.6 section 1 (values) and 9.4 (the argument text). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points. `argument_text` (0.6): `json` parsed by the engine's JSON reader, written as the argument text (`text`) and with two-space indentation (`indented`): members in member order (array-index names first, ascending, then the rest as written; a repeated name keeps its first place and its last value), strings and numbers as in the canonical form.",
+ "about": "Shared test vectors for spec v0.6 section 1 (values) and 9.4 (the argument text). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points. `argument_text` (0.6): `json` parsed by the engine's JSON reader, written as the argument text (`text`) and with two-space indentation (`indented`): members in member order (array-index names first, ascending, then the rest as written; a repeated name keeps its first place and its last value), strings and numbers as in the canonical form. `sorted_ascii` (0.6, the second form of 9.4): `raw` is the model's argument text, written in the form `sorted_ascii` (`text`) and with two-space indentation (`indented`): exactly what Python's `json.dumps(json.loads(raw), separators=(\",\", \":\"), sort_keys=True)` and `json.dumps(json.loads(raw), indent=2, sort_keys=True)` write.",
  "canonical": [
   {
    "name": "rfc8785 sample",
@@ -451,6 +451,62 @@
    "json": "{ \"path\" : \"a.txt\" ,\n \"edits\" : [ { \"oldText\" : \"x\" , \"newText\" : \"y\" } ] }",
    "text": "{\"path\":\"a.txt\",\"edits\":[{\"oldText\":\"x\",\"newText\":\"y\"}]}",
    "indented": "{\n  \"path\": \"a.txt\",\n  \"edits\": [\n    {\n      \"oldText\": \"x\",\n      \"newText\": \"y\"\n    }\n  ]\n}"
+  }
+ ],
+ "sorted_ascii": [
+  {
+   "name": "members sorted by code point, nested; arrays keep their order",
+   "raw": "{\"b\":1,\"a\":{\"z\":1,\"\\uffff\":2,\"\ud83d\ude42\":3,\"B\":4,\"\u00e9\":5,\"10\":6,\"2\":7},\"c\":[{\"y\":1,\"x\":2},3]}",
+   "text": "{\"a\":{\"10\":6,\"2\":7,\"B\":4,\"z\":1,\"\\u00e9\":5,\"\\uffff\":2,\"\\ud83d\\ude42\":3},\"b\":1,\"c\":[{\"x\":2,\"y\":1},3]}",
+   "indented": "{\n  \"a\": {\n    \"10\": 6,\n    \"2\": 7,\n    \"B\": 4,\n    \"z\": 1,\n    \"\\u00e9\": 5,\n    \"\\uffff\": 2,\n    \"\\ud83d\\ude42\": 3\n  },\n  \"b\": 1,\n  \"c\": [\n    {\n      \"x\": 2,\n      \"y\": 1\n    },\n    3\n  ]\n}"
+  },
+  {
+   "name": "a repeated name keeps its last value",
+   "raw": "{\"b\":1,\"a\":2,\"b\":{\"y\":1,\"x\":2,\"y\":3}}",
+   "text": "{\"a\":2,\"b\":{\"x\":2,\"y\":3}}",
+   "indented": "{\n  \"a\": 2,\n  \"b\": {\n    \"x\": 2,\n    \"y\": 3\n  }\n}"
+  },
+  {
+   "name": "non-ASCII and DEL escaped in lowercase hex, a character above U+FFFF as its surrogate pair",
+   "raw": "\"\u00e9 \u65e5\u672c \ud83d\ude42 \\u007f \\u2028 \\ufeff \udbff\udfff / ~\"",
+   "text": "\"\\u00e9 \\u65e5\\u672c \\ud83d\\ude42 \\u007f \\u2028 \\ufeff \\udbff\\udfff / ~\"",
+   "indented": "\"\\u00e9 \\u65e5\\u672c \\ud83d\\ude42 \\u007f \\u2028 \\ufeff \\udbff\\udfff / ~\""
+  },
+  {
+   "name": "control characters: the short escapes, else \\\\u00xx",
+   "raw": "\"\\\"q\\\" \\\\ \\n\\t\\b\\f\\r \\u0000 \\u0001 \\u001f\"",
+   "text": "\"\\\"q\\\" \\\\ \\n\\t\\b\\f\\r \\u0000 \\u0001 \\u001f\"",
+   "indented": "\"\\\"q\\\" \\\\ \\n\\t\\b\\f\\r \\u0000 \\u0001 \\u001f\""
+  },
+  {
+   "name": "integer tokens stay exact; -0 is 0",
+   "raw": "[0, -0, 1, -1, 100, 9007199254740993, -9007199254740993, 18446744073709551615, 123456789012345678901234]",
+   "text": "[0,0,1,-1,100,9007199254740993,-9007199254740993,18446744073709551615,123456789012345678901234]",
+   "indented": "[\n  0,\n  0,\n  1,\n  -1,\n  100,\n  9007199254740993,\n  -9007199254740993,\n  18446744073709551615,\n  123456789012345678901234\n]"
+  },
+  {
+   "name": "other number tokens as Python's float repr",
+   "raw": "[1.0, 1e2, 1E2, 12.5e1, 0.1e1, -0.0, 0E0, 0.1, 1.5, 0.0001, 0.00001, 1e-7, 1.5e-5, 1e15, 1e16, 9999999999999999.0, 1e21, 123456789012345678901234.0, 5e-324, 1e-400, -1e-400, 1.7976931348623157e308, 2.5e+300]",
+   "text": "[1.0,100.0,100.0,125.0,1.0,-0.0,0.0,0.1,1.5,0.0001,1e-05,1e-07,1.5e-05,1000000000000000.0,1e+16,1e+16,1e+21,1.2345678901234569e+23,5e-324,0.0,-0.0,1.7976931348623157e+308,2.5e+300]",
+   "indented": "[\n  1.0,\n  100.0,\n  100.0,\n  125.0,\n  1.0,\n  -0.0,\n  0.0,\n  0.1,\n  1.5,\n  0.0001,\n  1e-05,\n  1e-07,\n  1.5e-05,\n  1000000000000000.0,\n  1e+16,\n  1e+16,\n  1e+21,\n  1.2345678901234569e+23,\n  5e-324,\n  0.0,\n  -0.0,\n  1.7976931348623157e+308,\n  2.5e+300\n]"
+  },
+  {
+   "name": "whitespace in the model's text goes",
+   "raw": "{ \"path\" : \"a.txt\" ,\n \"edits\" : [ { \"oldText\" : \"x\" , \"newText\" : \"y\" } ] }",
+   "text": "{\"edits\":[{\"newText\":\"y\",\"oldText\":\"x\"}],\"path\":\"a.txt\"}",
+   "indented": "{\n  \"edits\": [\n    {\n      \"newText\": \"y\",\n      \"oldText\": \"x\"\n    }\n  ],\n  \"path\": \"a.txt\"\n}"
+  },
+  {
+   "name": "scalars and empty containers",
+   "raw": "{\"e\":[],\"d\":{},\"n\":null,\"t\":true,\"f\":false,\"s\":\"\"}",
+   "text": "{\"d\":{},\"e\":[],\"f\":false,\"n\":null,\"s\":\"\",\"t\":true}",
+   "indented": "{\n  \"d\": {},\n  \"e\": [],\n  \"f\": false,\n  \"n\": null,\n  \"s\": \"\",\n  \"t\": true\n}"
+  },
+  {
+   "name": "a string alone",
+   "raw": "\"text\"",
+   "text": "\"text\"",
+   "indented": "\"text\""
   }
  ]
 }

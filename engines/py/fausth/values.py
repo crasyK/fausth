@@ -1,4 +1,5 @@
-"""Values (spec §1): canonical form (RFC 8785), hash, excerpt, member order and the argument text (§9.4)."""
+"""Values (spec §1): canonical form (RFC 8785), hash, excerpt, member order and the argument text in both of its
+forms (§9.4)."""
 from __future__ import annotations
 
 import hashlib
@@ -106,9 +107,13 @@ def member_names(obj: dict[str, Any]) -> list[str]:
     return sorted((k for k in obj if index(k)), key=int) + [k for k in obj if not index(k)]
 
 
+ARGUMENT_FORMS = ("model_order", "sorted_ascii")  # how a call's arguments go back to the model (§9.4)
+
+
 def argument_text(value: Any, indented: bool = False) -> str:
-    """The argument text of a value (§9.4): compact JSON, members in member order (§1), strings and numbers as in
-    the canonical form; with `indented`, two-space indentation. What ECMAScript's `JSON.stringify` writes."""
+    """The argument text of a value in the form `model_order` (§9.4): compact JSON, members in member order (§1),
+    strings and numbers as in the canonical form; with `indented`, two-space indentation. What ECMAScript's
+    `JSON.stringify` writes."""
     canonical(value)  # raises if there is no canonical form
     return _text(value, "\n" if indented else None)
 
@@ -126,6 +131,19 @@ def _text(value: Any, newline: str | None) -> str:
         inner = newline + "  "
         return "{" + inner + ("," + inner).join(_quote(k) + ": " + _text(value[k], inner) for k in names) + newline + "}"
     return canonical(value)  # a scalar, [] or {}
+
+
+def sorted_ascii_text(raw: str, indented: bool = False) -> str:
+    """The argument text in the form `sorted_ascii` (§9.4), from the model's argument text `raw`: exactly what
+    `json.dumps(json.loads(raw), separators=(",", ":"), sort_keys=True)` writes (with `indented`,
+    `json.dumps(json.loads(raw), indent=2, sort_keys=True)`): integers exact, other numbers as `float.__repr__`,
+    names sorted by code point, every character outside U+0020–U+007E escaped. Raises ValueError if `raw` isn't
+    JSON with a canonical form (§1)."""
+    canonical(parse_json(raw))
+    value = json.loads(raw, parse_constant=_not_json)
+    if indented:
+        return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True)
+    return json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=True)
 
 
 def hash(value: Any) -> str:  # noqa: A001 (the spec's name)

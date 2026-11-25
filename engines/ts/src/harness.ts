@@ -3,7 +3,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import { parseDocument } from "yaml";
 import schema06 from "../../../schema/harness.v0.6.json" with { type: "json" };
 import { compileSchema } from "./schema.js";
-import { canonical, hash, type Json } from "./values.js";
+import { canonical, hash, type ArgumentForm, type Json } from "./values.js";
 
 export type Event =
   | "session_start" | "user_prompt" | "pre_request" | "pre_tool" | "post_tool" | "stop" | "interrupt";
@@ -37,6 +37,8 @@ export interface Harness {
   hooks?: Hook[];
   limits?: Limits;
   texts?: { [name in TextName]?: string };
+  /** How a call's arguments go back to the model (§9.4); `model_order` when absent. */
+  argument_text?: ArgumentForm;
 }
 
 /** The only spec value this engine runs: a 0.6 engine runs only `harness/0.6` files (spec, Versions). */

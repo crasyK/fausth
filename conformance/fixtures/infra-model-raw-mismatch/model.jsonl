@@ -1,0 +1,2 @@
+{"tool_calls": [{"tool": "note", "args": {"a": 1}, "raw": "{\"a\": 2}"}]}
+{"text": "Done."}

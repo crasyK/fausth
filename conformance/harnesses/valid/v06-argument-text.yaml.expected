@@ -1,0 +1,1 @@
+{"argument_text":"sorted_ascii","name":"hermes-arguments","prompt":"p","spec":"harness/0.6","tools":{"terminal":{"description":"Run a command.","input":{"required":["command"],"type":"object"}}}}

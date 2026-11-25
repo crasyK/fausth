@@ -1,5 +1,5 @@
 {
- "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true. `replay` (0.5.3): `replay.request` with model `m` and no extra, mapped with each `reasoning_replay`: `none` sends no logged reasoning back, `turn` that of the assistant messages after the last user message, `all` all of it, as `reasoning_content`; `reasoning_opaque` is never sent back by this adapter, and any other value is an error. With no value given, an adapter maps it as `turn` (`replay.default`, 0.5.5). 0.6: a tool call goes back with its `args_text` when it has one, else the canonical form of its `args` (spec 9.4); an answer's tool-call `id` (a non-empty string) becomes the call's `call_id`, `arguments` that are not JSON become `malformed`, and the body's `usage` object becomes `usage`.",
+ "about": "Host adapters for OpenAI-compatible Chat Completions (spec 9, 13). `request` (neutral) with model `m` and extra {temperature: 0} maps to `chat`; each `answer` maps to `response` with provider `kit`, or fails as an infrastructure failure when `error` is true. `replay` (0.5.3): `replay.request` with model `m` and no extra, mapped with each `reasoning_replay`: `none` sends no logged reasoning back, `turn` that of the assistant messages after the last user message, `all` all of it, as `reasoning_content`; `reasoning_opaque` is never sent back by this adapter, and any other value is an error. With no value given, an adapter maps it as `turn` (`replay.default`, 0.5.5). 0.6: a tool call goes back with its `args_text` when it has one, else the canonical form of its `args` (spec 9.4); an answer's tool-call `id` (a non-empty string) becomes the call's `call_id`, `arguments` that are JSON text give `args` and, as `raw`, the text itself (for a harness whose argument text is `sorted_ascii`, 9.4), `arguments` that are not JSON become `malformed`, and the body's `usage` object becomes `usage`.",
  "request": {
   "system": "You are playing chess.",
   "tools": [
@@ -204,7 +204,8 @@
       "args": {
        "move": "e2e4",
        "n": 18446744073709552000
-      }
+      },
+      "raw": "{\"move\": \"e2e4\", \"n\": 18446744073709551615}"
      },
      {
       "tool": "board_observe",
@@ -275,7 +276,8 @@
     "tool_calls": [
      {
       "tool": "board_observe",
-      "args": {}
+      "args": {},
+      "raw": "{}"
      }
     ],
     "usage": {

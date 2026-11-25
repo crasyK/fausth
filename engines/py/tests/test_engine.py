@@ -1,4 +1,6 @@
-"""The run loop's 0.6 parts that a replay fixture can't show: a host's own reasons (§8.1)."""
+"""The run loop's 0.6 parts that a replay fixture can't show: a host's own reasons (§8.1), `raw` (§14)."""
+import pytest
+
 from fausth.engine import run
 
 HARNESS = {
@@ -9,8 +11,8 @@ HARNESS = {
 
 
 class _Host:
-    def __init__(self, reasons=None):
-        self.replies = [{"tool_calls": [{"tool": "edit", "args": {"path": 3}}]}, {"text": "Done."}]
+    def __init__(self, reasons=None, call=None):
+        self.replies = [{"tool_calls": [call or {"tool": "edit", "args": {"path": 3}}]}, {"text": "Done."}]
         self.asked = False
         if reasons is not None:
             self.reasons = reasons
@@ -49,3 +51,20 @@ def test_a_host_may_give_its_own_validators_reasons():
 def test_none_means_the_engines_reasons_and_a_non_string_is_an_infrastructure_failure():
     assert error_of(run(HARNESS, _Host(lambda tool, args: None))) == 'Validation failed for tool "edit":\npath: must be a string'
     assert run(HARNESS, _Host(lambda tool, args: 3)).entries[-1]["reason"] == "infra_failure"
+
+
+@pytest.mark.parametrize("call", [
+    {"tool": "edit", "malformed": "{", "raw": "{"},  # raw only beside args
+    {"tool": "edit", "args": {"path": "a"}, "raw": {"path": "a"}},  # raw is text
+    {"tool": "edit", "args": {"path": "a"}, "raw": '{"path": "b"}'},  # and reads as args
+    {"tool": "edit", "args": {"path": "a"}, "raw": '{"path": "a"'},
+])
+def test_a_raw_text_that_is_not_the_calls_arguments_breaks_the_interface(call):
+    assert run(HARNESS, _Host(call=call)).entries[-1]["reason"] == "infra_failure"
+
+
+def test_raw_may_differ_from_args_in_how_it_writes_them():
+    call = {"tool": "edit", "args": {"path": "a", "n": 18446744073709551615}, "raw": '{ "n": 18446744073709551615, "path": "\\u0061" }'}
+    log = run({**HARNESS, "argument_text": "sorted_ascii"}, _Host(call=call))
+    assert log.entries[-1]["reason"] == "stop"
+    assert next(e for e in log.entries if e["type"] == "assistant")["tool_calls"][0]["args_text"] == '{"n":18446744073709551615,"path":"a"}'

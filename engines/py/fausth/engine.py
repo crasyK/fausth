@@ -6,9 +6,9 @@ from typing import Any, Callable, Protocol
 
 from .harness import SPAWN_INPUT, TEXTS, TURN, fill, harness_errors, harness_hash
 from .log import TOP, Log, Scope, call_id, in_scope, view
-from .render import hook_wrapper, render
+from .render import args_text, hook_wrapper, render
 from .schema import argument_reasons, compile_schema
-from .values import argument_text, canonical, excerpt
+from .values import argument_text, canonical, excerpt, parse_json, sorted_ascii_text
 
 
 class InfraFailure(Exception):
@@ -104,6 +104,12 @@ class _Run:
     @property
     def step(self) -> int:
         return self.counter["step"]
+
+    def argument_text(self, call: dict[str, Any], indented: bool = False) -> str:
+        """A call's argument text in this run's harness's form (§9.4), compact or indented."""
+        if self.harness.get("argument_text") != "sorted_ascii":
+            return argument_text(call["args"], indented)
+        return sorted_ascii_text(call["raw"] if "raw" in call else argument_text(call["args"]), indented)
 
     def text(self, name: str, values: dict[str, str]) -> str:
         """One of the engine's texts (§8.2): the harness's wording, else the default."""
@@ -228,7 +234,7 @@ class _Run:
                 out.append({"call_id": cid, "tool": c["tool"], "args": {}, "malformed": c["malformed"]})
                 continue
             call = {"call_id": cid, "tool": c["tool"], "args": c["args"]}
-            text = argument_text(c["args"])
+            text = self.argument_text(c)  # written now, in the form of the harness that runs the call (§9.4)
             if text != canonical(c["args"]):
                 call["args_text"] = text
             out.append(call)
@@ -242,7 +248,8 @@ class _Run:
         tool = call["tool"]
 
         def shown() -> dict[str, str]:
-            return {"tool": tool, "args": argument_text(call["args"]), "args_indented": argument_text(call["args"], True)}
+            given = {"args": call["args"]} if "malformed" in response_call else response_call
+            return {"tool": tool, "args": args_text(call), "args_indented": self.argument_text(given, True)}
 
         if tool not in self.harness.get("tools", {}):
             self._result(call, {"ok": False, "error": self.text("unknown_tool", shown())})
@@ -508,14 +515,23 @@ def _is_count(v: Any) -> bool:
 
 
 def _is_response_call(c: Any) -> bool:
-    """A tool call of a model response (§14): `args`, or `malformed` text with an optional `parse_error`; an optional id."""
+    """A tool call of a model response (§14): `args` with an optional `raw`, or `malformed` text with an optional
+    `parse_error`; an optional id."""
     if not isinstance(c, dict) or not isinstance(c.get("tool"), str) or ("args" in c) == ("malformed" in c):
         return False
     if not isinstance(c.get("call_id", ""), str):
         return False
     if "malformed" in c:
-        return isinstance(c["malformed"], str) and isinstance(c.get("parse_error", ""), str)
-    return "parse_error" not in c
+        return isinstance(c["malformed"], str) and isinstance(c.get("parse_error", ""), str) and "raw" not in c
+    return "parse_error" not in c and ("raw" not in c or (isinstance(c["raw"], str) and _reads(c["raw"], c["args"])))
+
+
+def _reads(raw: str, args: Any) -> bool:
+    """`raw` is JSON text whose value (read as §1 reads numbers) is `args`."""
+    try:
+        return canonical(parse_json(raw)) == canonical(args)
+    except (ValueError, RecursionError):
+        return False
 
 
 def _check_response(v: Any) -> dict[str, Any]:

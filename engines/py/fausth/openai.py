@@ -73,6 +73,7 @@ def from_chat(body: Any, provider: str) -> dict[str, Any]:
         elif isinstance(raw, str):
             try:
                 call["args"] = parse_json(raw)
+                call["raw"] = raw  # the model's text, for a harness whose argument text is `sorted_ascii` (§9.4)
             except ValueError:
                 call["malformed"] = raw  # not JSON: the engine answers with its malformed_arguments text (§8.2)
         else:

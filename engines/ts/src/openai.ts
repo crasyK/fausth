@@ -61,6 +61,7 @@ export function fromChat(body: unknown, provider: string): Obj {
     else if (typeof raw === "string") {
       try {
         call.args = JSON.parse(raw) as Json;
+        call.raw = raw; // the model's text, for a harness whose argument text is `sorted_ascii` (§9.4)
       } catch {
         call.malformed = raw; // not JSON: the engine answers with its malformed_arguments text (§8.2)
       }

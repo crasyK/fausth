@@ -1,0 +1,13 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-argument-text-reload",
+  "prompt": "Take notes.",
+  "tools": {
+    "note": {
+      "description": "Take a note.",
+      "input": {
+        "type": "object"
+      }
+    }
+  }
+}

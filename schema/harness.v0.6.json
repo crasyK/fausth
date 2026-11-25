@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Harness file (spec v0.6)",
-  "description": "Structure of a resolved harness (spec sections 2, 3, 5.1, 6, 8.2, 12). Engines also check what a schema cannot express: ids unique across tools and handlers, unique hook ids, hook references to declared handlers and tools, that every embedded schema compiles, and the placeholders of the texts (8.2).",
+  "description": "Structure of a resolved harness (spec sections 2, 3, 5.1, 6, 8.2, 9.4, 12). Engines also check what a schema cannot express: ids unique across tools and handlers, unique hook ids, hook references to declared handlers and tools, that every embedded schema compiles, and the placeholders of the texts (8.2).",
   "type": "object",
   "required": ["spec", "name", "prompt"],
   "additionalProperties": false,
@@ -24,6 +24,7 @@
       "additionalProperties": { "$ref": "#/$defs/handler" }
     },
     "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
+    "argument_text": { "enum": ["model_order", "sorted_ascii"] },
     "texts": {
       "type": "object",
       "additionalProperties": false,

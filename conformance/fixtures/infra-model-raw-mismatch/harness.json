@@ -1,0 +1,14 @@
+{
+  "spec": "harness/0.6",
+  "name": "infra-model-raw-mismatch",
+  "prompt": "Take notes.",
+  "argument_text": "sorted_ascii",
+  "tools": {
+    "note": {
+      "description": "Take a note.",
+      "input": {
+        "type": "object"
+      }
+    }
+  }
+}

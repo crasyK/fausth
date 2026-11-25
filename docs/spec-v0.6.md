@@ -4,11 +4,13 @@
 repository produce byte-identical logs and requests for every fixture in `conformance/`. It is spec v0.5
 ([archived](archive/specs/spec-v0.5.md)) with five changes, the user's decision of 2026-11-25 after Mouseion
 rebuilt the pi coding agent (pi 1.5.2) token for token on Fausth: tools are offered in the order the file
-declares them (§9), the provider's tool-call ids are kept (§7), arguments go back as the model wrote them
-(§9.4), the engine's own texts can be worded in the file (§8.2), and `replace_context` can keep the newest
-messages and leave its text unwrapped, with the last response's usage and the logged reasoning in the
-`pre_request` hook input (§5.3, §5.4). The decisions behind v0.5 are in
-[`primitives-inventory.md`](primitives-inventory.md) §6–§8.
+declares them (§9), the provider's tool-call ids are kept (§7), a call's arguments go back written as the
+original harness writes them (§9.4), the engine's own texts can be worded in the file (§8.2), and
+`replace_context` can keep the newest messages and leave its text unwrapped, with the last response's usage
+and the logged reasoning in the `pre_request` hook input (§5.3, §5.4). Before 0.6 was tagged the user decided
+two more things for Mouseion's second rebuild, Hermes Agent 0.22.6: the argument text has exactly two
+defined forms, which a harness chooses with `argument_text` (§9.4), and 0.6 drops 0.5's files (Versions,
+below). The decisions behind v0.5 are in [`primitives-inventory.md`](primitives-inventory.md) §6–§8.
 **Versions:** until the user declares the spec stable, each version may break files of the previous one, and
 an engine runs only files of its own version: a 0.6 engine rejects a `harness/0.5` file (§2). Backwards
 compatibility starts once the spec is declared stable. (The user's decision, 2026-11-25.) How to move a file
@@ -60,7 +62,7 @@ non-finite number, a string with a lone surrogate) is an error.
 by `…[truncated]`.
 
 **Member order.** Where this spec gives an object's members an order (the tools a model is offered, §9;
-the argument text, §9.4), it is the order in which they appear in the document, except that members whose
+the argument text in the form `model_order`, §9.4), it is the order in which they appear in the document, except that members whose
 names are array indexes (`0`, or digits without a leading zero, below 2^32 − 1) come first, in ascending
 numeric order. That is the order ECMAScript gives an object's own keys, so `JSON.parse`, and a YAML reader
 that builds plain objects, keep it without further work. A name that occurs twice keeps its first place and
@@ -92,6 +94,7 @@ Top-level fields (closed set; anything else is a validation error):
 | `hooks` | no | Ordered list (§5). |
 | `limits` | no | §12. |
 | `texts` | no | The engine's own texts, worded for this harness (§8.2). |
+| `argument_text` | no | How a call's arguments are written when they go back to the model: `model_order` (the default) or `sorted_ascii`, each defined byte for byte (§9.4). |
 
 ### Example: the chess harness from `cb-ability-v1` (arm S1G1p, with the stricter rule)
 
@@ -418,9 +421,11 @@ entry>-<index>`, with `index` counting the response's tool calls from 0. The mod
 wrote; the engine's form stays free for calls without one; and ids unique in the log keep each call's
 entries, and a child's `parent_call` (§10), apart.
 
-`args_text` is the call's argument text (§9.4), present only when it differs from the canonical form of
-`args`. A call whose argument text wasn't JSON (§14) is logged with `args: {}` and `malformed`: the text
-as the model sent it. `usage` is the model response's `usage` (§14), as the host gave it.
+`args_text` is the call's argument text (§9.4), written in the form of the harness that ran the call, present
+only when it differs from the canonical form of `args`. The model's own text for the arguments (a response
+call's `raw`, §14) isn't logged: `args_text` holds what the model is shown. A call whose argument text
+wasn't JSON (§14) is logged with `args: {}` and `malformed`: the text as the model sent it. `usage` is the
+model response's `usage` (§14), as the host gave it.
 
 Entries of a child run (§10) are written inline with `depth` = parent depth + 1 and
 `parent_call` = the `call_id` of the `core_spawn` call. Top-level entries carry neither member,
@@ -538,8 +543,8 @@ only its own placeholders; any other `{name}` makes the harness invalid.
 | `malformed_arguments` | an argument text that isn't JSON (§14) | `tool`, `text`, `parse_error` | `invalid arguments: the arguments must be a JSON object` |
 | `tool_error` | how a failed result is shown (§9.3) | `error` | none: the canonical form of `{"error": <error>}` |
 
-`tool` is the tool's name as the model called it; `args` is the argument text (§9.4) and
-`args_indented` the same with two-space indentation; `reasons` are those of §8.1, joined with `; `,
+`tool` is the tool's name as the model called it; `args` is the call's argument text in the harness's form
+(§9.4) and `args_indented` the same with two-space indentation, as that form defines it; `reasons` are those of §8.1, joined with `; `,
 or the host's; `text` is the argument text as the model sent it and `parse_error` the response's
 `parse_error`, `""` when it has none (§14); `error` is the result's `error`. The first three make the
 `error` that is logged. `tool_error` applies whenever a failed result is rendered, whoever wrote its
@@ -642,19 +647,89 @@ Several user-role contributions in a row are **merged** into one user message, j
 `replace_context` keeps stay as they were: the first of them doesn't merge into the replacing message.
 The engine never emits system messages mid-conversation.
 
-### 9.4 Arguments as the model sent them
+### 9.4 The argument text
 
-The **argument text** of a call is its arguments as compact JSON: no whitespace between tokens,
-members in member order (§1), strings and numbers as in the canonical form. For the value a JSON
-reader makes of the model's text, it is what ECMAScript's `JSON.stringify` writes: keys in the model's
-order (array indexes first), non-ASCII characters as they are, `1.0` as `1` and `1e2` as `100`. With
-two-space indentation (`{args_indented}`, §8.2) it is `JSON.stringify(value, null, 2)`: each member
+The **argument text** of a call is the text of its arguments that goes back to the model. Every later
+request shows the model its earlier calls, and a provider that takes arguments as text (Chat Completions'
+`arguments`) gets this text; it is also the `{args}` of the engine's texts (§8.2). So it is part of what the
+model sees, as much as the prompt or a tool result.
+
+Real harnesses don't send back the text the model wrote. They parse the arguments and write them again with
+their language's JSON writer, and writers differ: in the order of members, in which characters they escape,
+in how they write numbers. pi (TypeScript) writes the parsed value with `JSON.stringify`; Hermes Agent (Python)
+writes it with `json.dumps(…, sort_keys=True)`. A model that wrote `{"path": "a.txt", "content": "é"}` is
+shown `{"path":"a.txt","content":"é"}` by one and `{"content":"\u00e9","path":"a.txt"}` by the other, from
+its second request on. A rebuild that writes differently than its original changes those tokens.
+
+So a harness names the form of its argument text, `argument_text`, and there are exactly two. Each
+reproduces one real serializer byte for byte and is in the spec because a recorded harness needed it:
+
+| `argument_text` | Writes what this writes | Needed by |
+|---|---|---|
+| `model_order` (default) | ECMAScript: `JSON.stringify(JSON.parse(text))` | pi 1.5.2 (TypeScript), Mouseion's first rebuild: 18 recordings replay byte for byte |
+| `sorted_ascii` | Python: `json.dumps(json.loads(text), separators=(",", ":"), sort_keys=True)` | Hermes Agent 0.22.6 (Python), Mouseion's second rebuild: its source writes arguments so (`_canonicalize_tool_call_arguments`), and a recorded Terminal-Bench trial shows them sorted |
+
+The set is closed. `argument_text` is not a formatting option to tune: each value names the serializer of
+a real harness, and an engine that implements it writes exactly that serializer's bytes. A third form is
+added only by a change of this spec, backed by a recorded harness that needs it, and defined here as
+exactly as these two.
+
+`text` is the model's argument text: the response call's `raw` (§14), or, when it has none, the
+`model_order` text of its `args`. `sorted_ascii` needs it because a JSON reader that makes a double of every
+number (§1) has forgotten whether the model wrote `1` or `1.0`, and the digits of a large integer;
+`model_order` gives the same text either way. The Chat Completions adapters pass `raw` whenever the
+provider sends the arguments as JSON text.
+
+**`model_order`.** For the value a JSON reader makes of the model's text (`args`): compact JSON, no
+whitespace between tokens; members in member order (§1), so names in the model's order with array indexes
+first; strings and numbers as in the canonical form (§1): only `"`, `\` and characters below U+0020 escaped,
+other characters as they are; numbers as ECMAScript writes doubles (`1.0` as `1`, `1e2` as `100`, `1e21` as
+`1e+21`). With two-space indentation (`{args_indented}`) it is `JSON.stringify(value, null, 2)`: each member
 and item on its own line, `": "` after a name, `[]` and `{}` for empty ones.
 
-The log keeps it as `args_text` when it differs from the canonical form of `args` (§7), and the request
-carries it the same way: a call's argument text is its `args_text`, else the canonical form of its
-`args`. A call whose text wasn't JSON goes back as `{}` (its `args`): a provider that reads the
-arguments of earlier calls would reject the broken text, and the error tells the model (§8.2).
+**`sorted_ascii`.** Read `text` as Python's `json.loads` reads it:
+- a number token without `.`, `e` or `E` is an integer and stays exact, all its digits (`18446744073709551615`
+  stays; `-0` is `0`); any other number token is the nearest double (`1.0`, `1e2`, `0.1`);
+- a name that occurs twice keeps its last value.
+
+Then write it compactly, with no whitespace between tokens:
+- an object's members sorted by name, the names compared code point by code point (Python's order, not
+  UTF-16 code units: `"\uffff"` comes before `"🙂"`, which canonical form puts the other way round); an
+  array's items in their order;
+- a string in `"`: `"` and `\` as `\"` and `\\`; U+0008, U+0009, U+000A, U+000C and U+000D as `\b`, `\t`,
+  `\n`, `\f` and `\r`; every other character outside U+0020–U+007E as `\u` and four lowercase hex digits
+  (`é` as `\u00e9`, U+007F as `\u007f`, U+0000 as `\u0000`), and a character above U+FFFF as its UTF-16
+  surrogate pair (`🙂` as `\ud83d\ude42`); `/` stays as it is;
+- an integer as its decimal digits;
+- a double as Python's `float.__repr__` writes it. Take the shortest digits `d₁d₂…dₖ` that read back as the
+  double (the digits ECMAScript writes too) and its exponent `e`, so that the double is `d₁.d₂…dₖ × 10^e`. If
+  −4 ≤ e < 16, write it with a decimal point and at least one digit after it (`1.0`, `100.0`, `0.0001`,
+  `1000000000000000.0`, `0.1`); otherwise as `d₁`, then `.d₂…dₖ` if k > 1, then `e`, the exponent's sign and
+  at least two digits (`1e-05`, `1e-07`, `1e+16`, `1.2345678901234569e+23`, `5e-324`). Zero is `0.0`,
+  negative zero `-0.0`, any other negative double `-` and the rest;
+- `true`, `false` and `null` as they are.
+
+With two-space indentation (`{args_indented}`) it is `json.dumps(json.loads(text), indent=2,
+sort_keys=True)`: the same, each member and item on its own line, `": "` after a name, `[]` and `{}` for
+empty ones. `conformance/values.json` holds vectors for both forms.
+
+The argument text is written when the call is logged, in the form of the harness that runs the call: a
+child's own (§10); after a reload, the new harness's for new calls, while the calls already logged keep
+theirs (§12.3). The log keeps it as `args_text` when it differs from the canonical form of `args` (§7), and
+the request carries it the same way: a call's argument text is its `args_text`, else the canonical form of
+its `args`. So a log replays without the model's text. A call whose text wasn't JSON goes back as `{}` (its
+`args`) in either form: a provider that reads the arguments of earlier calls would reject the broken text,
+and the error tells the model (§8.2).
+
+**Known differences.** Where an original does more around its serializer, Fausth doesn't follow, and a
+rebuild's replay differs from the recording there:
+- Hermes repairs arguments it can't parse (`_repair_tool_call_arguments`) and sends the repaired text back;
+  Fausth sends `{}` and the `malformed_arguments` text (§8.2).
+- Python reads `NaN`, `Infinity` and `-Infinity`, and a number too large for a double as infinity, and
+  writes them back as `NaN` and `Infinity`. They aren't JSON (§1): the first three make the text `malformed`,
+  and a value with an infinity breaks the interface (§14).
+- Python reads a lone surrogate escape (`"\ud800"`) into a string. Such a string has no canonical form (§1),
+  so the response breaks the interface (§14).
 
 ---
 
@@ -694,7 +769,7 @@ value; `timeout_ms` is the host's. A limit the child leaves out is the parent's 
 the parent has left. `{value}` renders as canonical JSON.
 
 **The child run** is a run (§8) whose only user message is `task`, at `depth` = parent depth + 1,
-logged inline (§7), with its own harness's tools, order and texts. Its view holds only its own calls (§5.3); the current step counts every request in the log,
+logged inline (§7), with its own harness's tools, order, texts and argument text (§9.4). Its view holds only its own calls (§5.3); the current step counts every request in the log,
 the child's included (§8).
 
 **Inherited hooks.** The parent's hooks, including those it inherited itself, run **before** the
@@ -752,8 +827,8 @@ The new harness takes effect at the next step boundary of the top-level run (§8
 before interrupts are delivered, so the new `interrupt` hooks apply). The engine logs
 `harness_changed` with the new hash, runs the new harness's `session_start` hooks,
 re-assembles the system prompt (logged as a new `system` entry) and offers the new tool set (in its
-order, §9), hooks, limits and texts from then on (a new `tool_error` shows every failed result in the
-conversation, earlier ones included); the counters of the run go on, so a run that has already used up
+order, §9), hooks, limits, texts and argument text from then on (a new `tool_error` shows every failed
+result in the conversation, earlier ones included; a call already logged keeps its argument text, §9.4); the counters of the run go on, so a run that has already used up
 the new `max_steps` ends with `limit` right there. A replacement that isn't a valid harness is
 an infrastructure failure. Whether and how a harness edits itself is not part of
 this spec.
@@ -802,11 +877,12 @@ itself**, i.e. exactly what a fine-tuned model would see.
 | `interrupts.jsonl` | `{step, source, text}` | pushed while the run was at `step` (§8): queued once the current step reaches it |
 | `reloads.jsonl` | `{step, harness}` | a replacement harness, taken at the first top-level step boundary where the current step has reached `step` |
 
-A `call` is `{tool, args, call_id?}`, or `{tool, malformed, parse_error?, call_id?}` when the
-model's argument text isn't JSON: `call_id` is the provider's id for the call (§7), `malformed` the
-text, `parse_error` (a string) the host's JSON reader's message for it, and `usage` (an object) the
-token counts the provider reported (§5.3). A host's model response has the same shape; anything else
-is an infrastructure failure.
+A `call` is `{tool, args, raw?, call_id?}`, or `{tool, malformed, parse_error?, call_id?}` when the
+model's argument text isn't JSON: `call_id` is the provider's id for the call (§7); `raw` (a string) the
+model's argument text as it sent it, which read as JSON (§1) MUST give `args`, the same canonical form
+(§9.4); `malformed` the text that isn't JSON, `parse_error` (a string) the host's JSON reader's message for
+it, and `usage` (an object) the token counts the provider reported (§5.3). A host's model response has the
+same shape; anything else is an infrastructure failure.
 
 The replay host answers from these files in order. A model `error`, an `unreachable` line, a
 tools line whose `id` isn't the id being called, and a missing line in `model.jsonl` or
@@ -878,10 +954,20 @@ in one long conversation, but it doubled the tokens, so `all` stays a host's exp
 
 **Resolved 2026-11-25 (the user, after Mouseion's rebuild of pi 1.5.2, its gaps 1, 2, 3, 5 and 7):**
 tools in the order the file declares them (§9); the provider's call ids kept (§7); arguments sent back
-as the model sent them (§9.4); the engine's texts worded in the file (§8.2); `replace_context` with
+as pi writes them (§9.4, `model_order`); the engine's texts worded in the file (§8.2); `replace_context` with
 `keep` and `wrap: false`, and `usage` and the logged reasoning in the `pre_request` hook input (§5.3,
 §5.4). Gaps 4 (pi repairs arguments before checking them) and 6 (host values in the prompt) get no spec
 change.
+
+**Resolved 2026-11-25, before 0.6 was tagged (the user, for Mouseion's second rebuild, Hermes Agent
+0.22.6):** the argument text is a per-harness setting, `argument_text`, with exactly two forms (§9.4):
+`model_order`, which pi needs and 0.6 already had, and `sorted_ascii`, which Hermes needs (it writes earlier
+calls' arguments back with Python's `json.dumps(…, separators=(",", ":"), sort_keys=True)`). The user asked
+for it to be documented so that it can't be read as a setting the spec changes at will: each form is
+defined byte for byte and traced to the serializer it reproduces and the recordings that needed it, and a
+new form needs a spec change backed by a recorded harness. `sorted_ascii` follows Hermes's source and the
+arguments of a recorded trial; Mouseion's replays of Hermes recordings are still to come. Hermes's repair
+of unparseable arguments and Python's `NaN` and `Infinity` are known differences, not built.
 
 **Resolved 2026-11-25, before 0.6 was tagged (the user):** no compatibility with 0.5. Each version may
 break files of the previous one until the user declares the spec stable, and an engine runs only its own

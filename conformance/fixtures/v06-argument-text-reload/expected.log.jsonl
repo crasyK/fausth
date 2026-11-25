@@ -1,0 +1,11 @@
+{"depth":0,"harness_hash":"3a87bf9b125050b44afe8b6a431bf8334e6ae41566616ef8e43b85fd8a3210a1","seq":1,"type":"run_start"}
+{"seq":2,"text":"Take notes.","type":"system"}
+{"seq":3,"text":"Note it twice.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"a":1,"b":"é"},"args_text":"{\"b\":\"é\",\"a\":1}","call_id":"c4-0","tool":"note"}],"type":"assistant"}
+{"call_id":"c4-0","ok":true,"result":"n1","seq":5,"tool":"note","type":"tool_result"}
+{"harness_hash":"3a07b2fb875a45ec6f15d18b18bf968bb209a5d3c50c4df8fc2f894602b80582","seq":6,"type":"harness_changed"}
+{"seq":7,"text":"Take notes.","type":"system"}
+{"seq":8,"step":2,"text":"","tool_calls":[{"args":{"a":1,"b":"é"},"args_text":"{\"a\":1.0,\"b\":\"\\u00e9\"}","call_id":"c8-0","tool":"note"}],"type":"assistant"}
+{"call_id":"c8-0","ok":true,"result":"n2","seq":9,"tool":"note","type":"tool_result"}
+{"seq":10,"step":3,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":11,"type":"run_end"}

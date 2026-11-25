@@ -1,4 +1,4 @@
-// The run loop's 0.6 parts that a replay fixture can't show: a host's own reasons (§8.1).
+// The run loop's 0.6 parts that a replay fixture can't show: a host's own reasons (§8.1), `raw` (§14).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { run, type Host } from "./engine.js";
@@ -12,8 +12,8 @@ const harness: Harness = {
   texts: { invalid_arguments: "Validation failed for tool \"{tool}\":\n{reasons}" },
 };
 
-function host(reasons?: Host["reasons"]): Host & { requests: Request[] } {
-  const replies: unknown[] = [{ tool_calls: [{ tool: "edit", args: { path: 3 } }] }, { text: "Done." }];
+function host(reasons?: Host["reasons"], call: unknown = { tool: "edit", args: { path: 3 } }): Host & { requests: Request[] } {
+  const replies: unknown[] = [{ tool_calls: [call] }, { text: "Done." }];
   const requests: Request[] = [];
   let asked = false;
   return {
@@ -43,4 +43,24 @@ test("null from the host means the engine's reasons; anything else not a string 
   assert.equal(errorOf(await run(harness, host(() => null))), 'Validation failed for tool "edit":\npath: must be a string');
   const log = await run(harness, host(() => 3 as unknown as string));
   assert.equal(log.entries.at(-1)?.reason, "infra_failure");
+});
+
+test("a raw text that is not the call's arguments breaks the interface (§14)", async () => {
+  for (const call of [
+    { tool: "edit", malformed: "{", raw: "{" }, // raw only beside args
+    { tool: "edit", args: { path: "a" }, raw: { path: "a" } }, // raw is text
+    { tool: "edit", args: { path: "a" }, raw: '{"path": "b"}' }, // and reads as args
+    { tool: "edit", args: { path: "a" }, raw: '{"path": "a"' },
+  ]) {
+    const log = await run(harness, host(undefined, call));
+    assert.equal(log.entries.at(-1)?.reason, "infra_failure", JSON.stringify(call));
+  }
+});
+
+test("raw may differ from args in how it writes them", async () => {
+  const call = { tool: "edit", args: { path: "a", n: 18446744073709551615 }, raw: '{ "n": 18446744073709551615, "path": "\\u0061" }' };
+  const log = await run({ ...harness, argument_text: "sorted_ascii" }, host(undefined, call));
+  assert.equal(log.entries.at(-1)?.reason, "stop");
+  const assistant = log.entries.find((e) => e.type === "assistant") as unknown as { tool_calls: { args_text?: string }[] };
+  assert.equal(assistant.tool_calls[0]?.args_text, '{"n":18446744073709551615,"path":"a"}');
 });

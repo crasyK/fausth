@@ -1,0 +1,4 @@
+{"depth":0,"harness_hash":"d05255f6979b3da298e84cea00f3232766107edd7e9d4e8299dd4f42829f1cb0","seq":1,"type":"run_start"}
+{"seq":2,"text":"Take notes.","type":"system"}
+{"seq":3,"text":"Note it.","type":"user"}
+{"reason":"infra_failure","seq":4,"type":"run_end"}

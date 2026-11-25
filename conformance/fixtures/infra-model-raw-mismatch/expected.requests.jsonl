@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","text":"Note it."}],"system":"Take notes.","tools":[{"description":"Take a note.","input":{"type":"object"},"name":"note"}]}
