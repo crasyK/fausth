@@ -21,7 +21,7 @@
   },
   "handlers": {
     "make_title": {
-      "description": "Bound to a run of the title harness (v06-stop-title-run); checks what a stop hook sees.",
+      "description": "Launches the harness in with.harness (v06-stop-title-run) on the opening message, cut to with.max_chars; checks what a stop hook sees.",
       "input": {
         "type": "object",
         "required": [
@@ -181,7 +181,46 @@
       "id": "title",
       "on": "stop",
       "run": "make_title",
-      "on_failure": "skip"
+      "on_failure": "skip",
+      "with": {
+        "harness": {
+          "spec": "harness/0.6",
+          "name": "session-title",
+          "prompt": "You name chat sessions. Given the user's opening message, write a title of 3 to 7 words.\n\nReply with JSON only: {\"title\": \"...\"}",
+          "handlers": {
+            "save_title": {
+              "description": "Stores the title from the reply for the environment.",
+              "input": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "event": {
+                    "const": "stop"
+                  },
+                  "message": {
+                    "const": "{\"title\": \"Empty input in parser.py parse\"}"
+                  }
+                }
+              }
+            }
+          },
+          "hooks": [
+            {
+              "id": "save",
+              "on": "stop",
+              "run": "save_title"
+            }
+          ],
+          "limits": {
+            "max_steps": 1,
+            "max_tool_calls": 0,
+            "max_continues": 1
+          }
+        },
+        "max_chars": 40
+      }
     }
   ]
 }

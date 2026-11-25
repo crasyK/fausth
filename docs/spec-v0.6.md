@@ -75,8 +75,9 @@ its last value.
 YAML 1.2 (core schema; duplicate keys are an error) or JSON, which is read as YAML 1.2 (so
 duplicate keys are an error there too). The document MUST denote a JSON value: string keys
 only, finite numbers only, no tags outside the core schema. Authoring tools MAY support
-includes (e.g. a prompt in a separate file). What an engine runs is the **resolved harness**:
-one JSON document with includes inlined, in which the order of `tools` counts (§9).
+includes (e.g. a prompt in a separate file, or another agent's harness in a hook's `with`, §13.1). What
+an engine runs is the **resolved harness**: one JSON document with includes inlined, in which the order of
+`tools` counts (§9).
 `harness_hash` = `hash([<resolved harness>, <the ids of its tools in member order>])`: the canonical
 form alone drops that order (§1). [`schema/harness.v0.6.json`](../schema/harness.v0.6.json) is the
 JSON Schema of the file; the cross-references (§3.1, §5.1, §6) and the placeholders of `texts` (§8.2)
@@ -790,6 +791,23 @@ run the same way.
 Background work (an asynchronous child, a long job) is a host tool that returns immediately and
 later delivers an interrupt with `source: "subagent"` or `"job"`.
 
+**`core_spawn` and a launched run.** A tool or handler can also be bound to another Fausth run that the
+environment launches (§13.1). Both run a harness on a task; they differ in who starts the run and what it
+takes from the caller:
+
+| | `core_spawn` | a binding that launches a run (§13.1) |
+|---|---|---|
+| Started by | the engine, for the model's call | the host, for a call of the tool or handler bound to it |
+| Its harness | the model's, in the call's arguments | the one handed to the binding: by the calling file in a hook's `with`, or by the model in a tool's arguments |
+| Checked | the narrowing check above | valid, and every id bound by its deployment |
+| The caller's hooks | inherited, run first | none |
+| Log | inline in the caller's: `depth` + 1, `parent_call` | its own: a top-level run |
+| Steps and limits | counted against the parent's; one current step | its own |
+| Bindings, transport | the parent's | its deployment's, with request parameters of its own |
+| The caller gets | `{text, steps, tool_calls}` | the binding's answer (§3.3), made from how the run ended |
+| Replay | in the caller's fixture | in a fixture of its own; the caller's records the answer |
+| Its `infra_failure`, `host_end` | end the whole run the same way | the binding's infrastructure failure |
+
 ---
 
 ## 11. Interrupts
@@ -843,13 +861,74 @@ this spec.
 The deployment file is **not** part of the harness and never changes what the model sees. It
 holds:
 - **Bindings:** for every tool and handler id, an implementation: `script`, `http`, `mcp`,
-  `model` (a prompt plus model id), `human`, or `recorded`. A `human` binding MUST be answered
-  by a human or a declared simulator, never from the acting model's own arguments.
+  `model` (a prompt plus model id), `human`, `recorded`, or `harness` (another Fausth run, §13.1). A
+  `human` binding MUST be answered by a human or a declared simulator, never from the acting model's own
+  arguments.
 - **The model transport.**
 - **Sandbox, filesystem scopes, secrets, protected paths:** enforced by the host's tool
   implementations.
 
 A deployment that leaves a declared id unbound is rejected before the run starts.
+
+### 13.1 A binding that launches another run
+
+A tool or handler can be bound to **another Fausth run**, launched by the environment, not by the engine:
+the binding runs the harness it is handed as a separate run (§8) with its own log and its own limits, whose
+only user message is a task the binding makes from its input. A handler's binding is handed the harness in
+its hook's `with` (by convention `with.harness`), so the calling file names its sub-agent; a tool's in its
+arguments (by convention `harness`), so an orchestrator's model can write a sub-agent at runtime. The
+deployment says only that the id launches the harness it is handed, how the task is made (a title binding
+on `stop` takes the opening user message from the hook input's `context`, strips the host's wrappers and
+cuts it to `with.max_chars` characters) and how the run's end becomes the binding's answer (§3.3): for a
+tool typically the text of the run's last assistant entry, for a handler a hook decision (§5.4), such as
+`allow` once the run has done its work.
+
+**One file per agent, one document.** Each agent's harness can be a file of its own, and the calling file
+brings it into the hook's `with` with an include (§2). What an engine runs is the resolved harness, so all of
+a system's harnesses are in one document and the caller's `harness_hash` covers its sub-agents; the launched
+run's `run_start` carries the hash of the harness it was handed. (This spec standardises no include syntax,
+Appendix B.)
+
+The spec guarantees:
+- **A handed harness that can't run is not launched.** One that isn't valid (§2, §3, §5.1), or that declares
+  an id the launched run's deployment doesn't bind, gets the answer `{ok: false, error: "child harness is
+  not valid"}`, `core_spawn`'s words (§10): world feedback the model sees for a tool (§3.3), a failed hook
+  for a handler (§5.4).
+- **A run of its own.** The launched run is a top-level run in a log of its own: its own `run_start` (depth
+  0), its own current step from 0, its own counters, its harness's limits. Nothing of it counts against the
+  caller's limits, and none of its entries is in the caller's log or view.
+- **No inherited hooks, no narrowing.** None of the caller's hooks runs in it, and it isn't checked against
+  the caller's harness. The calling file's author wrote a handler's sub-agent, not the model, so the reason
+  for §10's inheritance doesn't apply; and a `stop` hook that launches a title run would otherwise ask for a
+  title of that run too.
+- **The caller's log records the answer only**, as for any binding: the `tool_result` or the `hook` entry.
+  It doesn't point to the launched run: its entries are fixed (§7), and a reference in a tool's result would
+  be put in front of the model. The host files the launched run's log so it can be found from the caller's,
+  for example named after the caller's log, the binding's id and the launch's number.
+- **Replay.** The caller's fixture records the binding's answer in `tools.jsonl` like any other (§14); the
+  launched run replays from a fixture of its own. Each log replays alone, and what the calling model sees
+  stays a function of its harness and its log (§0).
+- **Failures.** A launched run that ends with `stop` or `limit` gives the binding what the binding makes of
+  it. One that ends with `infra_failure` or `host_end`, or a task that isn't a string, leaves the binding
+  without an answer: an infrastructure failure of the binding (§3.3), so a tool's ends the calling run with
+  `infra_failure` and a handler's fails its hook (`on_failure`, §5.4).
+- **The engine is unchanged.** There is no `spawn` decision and the run loop (§8) is the same; the binding
+  is the host's like any other.
+
+The host's:
+- **Its requests** are rendered by §9 and go through the host's transport like any other. The host MAY give
+  them request parameters of their own, which the neutral request doesn't carry: Hermes Agent's title
+  request is not streamed and has `reasoning_effort: "none"` and a JSON `response_format`.
+- **Its bindings.** The handed harness's ids are bound by the launched run's deployment, which may share
+  implementations with the caller's. What a launched run can reach is what that deployment binds: the rule
+  that a child never gets more than its parent (§0, §10) is `core_spawn`'s, so a deployment that binds a
+  model-facing tool this way gives the model whatever those bindings give.
+- **Its interrupts and reloads.** The caller's interrupts aren't delivered to it (§11); its host may give it
+  its own.
+- **When it runs:** inside the binding's call. A host MAY start it in the background when the binding's
+  answer doesn't depend on it (a title binding answers `allow` either way); then its failure can't reach the
+  caller and is the host's to report.
+- **The clock.** The caller's `timeout_ms` (§12.1) runs on while the binding waits.
 
 ---
 

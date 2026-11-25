@@ -20,7 +20,10 @@ added: tool order and the hash that sees it, provider call ids, the argument tex
 `replace_context` with `keep` and `wrap`, and the `pre_request` hook input's reasoning and `usage`.
 `v06-stop-context` gives a `stop` hook the same `context` and `usage`, after the reply without tool calls
 and an earlier `add_context` in its chain; its handler's `input` schema holds the expected values, so a
-wrong input fails the hook.
+wrong input fails the hook. That hook hands a title harness to a binding that launches it (§13.1, Appendix
+A.7), and `v06-stop-title-run` is the launched run: its own log, its tool-free request. The engines' launch
+tests (`test_launch.py`, `launch.test.ts`) run the two together with the binding live and get both
+fixtures' expected files.
 `v06-argument-text-sorted-ascii` runs the second form of the argument text (§9.4) over the edge cases
 that tell Python's writer from ECMAScript's (member order by code point, escapes, integers and floats,
 repeated names, a call without `raw`, `{args}` and `{args_indented}`); `v06-argument-text-reload`
