@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.6.0 — 2026-11-25
+
+Spec v0.6 (`docs/spec-v0.6.md`; v0.5 moves to `docs/archive/specs/`). Five changes, the user's decision of
+2026-11-25 after Mouseion rebuilt the pi coding agent (pi 1.5.2) as a Fausth harness and replayed recordings of the
+original against it. Each closes one of the gaps in Mouseion's `harnesses/pi/1.5.2/NOTES.md`, which the rebuild had
+to work around on the host's side: tool order (gap 1), call ids (gap 2), argument text (gap 3), the engine's texts
+(gap 5) and compaction (gap 7). Gaps 4 (pi repairs arguments before checking them) and 6 (host values in the
+prompt) get no spec change. Harness files declare `spec: harness/0.6`.
+
+**Compatibility.** A 0.6 engine still runs `harness/0.5` files, exactly as 0.5.6 did: the same log and the same
+requests (§15). So a host that moves to 0.6 changes nothing for its existing harnesses until it bumps their `spec`;
+harness-lab's stored harnesses keep their hashes. Bumping a file to 0.6 changes what its model sees: the tools come
+in the file's order, the provider's call ids and argument text go back, and `pre_request` handlers see reasoning and
+`usage` (a handler whose `input` schema closes the hook input or its messages rejects them).
+
+### Spec
+- **Tools in the order the file declares them** (§9). Member order (§1): the order in the document, except that
+  ids that are array indexes (`2`, `10`) come first, as ECMAScript orders an object's keys, so TypeScript's plain
+  objects and `JSON.parse` keep it. After a live reload the new file's order applies; a child offers its own
+  harness's. `harness_hash` = `hash([harness, tool ids in member order])` (§2): two files that differ only in
+  their tool order are two harnesses.
+- **The provider's tool-call ids are kept** (§7). The model response's `call_id` is the call's id unless it is
+  empty, already used in the log, or of the engine's form `c<n>-<n>`; then the engine names it `c<seq>-<i>` as
+  before.
+- **Arguments go back as the model sent them** (§9.4). The argument text is compact JSON in member order, strings
+  and numbers as in the canonical form: what ECMAScript's `JSON.stringify` writes for the parsed arguments (pi
+  sends exactly that). The log and the request carry it as `args_text` when it differs from the canonical form of
+  `args`; adapters send it. A call whose text isn't JSON is logged with `args: {}` and `malformed` (the text) and
+  goes back as `{}`, as pi does.
+- **The engine's texts can be worded in the file** (§8.2): `texts` with `unknown_tool`, `invalid_arguments`,
+  `malformed_arguments` (new: an argument text that isn't JSON) and `tool_error` (how any failed result is shown,
+  default `{"error":…}`). Templates with checked placeholders: `{tool}`, `{args}`, `{args_indented}`
+  (`JSON.stringify(args, null, 2)`), `{reasons}`, `{text}`, `{parse_error}`, `{error}`. The defaults are 0.5's
+  texts. A host may supply the `{reasons}` text from its own validator (§8.1), which pi's exact wording needs.
+- **Compaction** (§5.3, §5.4, §9.3). `replace_context` takes optional `keep` (the newest messages of `context` that
+  stay as they are) and `wrap` (`false`: the text is the message as it is, not excerpted to `max_hook_text`). The
+  `pre_request` hook input's `context` keeps the logged reasoning, and it gains `usage`, the last response's
+  reported token usage (the model response and the `assistant` entry gain `usage`).
+- Appendix B: pi's check after the last reply (`stop` can't replace the context), asking again after compacting,
+  and validators' own messages are open points; a proposal for the first is noted, not adopted.
+
+### Engines
+- TypeScript and Python: `toolIds`/`tool_ids`, `harnessHash`/`harness_hash`, `argumentText`/`argument_text` (the
+  Python one writes ECMAScript's key order and number format), `fill`, `TEXTS`; the run loop keeps provider ids,
+  logs `args_text`, `malformed` and `usage`, words its texts, asks an optional host `reasons(tool, args)`, renders
+  `keep` and `wrap`; `harness/0.5` files take the 0.5.6 paths. Schemas `schema/harness.v0.6.json` (new) and
+  `harness.v0.5.json`.
+
+### Adapters
+- Chat Completions (`toChat`/`to_chat`, `fromChat`/`from_chat`): calls go back with their argument text; an answer's
+  tool-call `id` becomes `call_id`, arguments that aren't JSON become `malformed`, and the body's `usage` object
+  becomes `usage`.
+
+### Conformance
+- New fixtures `v06-tool-order`, `v06-call-ids`, `v06-argument-text`, `v06-texts`, `v06-replace-context-keep`,
+  `v06-hook-context-usage`, and `v05-on-0.6` (a 0.5 file given 0.6's response members; its expected files are also
+  what the 0.5.6 engine writes). The 50 earlier fixtures are `harness/0.5` files and kept their expected files,
+  `hook-context-without-reasoning` included.
+- `values.json`: `argument_text` vectors (member order, repeated names, numbers, escapes, indentation).
+  `openai.json`: provider ids, the argument text, `malformed`, `usage`. Harness cases for `texts` and `harness/0.7`.
+
+### Checked against pi
+- Mouseion's pi 1.5.2 rebuild, moved to 0.6 in a scratch copy: tool order, call ids and argument text left its
+  `wire.ts` for the engine, and compaction became a `pre_request` hook (its binding holds pi's trigger, cut and
+  summary requests). All 18 recordings replay byte-identical (468 requests, 25 compactions), including
+  cobol-modernization__5ewGafh, which differed under 0.5 by gap 5: with pi's texts and pi-schema's reasons from
+  the host it is identical now.
+
 ## 0.5.6 — 2026-11-10
 
 Invalid arguments now say why. A tool call whose arguments failed the input schema was answered only
