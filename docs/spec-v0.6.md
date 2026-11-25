@@ -269,16 +269,19 @@ The handler receives one object:
 
 Only the members that apply to the event are present: `call` for tool events, `result` for
 `post_tool`, `message` for `user_prompt` and `stop`, `interrupt` for `interrupt`, `context`
-(the rendered conversation, §9) and `usage` for `pre_request`. `event`, `hook`, `with` (`{}` when the hook
-has none), `step`, `turn` and `view` are always present. `call.args` are the arguments as the chain has
-modified them so far (`post_tool`: the arguments the call ran with); `message` is the user's
+(the rendered conversation, §9) and `usage` for `pre_request` and `stop`. `event`, `hook`, `with` (`{}`
+when the hook has none), `step`, `turn` and `view` are always present. `call.args` are the arguments as
+the chain has modified them so far (`post_tool`: the arguments the call ran with); `message` is the user's
 text (`user_prompt`) or the response's `text` (`stop`); `context` is the `messages` of the
 request as it would be rendered at that point, logged reasoning included (§9), so it includes
 the chain's earlier `add_context`; `usage` is the `usage` of the run's last `assistant` entry (§7),
 the token counts the provider reported for the last response as the host gave them, absent when that
-entry has none or there is none. A compaction handler measures the context with the two (Appendix
-A.3). On `post_tool`, after a `replace` earlier in the chain, `replaced` holds the text that replaces
-the result so far.
+entry has none or there is none. On `stop` the two are the same as on `pre_request`, taken after the
+response without tool calls: `context` ends with that response (and the chain's earlier `add_context`),
+and `usage` is that response's. A compaction handler measures the context with the two (Appendix A.3); a
+`stop` handler can build a request of its own from them after the model's last reply, through a binding
+that launches another run (§13.1, Appendix A.7). On `post_tool`, after a `replace` earlier in the chain,
+`replaced` holds the text that replaces the result so far.
 
 If the handler declares an `input` schema, the engine validates this object against it before
 calling the binding; if it doesn't match, the hook failed (§5.4) and the binding is not called.

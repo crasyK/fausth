@@ -18,6 +18,9 @@ only where 0.6 differs (the hash, tool order, `args_text`), and `hook-context-re
 input schema rejects the reasoning 0.6 puts in `context`, failing. The `v06-*` fixtures cover what 0.6
 added: tool order and the hash that sees it, provider call ids, the argument text, the engine's texts,
 `replace_context` with `keep` and `wrap`, and the `pre_request` hook input's reasoning and `usage`.
+`v06-stop-context` gives a `stop` hook the same `context` and `usage`, after the reply without tool calls
+and an earlier `add_context` in its chain; its handler's `input` schema holds the expected values, so a
+wrong input fails the hook.
 `v06-argument-text-sorted-ascii` runs the second form of the argument text (§9.4) over the edge cases
 that tell Python's writer from ECMAScript's (member order by code point, escapes, integers and floats,
 repeated names, a call without `raw`, `{args}` and `{args_indented}`); `v06-argument-text-reload`

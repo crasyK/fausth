@@ -368,8 +368,8 @@ class Run {
       if (members.message !== undefined) input.message = members.message;
       if (members.interrupt) input.interrupt = { ...members.interrupt };
       if (members.continued !== undefined) input.continued = members.continued;
-      // The request's messages, and the usage the run's last response reported (§5.3).
-      if (event === "pre_request") {
+      // The request's messages as they would be rendered now, and the usage the run's last response reported (§5.3).
+      if (event === "pre_request" || event === "stop") {
         input.context = render(this.harness, this.log.entries, this.scope).messages as Json;
         const usage = this.log.entries.findLast((e) => e.type === "assistant" && inScope(e, this.scope))?.usage;
         if (usage !== undefined) input.usage = usage;

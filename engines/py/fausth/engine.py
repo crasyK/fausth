@@ -355,8 +355,9 @@ class _Run:
                     inp[k] = members[k]
             if "interrupt" in members:
                 inp["interrupt"] = dict(members["interrupt"])
-            if event == "pre_request":
-                # The request's messages, and the usage the run's last response reported (§5.3).
+            if event in ("pre_request", "stop"):
+                # The request's messages as they would be rendered now, and the usage the run's last response
+                # reported (§5.3).
                 inp["context"] = render(self.harness, self.log.entries, self.scope)["messages"]
                 last = next((e for e in reversed(self.log.entries)
                              if e["type"] == "assistant" and in_scope(e, self.scope)), None)

@@ -1,0 +1,3 @@
+{"id": "read", "ok": true, "result": "def parse(s):\n    return s.split(',')"}
+{"id": "make_title", "ok": true, "result": {"decision": "allow"}}
+{"id": "make_title", "ok": true, "result": {"decision": "allow"}}

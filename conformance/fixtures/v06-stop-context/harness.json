@@ -1,0 +1,187 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-stop-context",
+  "prompt": "Answer questions about the code.",
+  "tools": {
+    "read": {
+      "description": "Read a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "handlers": {
+    "make_title": {
+      "description": "Bound to a run of the title harness (v06-stop-title-run); checks what a stop hook sees.",
+      "input": {
+        "type": "object",
+        "required": [
+          "event",
+          "message",
+          "continued",
+          "context"
+        ],
+        "properties": {
+          "event": {
+            "const": "stop"
+          },
+          "continued": {
+            "const": 0
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "step": {
+                  "const": 2
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "usage"
+              ],
+              "properties": {
+                "usage": {
+                  "const": {
+                    "prompt_tokens": 80,
+                    "completion_tokens": 21
+                  }
+                },
+                "context": {
+                  "const": [
+                    {
+                      "role": "user",
+                      "text": "<system-reminder>Mode: build.</system-reminder>\nWhy does parse('') in parser.py return [''] and not []?"
+                    },
+                    {
+                      "role": "assistant",
+                      "text": "",
+                      "tool_calls": [
+                        {
+                          "call_id": "call_1",
+                          "tool": "read",
+                          "args": {
+                            "path": "parser.py"
+                          }
+                        }
+                      ],
+                      "reasoning": "Read the file first."
+                    },
+                    {
+                      "role": "tool",
+                      "call_id": "call_1",
+                      "tool": "read",
+                      "text": "def parse(s):\n    return s.split(',')"
+                    },
+                    {
+                      "role": "assistant",
+                      "text": "''.split(',') is [''], since split always returns at least one item. Return [] when s is empty.",
+                      "tool_calls": [],
+                      "reasoning": "Found it."
+                    },
+                    {
+                      "role": "user",
+                      "text": "<hook event=\"stop\" id=\"remind\" decision=\"add_context\">Keep answers short.</hook>"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "step": {
+                  "const": 3
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "usage"
+                ]
+              },
+              "properties": {
+                "context": {
+                  "const": [
+                    {
+                      "role": "user",
+                      "text": "<system-reminder>Mode: build.</system-reminder>\nWhy does parse('') in parser.py return [''] and not []?"
+                    },
+                    {
+                      "role": "assistant",
+                      "text": "",
+                      "tool_calls": [
+                        {
+                          "call_id": "call_1",
+                          "tool": "read",
+                          "args": {
+                            "path": "parser.py"
+                          }
+                        }
+                      ],
+                      "reasoning": "Read the file first."
+                    },
+                    {
+                      "role": "tool",
+                      "call_id": "call_1",
+                      "tool": "read",
+                      "text": "def parse(s):\n    return s.split(',')"
+                    },
+                    {
+                      "role": "assistant",
+                      "text": "''.split(',') is [''], since split always returns at least one item. Return [] when s is empty.",
+                      "tool_calls": [],
+                      "reasoning": "Found it."
+                    },
+                    {
+                      "role": "user",
+                      "text": "<hook event=\"stop\" id=\"remind\" decision=\"add_context\">Keep answers short.</hook>\n\nThanks."
+                    },
+                    {
+                      "role": "assistant",
+                      "text": "You're welcome.",
+                      "tool_calls": []
+                    },
+                    {
+                      "role": "user",
+                      "text": "<hook event=\"stop\" id=\"remind\" decision=\"add_context\">Keep answers short.</hook>"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "remind",
+      "on": "stop",
+      "run": "core_context",
+      "with": {
+        "text": "Keep answers short."
+      }
+    },
+    {
+      "id": "title",
+      "on": "stop",
+      "run": "make_title",
+      "on_failure": "skip"
+    }
+  ]
+}
