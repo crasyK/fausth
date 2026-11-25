@@ -1,15 +1,22 @@
 // The run loop (spec §8), hooks (§5, §6) and child runs (§10).
-import { SPAWN_INPUT, TURN, harnessErrors, type Event, type Harness, type Hook, type Limits } from "./harness.js";
-import { Log, TOP, callId, view, type Scope, type ViewEntry } from "./log.js";
-import { hookWrapper, render, type Request, type ToolCall } from "./render.js";
+import {
+  SPAWN_INPUT, TEXTS, TURN, fill, harnessErrors, harnessHash, isV05, type Event, type Harness, type Hook, type TextName,
+} from "./harness.js";
+import { Log, TOP, callId, inScope, view, type Scope, type ViewEntry } from "./log.js";
+import { hookWrapper, render, type LoggedCall, type Request } from "./render.js";
 import { argumentReasons, compileSchema, type Check } from "./schema.js";
-import { canonical, excerpt, hash, type Json } from "./values.js";
+import { argumentText, canonical, excerpt, type Json } from "./values.js";
 
+/** A tool call as the model response gives it (§14): its arguments, or the text that wasn't JSON. */
+export type ResponseCall =
+  | { tool: string; args: Json; call_id?: string }
+  | { tool: string; malformed: string; parse_error?: string; call_id?: string };
 export interface ModelResponse {
   text?: string;
-  tool_calls?: { tool: string; args: Json }[];
+  tool_calls?: ResponseCall[];
   reasoning?: string;
   reasoning_opaque?: Json;
+  usage?: { [k: string]: Json };
 }
 export type Answer = { ok: true; result: Json } | { ok: false; error: string };
 export interface Interrupt { source: string; text: string }
@@ -26,6 +33,9 @@ export interface Host {
   interrupts(step: number): Interrupt[];
   /** A replacement harness to take at this step boundary, or null (§12.3). */
   harness?(step: number): unknown;
+  /** Optional: the reasons text for arguments that failed a tool's input schema, from the host's own validator,
+   * or null for the engine's (§8.1). */
+  reasons?(tool: string, args: Json): string | null | undefined;
 }
 
 export class InfraFailure extends Error {}
@@ -52,7 +62,7 @@ const PUSH_BACK: Partial<Record<Event, string>> = {
 };
 const ENDS_CHAIN = new Set(["deny", "continue", "replace_context"]);
 
-interface Decision { hook: Hook; decision: string; text?: string; args?: Json }
+interface Decision { hook: Hook; decision: string; text?: string; args?: Json; keep?: number; wrap?: boolean }
 interface Members { call?: { tool: string; args: Json }; result?: Answer; message?: string; interrupt?: Interrupt; continued?: number }
 /** A hook with the run whose harness declared it (inherited hooks keep their harness, §10). */
 interface Owned { hook: Hook; owner: Run }
@@ -76,6 +86,8 @@ function topLimits(harness: Harness): Effective {
 }
 
 const SOURCE = /^[a-zA-Z0-9_-]{1,64}$/;
+/** The form of the engine's own call ids (§7), which a provider's id may not take. */
+const ENGINE_ID = /^c[0-9]+-[0-9]+$/;
 
 class Run {
   /** Requests and tool calls of this run and its children (§8, §10). */
@@ -116,6 +128,16 @@ class Run {
     return this.counter.step;
   }
 
+  /** This run's harness is a `harness/0.5` file, run as 0.5.6 ran it (§15). */
+  get v05(): boolean {
+    return isV05(this.harness);
+  }
+
+  /** One of the engine's texts (§8.2): the harness's wording, else the default. */
+  text(name: TextName, values: Record<string, string>): string {
+    return fill(this.harness.texts?.[name] ?? TEXTS[name].default!, values);
+  }
+
   get hooks(): Owned[] {
     return [...this.inherited, ...(this.harness.hooks ?? []).map((hook) => ({ hook, owner: this as Run }))];
   }
@@ -126,7 +148,7 @@ class Run {
 
   /** Run to the end. A child's only user message is its task; the top level asks the host. */
   async run(task: string | null): Promise<Reason> {
-    this.append("run_start", { harness_hash: await hash(this.harness), depth: this.scope.depth });
+    this.append("run_start", { harness_hash: await harnessHash(this.harness), depth: this.scope.depth });
     let reason: Reason;
     try {
       await this.start();
@@ -168,7 +190,7 @@ class Run {
       this.harness = next as Harness;
       this.limits = topLimits(this.harness);
       this.compile();
-      this.append("harness_changed", { harness_hash: await hash(this.harness) });
+      this.append("harness_changed", { harness_hash: await harnessHash(this.harness) });
       await this.start();
       if (this.stepsUsed >= this.limits.max_steps) throw new Ended("limit");
     }
@@ -193,17 +215,17 @@ class Run {
       const response = checkResponse(await this.host.model(render(this.harness, this.log.entries, this.scope)));
       this.counter.step += 1;
       for (let r: Run | undefined = this; r; r = r.parent) r.stepsUsed += 1;
-      const seq = this.log.entries.length + 1;
-      const calls: ToolCall[] = (response.tool_calls ?? []).map((c, i) => ({ call_id: callId(seq, i), tool: c.tool, args: c.args }));
+      const calls = this.loggedCalls(response.tool_calls ?? []);
       this.lastText = response.text ?? "";
       this.append("assistant", {
         step: this.step,
         text: this.lastText,
-        tool_calls: calls,
+        tool_calls: calls as Json,
         ...(response.reasoning !== undefined && { reasoning: response.reasoning }),
         ...(response.reasoning_opaque !== undefined && { reasoning_opaque: response.reasoning_opaque }),
+        ...(response.usage !== undefined && !this.v05 && { usage: response.usage }),
       });
-      for (const call of calls) await this.toolCall(call);
+      for (const [i, call] of calls.entries()) await this.toolCall(call, response.tool_calls![i]!);
       if (calls.length > 0) continue;
       if (continued < this.limits.max_continues) {
         const decisions = await this.chain("stop", { message: this.lastText, continued });
@@ -216,16 +238,46 @@ class Run {
     }
   }
 
-  private async toolCall(call: ToolCall): Promise<void> {
+  /** The response's calls as the log holds them (§7): ids, argument texts, malformed texts. */
+  private loggedCalls(calls: ResponseCall[]): LoggedCall[] {
+    const seq = this.log.entries.length + 1;
+    const used = new Set<string>();
+    for (const e of this.log.entries) {
+      if (e.type === "assistant") for (const c of e.tool_calls as LoggedCall[]) used.add(c.call_id);
+    }
+    return calls.map((c, i) => {
+      // The provider's id, unless it is empty, taken, or of the engine's form; a 0.5 file never keeps it (§7, §15).
+      const given = this.v05 ? undefined : c.call_id;
+      const id = given && !used.has(given) && !ENGINE_ID.test(given) ? given : callId(seq, i);
+      used.add(id);
+      if ("malformed" in c) {
+        // Its arguments go back as {} (§9.4); a 0.5 file takes the text as the arguments, as 0.5.6 did.
+        return this.v05 ? { call_id: id, tool: c.tool, args: c.malformed } : { call_id: id, tool: c.tool, args: {}, malformed: c.malformed };
+      }
+      const text = this.v05 ? undefined : argumentText(c.args);
+      return { call_id: id, tool: c.tool, args: c.args, ...(text !== undefined && text !== canonical(c.args) && { args_text: text }) };
+    });
+  }
+
+  private async toolCall(call: LoggedCall, response: ResponseCall): Promise<void> {
     if (this.toolCallsUsed >= this.limits.max_tool_calls) throw new Ended("limit");
     for (let r: Run | undefined = this; r; r = r.parent) r.toolCallsUsed += 1;
+    const shown = () => ({ tool: call.tool, args: argumentText(call.args), args_indented: argumentText(call.args, true) });
     if (!Object.hasOwn(this.harness.tools ?? {}, call.tool)) {
-      this.result(call, { ok: false, error: "invalid arguments: unknown tool" });
+      this.result(call, { ok: false, error: this.text("unknown_tool", shown()) });
+      return;
+    }
+    if (call.malformed !== undefined) {
+      const parseError = ("parse_error" in response && response.parse_error) || "";
+      this.result(call, { ok: false, error: this.text("malformed_arguments", { tool: call.tool, text: call.malformed, parse_error: parseError }) });
       return;
     }
     if (!this.schemas.get(`tools.${call.tool}.input`)!(call.args)) {
       const schema = call.tool === "core_spawn" ? SPAWN_INPUT : this.harness.tools![call.tool]!.input;
-      this.result(call, { ok: false, error: "invalid arguments: " + argumentReasons(schema, call.args) });
+      const own = this.v05 ? undefined : this.host.reasons?.(call.tool, call.args); // §15: the engine's for 0.5
+      if (own !== undefined && own !== null && (typeof own !== "string" || !isJson(own))) throw new InfraFailure("malformed reasons from the host");
+      const reasons = own ?? argumentReasons(schema, call.args);
+      this.result(call, { ok: false, error: this.text("invalid_arguments", { ...shown(), reasons }) });
       return;
     }
     const pre = await this.chain("pre_tool", { call: { tool: call.tool, args: call.args } }, call);
@@ -239,12 +291,12 @@ class Run {
     await this.chain("post_tool", { call: { tool: call.tool, args }, result: answer }, call);
   }
 
-  private result(call: ToolCall, answer: Answer): void {
+  private result(call: LoggedCall, answer: Answer): void {
     this.append("tool_result", { call_id: call.call_id, tool: call.tool, ...answer });
   }
 
   /** `core_spawn` (§10): the narrowing check, then the child run. Null if the check denied it. */
-  private async spawn(call: ToolCall, args: { harness: Harness; task: string }): Promise<Answer | null> {
+  private async spawn(call: LoggedCall, args: { harness: Harness; task: string }): Promise<Answer | null> {
     const child = args.harness;
     const denial = this.narrowing(child);
     if (denial !== null) {
@@ -295,7 +347,7 @@ class Run {
   }
 
   /** Run the hooks of an event in order (§5.2), log each decision, and return the ones that act. */
-  private async chain(event: Event, members: Members, call?: ToolCall): Promise<Decision[]> {
+  private async chain(event: Event, members: Members, call?: LoggedCall): Promise<Decision[]> {
     const acting: Decision[] = [];
     let current = members.call;
     let replaced: string | undefined;
@@ -311,14 +363,18 @@ class Run {
       if (members.message !== undefined) input.message = members.message;
       if (members.interrupt) input.interrupt = { ...members.interrupt };
       if (members.continued !== undefined) input.continued = members.continued;
-      // The request's messages without the logged reasoning, which only adapters send on (§5.3, §9).
+      // The request's messages, and the usage the run's last response reported (§5.3). A 0.5 file gets them
+      // without the logged reasoning and without usage, as from 0.5.6 (§15).
       if (event === "pre_request") {
-        input.context = render(this.harness, this.log.entries, this.scope).messages.map((m) => {
+        const messages = render(this.harness, this.log.entries, this.scope).messages;
+        input.context = (this.v05 ? messages.map((m) => {
           const copy: { [k: string]: unknown } = { ...m };
           delete copy.reasoning;
           delete copy.reasoning_opaque;
           return copy;
-        }) as Json;
+        }) : messages) as Json;
+        const usage = this.v05 ? undefined : this.log.entries.findLast((e) => e.type === "assistant" && inScope(e, this.scope))?.usage;
+        if (usage !== undefined) input.usage = usage;
       }
 
       const d = await this.decide(hook, owner, event, input, current?.tool);
@@ -330,7 +386,8 @@ class Run {
       }
       this.append("hook", {
         hook: hook.id, event, decision: d.decision,
-        ...(d.text !== undefined && { text: d.text }), ...(d.args !== undefined && { args: d.args }), ...where,
+        ...(d.text !== undefined && { text: d.text }), ...(d.args !== undefined && { args: d.args }),
+        ...(d.keep !== undefined && { keep: d.keep }), ...(d.wrap !== undefined && { wrap: d.wrap }), ...where,
       });
       if (d.decision === "allow") continue;
       acting.push(d);
@@ -370,6 +427,19 @@ class Run {
       if (out.text !== undefined && typeof out.text !== "string") return null;
       if (!isJson(out.args) || !this.schemas.get(`tools.${tool}.input`)!(out.args)) return null;
       return { hook, decision, args: out.args as Json, ...(out.text !== undefined && { text: cap(out.text as string) }) };
+    }
+    if (decision === "replace_context" && !this.v05 && members !== "text") {
+      // Optional `keep` (at most the context's messages) and `wrap` (§5.4); unwrapped text is not excerpted.
+      const names = members.split(",");
+      if (!names.includes("text") || names.some((m) => m !== "text" && m !== "keep" && m !== "wrap")) return null;
+      if (typeof out.text !== "string" || !isJson(out.text)) return null;
+      const keep = out.keep;
+      if (keep !== undefined && !(Number.isInteger(keep) && (keep as number) >= 0 && (keep as number) <= (input.context as Json[]).length)) return null;
+      if (out.wrap !== undefined && typeof out.wrap !== "boolean") return null;
+      return {
+        hook, decision, text: out.wrap === false ? out.text : cap(out.text),
+        ...(keep !== undefined && { keep: keep as number }), ...(out.wrap !== undefined && { wrap: out.wrap as boolean }),
+      };
     }
     if (members !== "text" || typeof out.text !== "string" || !isJson(out.text)) return null;
     return { hook, decision, text: cap(out.text) };
@@ -425,6 +495,14 @@ function at(value: Json, path: string): Json | undefined {
 
 const isObject = (v: unknown): v is { [k: string]: unknown } => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/** A tool call of a model response (§14): `args`, or `malformed` text with an optional `parse_error`; an optional id. */
+function isResponseCall(c: unknown): boolean {
+  if (!isObject(c) || typeof c.tool !== "string" || ("args" in c) === ("malformed" in c)) return false;
+  if (c.call_id !== undefined && typeof c.call_id !== "string") return false;
+  if ("malformed" in c) return typeof c.malformed === "string" && (c.parse_error === undefined || typeof c.parse_error === "string");
+  return c.parse_error === undefined;
+}
+
 /** A model response as the transport delivered it; anything else breaks the interface. */
 function checkResponse(v: unknown): ModelResponse {
   const ok = isObject(v)
@@ -432,8 +510,8 @@ function checkResponse(v: unknown): ModelResponse {
     && (v.reasoning === undefined || typeof v.reasoning === "string")
     && (v.reasoning_opaque === undefined || (isObject(v.reasoning_opaque) && Object.keys(v.reasoning_opaque).length === 2
       && typeof v.reasoning_opaque.provider === "string" && "data" in v.reasoning_opaque))
-    && (v.tool_calls === undefined || (Array.isArray(v.tool_calls)
-      && v.tool_calls.every((c) => isObject(c) && typeof c.tool === "string" && "args" in c)));
+    && (v.usage === undefined || isObject(v.usage))
+    && (v.tool_calls === undefined || (Array.isArray(v.tool_calls) && v.tool_calls.every(isResponseCall)));
   if (!ok || !isJson(v)) throw new InfraFailure("malformed model response");
   return v as ModelResponse;
 }

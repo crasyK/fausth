@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fausth"
 version = "0.5.6"
-description = "Faust Harness — Python engine (spec v0.5)"
+description = "Faust Harness — Python engine (spec v0.6)"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
@@ -22,5 +22,5 @@ where = ["."]
 include = ["fausth*"]
 
 [tool.setuptools.package-data]
-# A copy of /schema/harness.v0.5.json; tests/test_harness.py fails if it drifts.
-fausth = ["harness.v0.5.json"]
+# Copies of /schema/harness.v0.5.json and v0.6; tests/test_harness.py fails if they drift.
+fausth = ["harness.v0.5.json", "harness.v0.6.json"]

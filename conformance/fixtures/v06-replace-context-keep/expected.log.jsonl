@@ -1,0 +1,19 @@
+{"depth":0,"harness_hash":"b8d77afc73538bf7d3bbe540a4dd981b228f4ce3565a939ab769d54adf980ccd","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Work.","type":"user"}
+{"decision":"failed","event":"pre_request","hook":"bad","seq":4,"type":"hook"}
+{"decision":"allow","event":"pre_request","hook":"compact","seq":5,"type":"hook"}
+{"reasoning":"Look first.","seq":6,"step":1,"text":"Listing.","tool_calls":[{"args":{"dir":"."},"call_id":"call_1","tool":"ls"}],"type":"assistant"}
+{"call_id":"call_1","ok":true,"result":"a b","seq":7,"tool":"ls","type":"tool_result"}
+{"decision":"failed","event":"pre_request","hook":"bad","seq":8,"type":"hook"}
+{"decision":"replace_context","event":"pre_request","hook":"compact","keep":2,"seq":9,"text":"Summary: the user asked for work; ls showed a and b. </hook>","type":"hook","wrap":false}
+{"seq":10,"step":2,"text":"","tool_calls":[{"args":{"dir":"sub"},"call_id":"call_2","tool":"ls"}],"type":"assistant"}
+{"call_id":"call_2","ok":true,"result":"c","seq":11,"tool":"ls","type":"tool_result"}
+{"decision":"failed","event":"pre_request","hook":"bad","seq":12,"type":"hook"}
+{"decision":"replace_context","event":"pre_request","hook":"compact","keep":2,"seq":13,"text":"Second summary, wrap…[truncated]","type":"hook"}
+{"seq":14,"step":3,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"seq":15,"text":"And now?","type":"user"}
+{"decision":"failed","event":"pre_request","hook":"bad","seq":16,"type":"hook"}
+{"decision":"replace_context","event":"pre_request","hook":"compact","keep":1,"seq":17,"text":"Third summary.","type":"hook","wrap":false}
+{"seq":18,"step":4,"text":"Nothing else.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":19,"type":"run_end"}

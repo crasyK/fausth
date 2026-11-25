@@ -1,5 +1,5 @@
 {
- "about": "Shared test vectors for spec v0.5 section 1 (values). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points.",
+ "about": "Shared test vectors for spec v0.6 section 1 (values) and 9.4 (the argument text). `json` is JSON text: an engine parses it with its JSON reader and canonicalizes the result; `error: true` means parsing or canonicalizing must fail. `hash` is SHA-256 of the UTF-8 bytes of `canonical`. Excerpt counts code points. `argument_text` (0.6): `json` parsed by the engine's JSON reader, written as the argument text (`text`) and with two-space indentation (`indented`): members in member order (array-index names first, ascending, then the rest as written; a repeated name keeps its first place and its last value), strings and numbers as in the canonical form.",
  "canonical": [
   {
    "name": "rfc8785 sample",
@@ -401,6 +401,56 @@
    "s": "ab\ud83d\ude00",
    "n": 3,
    "out": "ab\ud83d\ude00"
+  }
+ ],
+ "argument_text": [
+  {
+   "name": "member order: array-index names first",
+   "json": "{\"b\":1,\"10\":2,\"a\":3,\"2\":4,\"01\":5,\"4294967295\":6,\"4294967294\":7,\"-1\":8,\"1.5\":9}",
+   "text": "{\"2\":4,\"10\":2,\"4294967294\":7,\"b\":1,\"a\":3,\"01\":5,\"4294967295\":6,\"-1\":8,\"1.5\":9}",
+   "indented": "{\n  \"2\": 4,\n  \"10\": 2,\n  \"4294967294\": 7,\n  \"b\": 1,\n  \"a\": 3,\n  \"01\": 5,\n  \"4294967295\": 6,\n  \"-1\": 8,\n  \"1.5\": 9\n}"
+  },
+  {
+   "name": "a repeated name keeps its first place and its last value",
+   "json": "{\"b\":1,\"a\":2,\"b\":3}",
+   "text": "{\"b\":3,\"a\":2}",
+   "indented": "{\n  \"b\": 3,\n  \"a\": 2\n}"
+  },
+  {
+   "name": "numbers as in the canonical form",
+   "json": "[1.0, 1e2, -0.0, 0.1, 1e21, 1E-7, 123456789012345678901234, 5e-324, -1.5e+300]",
+   "text": "[1,100,0,0.1,1e+21,1e-7,1.2345678901234569e+23,5e-324,-1.5e+300]",
+   "indented": "[\n  1,\n  100,\n  0,\n  0.1,\n  1e+21,\n  1e-7,\n  1.2345678901234569e+23,\n  5e-324,\n  -1.5e+300\n]"
+  },
+  {
+   "name": "strings: only quotes, backslashes and control characters are escaped",
+   "json": "\"\\u00e9 \\u65e5\\u672c \\ud83d\\ude42 \\u007f \\u2028 \\/ \\\"q\\\" \\\\ \\n\\t\\b\\f\\r \\u0001 \\u001f\"",
+   "text": "\"\u00e9 \u65e5\u672c \ud83d\ude42 \u007f \u2028 / \\\"q\\\" \\\\ \\n\\t\\b\\f\\r \\u0001 \\u001f\"",
+   "indented": "\"\u00e9 \u65e5\u672c \ud83d\ude42 \u007f \u2028 / \\\"q\\\" \\\\ \\n\\t\\b\\f\\r \\u0001 \\u001f\""
+  },
+  {
+   "name": "nesting and empty containers",
+   "json": "{\"z\":{\"y\":[],\"x\":{}},\"a\":[{\"d\":null,\"c\":true},[]],\"k\":false}",
+   "text": "{\"z\":{\"y\":[],\"x\":{}},\"a\":[{\"d\":null,\"c\":true},[]],\"k\":false}",
+   "indented": "{\n  \"z\": {\n    \"y\": [],\n    \"x\": {}\n  },\n  \"a\": [\n    {\n      \"d\": null,\n      \"c\": true\n    },\n    []\n  ],\n  \"k\": false\n}"
+  },
+  {
+   "name": "scalars",
+   "json": "\"text\"",
+   "text": "\"text\"",
+   "indented": "\"text\""
+  },
+  {
+   "name": "an empty object",
+   "json": "{}",
+   "text": "{}",
+   "indented": "{}"
+  },
+  {
+   "name": "whitespace in the model's text goes",
+   "json": "{ \"path\" : \"a.txt\" ,\n \"edits\" : [ { \"oldText\" : \"x\" , \"newText\" : \"y\" } ] }",
+   "text": "{\"path\":\"a.txt\",\"edits\":[{\"oldText\":\"x\",\"newText\":\"y\"}]}",
+   "indented": "{\n  \"path\": \"a.txt\",\n  \"edits\": [\n    {\n      \"oldText\": \"x\",\n      \"newText\": \"y\"\n    }\n  ]\n}"
   }
  ]
 }

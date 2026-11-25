@@ -1,0 +1,5 @@
+spec: harness/0.6
+name: m
+prompt: hi
+texts:
+  tool_error: "{tool} failed: {error}"

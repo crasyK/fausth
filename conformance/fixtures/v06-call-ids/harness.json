@@ -1,0 +1,28 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-call-ids",
+  "prompt": "Take notes.",
+  "tools": {
+    "note": {
+      "description": "Take a note.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "core_spawn": {}
+  },
+  "hooks": [
+    {
+      "id": "seen",
+      "on": "post_tool",
+      "match": "note",
+      "run": "core_context",
+      "with": {
+        "text": "Noted."
+      }
+    }
+  ],
+  "limits": {
+    "max_depth": 1
+  }
+}

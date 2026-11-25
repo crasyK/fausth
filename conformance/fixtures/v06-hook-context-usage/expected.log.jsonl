@@ -1,0 +1,12 @@
+{"depth":0,"harness_hash":"a27653f7c3b36cfd4f5246c98c9e760b2968a9fc43fb0c1e40034e69995859ad","seq":1,"type":"run_start"}
+{"seq":2,"text":"Answer briefly.","type":"system"}
+{"seq":3,"text":"Hi.","type":"user"}
+{"decision":"allow","event":"pre_request","hook":"size","seq":4,"type":"hook"}
+{"reasoning":"A greeting needs a greeting.","seq":5,"step":1,"text":"Hello.","tool_calls":[],"type":"assistant","usage":{"completion_tokens":3,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0}}}
+{"seq":6,"text":"Hi again.","type":"user"}
+{"decision":"allow","event":"pre_request","hook":"size","seq":7,"type":"hook"}
+{"reasoning":"Same answer.","reasoning_opaque":{"data":[1],"provider":"kit"},"seq":8,"step":2,"text":"Hello again.","tool_calls":[],"type":"assistant"}
+{"seq":9,"text":"Bye.","type":"user"}
+{"decision":"allow","event":"pre_request","hook":"size","seq":10,"type":"hook"}
+{"seq":11,"step":3,"text":"Bye.","tool_calls":[],"type":"assistant","usage":{"completion_tokens":2,"prompt_tokens":40}}
+{"reason":"stop","seq":12,"type":"run_end"}

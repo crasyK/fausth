@@ -1,0 +1,31 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-argument-text",
+  "prompt": "Edit files.",
+  "tools": {
+    "echo": {
+      "description": "Echo the arguments.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "edit": {
+      "description": "Edit a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "edits": {
+            "type": "array"
+          }
+        }
+      }
+    }
+  }
+}

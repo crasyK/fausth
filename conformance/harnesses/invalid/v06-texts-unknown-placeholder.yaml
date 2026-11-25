@@ -1,0 +1,5 @@
+spec: harness/0.6
+name: m
+prompt: hi
+texts:
+  invalid_arguments: "invalid arguments: {reason}"

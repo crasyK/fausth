@@ -100,7 +100,8 @@ class CliHost:
             raise
         if self.verbose:
             for c in response.get("tool_calls", []):
-                print(f"  model → {c['tool']} {canonical(c['args'])[:200]}", file=sys.stderr)
+                shown = canonical(c["args"]) if "args" in c else f"(not JSON) {c['malformed']}"
+                print(f"  model → {c['tool']} {shown[:200]}", file=sys.stderr)
             if response.get("text"):
                 print(f"  model: {response['text'][:500]}", file=sys.stderr)
         return response

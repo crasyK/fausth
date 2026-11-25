@@ -1,0 +1,2 @@
+{"tool_calls": [{"tool": "grep", "args": {"q": "x", "path": "/app"}}, {"tool": "edit", "args": {"edits": [{"edits": [{"newText": "b", "oldText": "a"}]}], "path": "/app/x.py"}}, {"tool": "edit", "malformed": "{\"path\": \"/app/x.py\", \"edits\": [", "parse_error": "Unexpected end of JSON input"}, {"tool": "edit", "malformed": "{path}"}, {"tool": "read", "args": {}}, {"tool": "read", "args": {"path": "/app/missing"}}]}
+{"text": "Done."}

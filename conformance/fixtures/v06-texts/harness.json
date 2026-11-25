@@ -1,0 +1,60 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-texts",
+  "prompt": "Edit files.",
+  "tools": {
+    "read": {
+      "description": "Read a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "edit": {
+      "description": "Edit a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path",
+          "edits"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "oldText",
+                "newText"
+              ],
+              "properties": {
+                "oldText": {
+                  "type": "string"
+                },
+                "newText": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "texts": {
+    "unknown_tool": "Tool {tool} not found (arguments {args})",
+    "invalid_arguments": "Validation failed for tool \"{tool}\":\n{reasons}\n\nReceived arguments:\n{args_indented}",
+    "malformed_arguments": "Invalid arguments for tool \"{tool}\": {parse_error}\n\nReceived arguments:\n{text}",
+    "tool_error": "Error: {error} {not a placeholder}"
+  }
+}

@@ -1,0 +1,6 @@
+{"id": "seer", "ok": true, "result": {"decision": "allow"}}
+{"id": "keeper", "ok": true, "result": {"decision": "allow"}}
+{"id": "zeta", "ok": true, "result": "z1"}
+{"id": "alpha", "ok": true, "result": "a1"}
+{"id": "seer", "ok": true, "result": {"decision": "allow"}}
+{"id": "keeper", "ok": true, "result": {"decision": "replace_context", "text": "Summary.", "keep": 1}}

@@ -1,0 +1,2 @@
+{"text": "Calling.", "tool_calls": [{"tool": "zeta", "args": {}}]}
+{"text": "Done."}

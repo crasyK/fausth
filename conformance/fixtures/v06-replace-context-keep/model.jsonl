@@ -1,0 +1,4 @@
+{"text": "Listing.", "reasoning": "Look first.", "tool_calls": [{"tool": "ls", "args": {"dir": "."}, "call_id": "call_1"}]}
+{"tool_calls": [{"tool": "ls", "args": {"dir": "sub"}, "call_id": "call_2"}]}
+{"text": "Done."}
+{"text": "Nothing else."}

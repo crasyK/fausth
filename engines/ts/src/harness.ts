@@ -1,9 +1,10 @@
-// The harness file (spec §2, §3, §5.1, §6): reading it and checking it.
+// The harness file (spec §2, §3, §5.1, §6, §8.2, §15): reading it and checking it.
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parseDocument } from "yaml";
-import harnessSchema from "../../../schema/harness.v0.5.json" with { type: "json" };
+import schema05 from "../../../schema/harness.v0.5.json" with { type: "json" };
+import schema06 from "../../../schema/harness.v0.6.json" with { type: "json" };
 import { compileSchema } from "./schema.js";
-import { canonical, type Json } from "./values.js";
+import { canonical, hash, type Json } from "./values.js";
 
 export type Event =
   | "session_start" | "user_prompt" | "pre_request" | "pre_tool" | "post_tool" | "stop" | "interrupt";
@@ -27,6 +28,7 @@ export interface Limits {
   max_hook_text?: number;
   timeout_ms?: number;
 }
+export type TextName = "unknown_tool" | "invalid_arguments" | "malformed_arguments" | "tool_error";
 export interface Harness {
   spec: string;
   name: string;
@@ -35,6 +37,41 @@ export interface Harness {
   handlers?: { [id: string]: Handler };
   hooks?: Hook[];
   limits?: Limits;
+  texts?: { [name in TextName]?: string };
+}
+
+export const SPEC = "harness/0.6";
+/** The previous spec value, which a 0.6 engine runs as release 0.5.6 did (§15). */
+export const SPEC_05 = "harness/0.5";
+
+/** A `harness/0.5` file: run as 0.5.6 ran it (§15). */
+export const isV05 = (h: Harness): boolean => h.spec === SPEC_05;
+
+/** The engine's texts (§8.2): each one's placeholders and its default (`tool_error` has none: §9.3). */
+export const TEXTS: Record<TextName, { placeholders: string[]; default?: string }> = {
+  unknown_tool: { placeholders: ["tool", "args", "args_indented"], default: "invalid arguments: unknown tool" },
+  invalid_arguments: { placeholders: ["tool", "args", "args_indented", "reasons"], default: "invalid arguments: {reasons}" },
+  malformed_arguments: {
+    placeholders: ["tool", "text", "parse_error"], default: "invalid arguments: the arguments must be a JSON object",
+  },
+  tool_error: { placeholders: ["error"] },
+};
+const PLACEHOLDER = /\{([a-z_]+)\}/g;
+
+/** A text of `texts` (or its default) with its placeholders filled in (§8.2); values are not escaped. */
+export function fill(template: string, values: Record<string, string>): string {
+  return template.replace(PLACEHOLDER, (whole, name: string) => (Object.hasOwn(values, name) ? values[name]! : whole));
+}
+
+/** The ids of `tools` in the order the model is offered them (§9): member order (§1); sorted for a 0.5 file. */
+export function toolIds(h: Harness): string[] {
+  const ids = Object.keys(h.tools ?? {});
+  return isV05(h) ? ids.sort() : ids;
+}
+
+/** `harness_hash` (§2): the hash of the resolved harness with its tool order; of the harness alone for a 0.5 file. */
+export function harnessHash(h: Harness): Promise<string> {
+  return isV05(h) ? hash(h) : hash([h as unknown as Json, toolIds(h)]);
 }
 
 export const BUILT_INS = new Set(["core_called_since", "core_last_result", "core_count", "core_deny", "core_context"]);
@@ -81,7 +118,9 @@ function toJson(v: unknown): Json {
   throw new Error(`not a JSON value: ${String(v)}`);
 }
 
-const checkStructure = new Ajv2020({ strict: false, allErrors: true, validateFormats: false }).compile(harnessSchema);
+const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
+const checkV06 = ajv.compile(schema06);
+const checkV05 = ajv.compile(schema05);
 
 /** What is wrong with a harness; empty if it is valid. */
 export function harnessErrors(value: unknown): string[] {
@@ -90,6 +129,7 @@ export function harnessErrors(value: unknown): string[] {
   } catch (e) {
     return [`no canonical form (§1): ${e instanceof Error ? e.message : String(e)}`];
   }
+  const checkStructure = (value as { spec?: unknown } | null)?.spec === SPEC_05 ? checkV05 : checkV06;
   if (!checkStructure(value)) {
     return (checkStructure.errors ?? []).map((e) => `${e.instancePath || "/"}: ${e.message ?? "invalid"}`);
   }
@@ -127,6 +167,12 @@ export function harnessErrors(value: unknown): string[] {
     if (BUILT_INS.has(hook.run)) toolRefs.push(...[hook.with?.tool].flat(), ...(hook.with?.since === TURN ? [] : [hook.with?.since]));
     for (const id of toolRefs) {
       if (typeof id === "string" && !Object.hasOwn(tools, id)) errors.push(`hook ${hook.id}: ${id} is not a declared tool`);
+    }
+  }
+  for (const [name, template] of Object.entries(h.texts ?? {})) {
+    const allowed = TEXTS[name as TextName].placeholders;
+    for (const [, placeholder] of template.matchAll(PLACEHOLDER)) {
+      if (!allowed.includes(placeholder!)) errors.push(`texts.${name}: {${placeholder}} is not one of its placeholders`);
     }
   }
   return errors;

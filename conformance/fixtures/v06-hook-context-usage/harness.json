@@ -1,0 +1,117 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-hook-context-usage",
+  "prompt": "Answer briefly.",
+  "handlers": {
+    "sizer": {
+      "description": "Checks what a pre_request hook sees.",
+      "input": {
+        "type": "object",
+        "required": [
+          "context"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "step": {
+                  "const": 0
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "usage"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "step": {
+                  "const": 1
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "usage"
+              ],
+              "properties": {
+                "usage": {
+                  "const": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                    "prompt_tokens_details": {
+                      "cached_tokens": 0
+                    }
+                  }
+                },
+                "context": {
+                  "contains": {
+                    "required": [
+                      "reasoning"
+                    ],
+                    "properties": {
+                      "role": {
+                        "const": "assistant"
+                      },
+                      "reasoning": {
+                        "const": "A greeting needs a greeting."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "step": {
+                  "const": 2
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "usage"
+                ]
+              },
+              "properties": {
+                "context": {
+                  "contains": {
+                    "required": [
+                      "reasoning",
+                      "reasoning_opaque"
+                    ],
+                    "properties": {
+                      "reasoning_opaque": {
+                        "const": {
+                          "provider": "kit",
+                          "data": [
+                            1
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "size",
+      "on": "pre_request",
+      "run": "sizer"
+    }
+  ]
+}

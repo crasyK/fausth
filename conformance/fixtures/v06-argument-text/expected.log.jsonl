@@ -1,0 +1,14 @@
+{"depth":0,"harness_hash":"5a3205d6b3982b30d8912dcd9cd2187f4780f2e4a2ffc3f350bc98a19d2d4c72","seq":1,"type":"run_start"}
+{"seq":2,"text":"Edit files.","type":"system"}
+{"seq":3,"text":"Edit a.txt.","type":"user"}
+{"seq":4,"step":1,"text":"Trying.","tool_calls":[{"args":{"01":"zero-one","10":"ten","2":"two","4294967295":"not an index","big":1e+21,"edits":[{"newText":"é 日本 🙂\n\t\"q\" \\ \u0001 /","oldText":"x"}],"m":100,"n":1,"path":"a.txt","small":1.5e-7,"z":0},"args_text":"{\"2\":\"two\",\"10\":\"ten\",\"path\":\"a.txt\",\"edits\":[{\"oldText\":\"x\",\"newText\":\"é 日本 🙂\\n\\t\\\"q\\\" \\\\ \\u0001 /\"}],\"n\":1,\"m\":100,\"z\":0,\"big\":1e+21,\"small\":1.5e-7,\"01\":\"zero-one\",\"4294967295\":\"not an index\"}","call_id":"c4-0","tool":"echo"},{"args":{"a":1,"b":[2,1],"c":{"d":null,"e":true}},"call_id":"c4-1","tool":"echo"},{"args":{"a":2,"b":3},"args_text":"{\"b\":3,\"a\":2}","call_id":"c4-2","tool":"echo"},{"args":{},"call_id":"c4-3","malformed":"{\"path\": \"a.txt\", ","tool":"edit"},{"args":{"a":1,"q":"x"},"args_text":"{\"q\":\"x\",\"a\":1}","call_id":"c4-4","tool":"grep"},{"args":{"edits":[],"path":3},"args_text":"{\"path\":3,\"edits\":[]}","call_id":"c4-5","tool":"edit"},{"args":"a.txt","call_id":"c4-6","tool":"edit"},{"args":[3,{"x":2,"y":1}],"args_text":"[3,{\"y\":1,\"x\":2}]","call_id":"c4-7","tool":"echo"}],"type":"assistant"}
+{"call_id":"c4-0","ok":true,"result":"echoed 1","seq":5,"tool":"echo","type":"tool_result"}
+{"call_id":"c4-1","ok":true,"result":"echoed 2","seq":6,"tool":"echo","type":"tool_result"}
+{"call_id":"c4-2","ok":true,"result":"echoed 3","seq":7,"tool":"echo","type":"tool_result"}
+{"call_id":"c4-3","error":"invalid arguments: the arguments must be a JSON object","ok":false,"seq":8,"tool":"edit","type":"tool_result"}
+{"call_id":"c4-4","error":"invalid arguments: unknown tool","ok":false,"seq":9,"tool":"grep","type":"tool_result"}
+{"call_id":"c4-5","error":"invalid arguments: path: must be a string","ok":false,"seq":10,"tool":"edit","type":"tool_result"}
+{"call_id":"c4-6","error":"invalid arguments: the arguments must be a JSON object","ok":false,"seq":11,"tool":"edit","type":"tool_result"}
+{"call_id":"c4-7","error":"invalid arguments: the arguments must be a JSON object","ok":false,"seq":12,"tool":"echo","type":"tool_result"}
+{"seq":13,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":14,"type":"run_end"}

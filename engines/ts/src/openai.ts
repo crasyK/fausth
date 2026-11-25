@@ -1,9 +1,10 @@
 // OpenAI-compatible Chat Completions adapter (host side, spec §9, §13): the neutral request to the
-// API, the API's answer back to a model response. Texts pass through unchanged; tools keep their ids.
+// API, the API's answer back to a model response. Texts pass through unchanged; tools keep their ids; calls keep
+// the provider's ids and go back with their argument text (§9.4).
 // The twin of engines/py/fausth/openai.py; conformance/openai.json pins both.
 import { InfraFailure } from "./engine.js";
-import type { Request } from "./render.js";
-import { canonical, type Json } from "./values.js";
+import { argsText, type Request } from "./render.js";
+import type { Json } from "./values.js";
 
 type Obj = { [k: string]: Json };
 const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
@@ -25,7 +26,7 @@ export function toChat(request: Request, model: string, extra: Obj = {}, reasoni
       const message: Obj = { role: "assistant", content: m.text || m.tool_calls.length === 0 ? m.text : null };
       if (m.tool_calls.length > 0) {
         message.tool_calls = m.tool_calls.map((c) => ({
-          id: c.call_id, type: "function", function: { name: c.tool, arguments: canonical(c.args) },
+          id: c.call_id, type: "function", function: { name: c.tool, arguments: argsText(c) },
         }));
       }
       if (m.reasoning && (reasoningReplay === "all" || (reasoningReplay === "turn" && i > lastUser))) message.reasoning_content = m.reasoning;
@@ -54,21 +55,23 @@ export function fromChat(body: unknown, provider: string): Obj {
   for (const c of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
     const f = isObject(c) && isObject(c.function) ? c.function : {};
     const raw = f.arguments;
-    let args: Json;
-    if (raw === undefined || raw === null || raw === "") args = {};
+    const call: Obj = { tool: f.name as Json };
+    if (isObject(c) && typeof c.id === "string" && c.id !== "") call.call_id = c.id; // the provider's id (§7)
+    if (raw === undefined || raw === null || raw === "") call.args = {};
     else if (typeof raw === "string") {
       try {
-        args = JSON.parse(raw) as Json;
+        call.args = JSON.parse(raw) as Json;
       } catch {
-        args = raw; // not JSON: the engine answers "invalid arguments" to the model
+        call.malformed = raw; // not JSON: the engine answers with its malformed_arguments text (§8.2)
       }
-    } else args = raw as Json;
-    calls.push({ tool: f.name as Json, args });
+    } else call.args = raw as Json;
+    calls.push(call);
   }
   if (calls.length > 0) out.tool_calls = calls;
   const reasoning = message.reasoning_content || message.reasoning;
   if (typeof reasoning === "string" && reasoning) out.reasoning = reasoning;
   if (message.reasoning_details) out.reasoning_opaque = { provider, data: message.reasoning_details as Json };
+  if (isObject(body) && isObject(body.usage)) out.usage = body.usage as Obj; // the provider's report, for hooks (§5.3)
   return out;
 }
 

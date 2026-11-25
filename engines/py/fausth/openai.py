@@ -1,5 +1,6 @@
 """OpenAI-compatible Chat Completions adapter (host side, spec §9, §13): the neutral request to the
-API, the API's answer back to a model response. Texts pass through unchanged; tools keep their ids."""
+API, the API's answer back to a model response. Texts pass through unchanged; tools keep their ids; calls keep
+the provider's ids and go back with their argument text (§9.4)."""
 from __future__ import annotations
 
 import json
@@ -9,7 +10,8 @@ import urllib.request
 from typing import Any
 
 from .engine import InfraFailure
-from .values import canonical, parse_json
+from .render import args_text
+from .values import parse_json
 
 _RETRY_STATUS = (408, 429, 500, 502, 503, 504)
 # Gateways that answer 400 for their own trouble (KIT: "ServiceUnavailable", "Server Connection Error").
@@ -33,7 +35,7 @@ def to_chat(request: dict[str, Any], model: str, extra: dict[str, Any] | None = 
             message: dict[str, Any] = {"role": "assistant", "content": m["text"] if m["text"] or not m["tool_calls"] else None}
             if m["tool_calls"]:
                 message["tool_calls"] = [
-                    {"id": c["call_id"], "type": "function", "function": {"name": c["tool"], "arguments": canonical(c["args"])}}
+                    {"id": c["call_id"], "type": "function", "function": {"name": c["tool"], "arguments": args_text(c)}}
                     for c in m["tool_calls"]]
             if m.get("reasoning") and (reasoning_replay == "all" or (reasoning_replay == "turn" and i > last_user)):
                 message["reasoning_content"] = m["reasoning"]
@@ -63,16 +65,19 @@ def from_chat(body: Any, provider: str) -> dict[str, Any]:
         f = c.get("function") if isinstance(c, dict) else None
         f = f if isinstance(f, dict) else {}
         raw = f.get("arguments")
+        call: dict[str, Any] = {"tool": f.get("name")}
+        if isinstance(c, dict) and isinstance(c.get("id"), str) and c["id"]:
+            call["call_id"] = c["id"]  # the provider's id (§7)
         if raw is None or raw == "":
-            args: Any = {}
+            call["args"] = {}
         elif isinstance(raw, str):
             try:
-                args = parse_json(raw)
+                call["args"] = parse_json(raw)
             except ValueError:
-                args = raw  # not JSON: the engine answers "invalid arguments" to the model
+                call["malformed"] = raw  # not JSON: the engine answers with its malformed_arguments text (§8.2)
         else:
-            args = raw
-        calls.append({"tool": f.get("name"), "args": args})
+            call["args"] = raw
+        calls.append(call)
     if calls:
         out["tool_calls"] = calls
     reasoning = message.get("reasoning_content") or message.get("reasoning")
@@ -80,6 +85,8 @@ def from_chat(body: Any, provider: str) -> dict[str, Any]:
         out["reasoning"] = reasoning
     if message.get("reasoning_details"):
         out["reasoning_opaque"] = {"provider": provider, "data": message["reasoning_details"]}
+    if isinstance(body.get("usage"), dict):
+        out["usage"] = body["usage"]  # the provider's report, for hooks (§5.3)
     return out
 
 

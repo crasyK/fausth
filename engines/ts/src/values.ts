@@ -1,4 +1,4 @@
-// Values (spec §1): canonical form (RFC 8785), hash, excerpt.
+// Values (spec §1): canonical form (RFC 8785), hash, excerpt, member order and the argument text (§9.4).
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -46,4 +46,14 @@ export const TRUNCATED = "…[truncated]";
 export function excerpt(s: string, n: number): string {
   const points = Array.from(s);
   return points.length <= n ? s : points.slice(0, n).join("") + TRUNCATED;
+}
+
+/**
+ * The argument text of a value (§9.4): compact JSON, members in member order (§1), strings and numbers
+ * as in the canonical form; with `indented`, two-space indentation. For a JSON value this is exactly what
+ * `JSON.stringify` writes: `Object.keys` gives the member order. Throws if the value has no canonical form.
+ */
+export function argumentText(value: unknown, indented = false): string {
+  canonical(value);
+  return indented ? JSON.stringify(value, null, 2) : JSON.stringify(value);
 }

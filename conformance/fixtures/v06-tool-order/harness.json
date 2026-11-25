@@ -1,0 +1,50 @@
+{
+  "spec": "harness/0.6",
+  "name": "v06-tool-order",
+  "prompt": "Use the tools.",
+  "tools": {
+    "zeta": {
+      "description": "Tool zeta.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "10": {
+      "description": "Tool 10.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "Alpha": {
+      "description": "Tool Alpha.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "core_spawn": {},
+    "1": {
+      "description": "Tool 1.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "-": {
+      "description": "Tool -.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "__proto__": {
+      "description": "Tool __proto__.",
+      "input": {
+        "type": "object"
+      }
+    },
+    "beta": {
+      "description": "Tool beta.",
+      "input": {
+        "type": "object"
+      }
+    }
+  }
+}

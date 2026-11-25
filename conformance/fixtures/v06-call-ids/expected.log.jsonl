@@ -1,0 +1,31 @@
+{"depth":0,"harness_hash":"30ec938a7c5f0e4889bb1205b43305a818516a2e640ce481fab324557b009c90","seq":1,"type":"run_start"}
+{"seq":2,"text":"Take notes.","type":"system"}
+{"seq":3,"text":"Take notes.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"call_A","tool":"note"},{"args":{"n":2},"call_id":"c4-1","tool":"note"},{"args":{"n":3},"call_id":"c4-2","tool":"note"},{"args":{"n":4},"call_id":"c4-3","tool":"note"},{"args":{"n":5},"call_id":"c4-4","tool":"note"}],"type":"assistant"}
+{"call_id":"call_A","ok":true,"result":"note 1","seq":5,"tool":"note","type":"tool_result"}
+{"call_id":"call_A","decision":"add_context","event":"post_tool","hook":"seen","seq":6,"text":"Noted.","type":"hook"}
+{"call_id":"c4-1","ok":true,"result":"note 2","seq":7,"tool":"note","type":"tool_result"}
+{"call_id":"c4-1","decision":"add_context","event":"post_tool","hook":"seen","seq":8,"text":"Noted.","type":"hook"}
+{"call_id":"c4-2","ok":true,"result":"note 3","seq":9,"tool":"note","type":"tool_result"}
+{"call_id":"c4-2","decision":"add_context","event":"post_tool","hook":"seen","seq":10,"text":"Noted.","type":"hook"}
+{"call_id":"c4-3","ok":true,"result":"note 4","seq":11,"tool":"note","type":"tool_result"}
+{"call_id":"c4-3","decision":"add_context","event":"post_tool","hook":"seen","seq":12,"text":"Noted.","type":"hook"}
+{"call_id":"c4-4","ok":true,"result":"note 5","seq":13,"tool":"note","type":"tool_result"}
+{"call_id":"c4-4","decision":"add_context","event":"post_tool","hook":"seen","seq":14,"text":"Noted.","type":"hook"}
+{"seq":15,"step":2,"text":"More.","tool_calls":[{"args":{"n":6},"call_id":"c15-0","tool":"note"},{"args":{"harness":{"name":"child","prompt":"Child.","spec":"harness/0.6","tools":{"note":{"description":"Take a note.","input":{"type":"object"}}}},"task":"Note 7."},"args_text":"{\"harness\":{\"spec\":\"harness/0.6\",\"name\":\"child\",\"prompt\":\"Child.\",\"tools\":{\"note\":{\"description\":\"Take a note.\",\"input\":{\"type\":\"object\"}}}},\"task\":\"Note 7.\"}","call_id":"spawn_1","tool":"core_spawn"}],"type":"assistant"}
+{"call_id":"c15-0","ok":true,"result":"note 6","seq":16,"tool":"note","type":"tool_result"}
+{"call_id":"c15-0","decision":"add_context","event":"post_tool","hook":"seen","seq":17,"text":"Noted.","type":"hook"}
+{"depth":1,"harness_hash":"df8d9e8c41bdec26112993b0645ffc2ff784170031c573ce370d2655aae0a278","parent_call":"spawn_1","seq":18,"type":"run_start"}
+{"depth":1,"parent_call":"spawn_1","seq":19,"text":"Child.","type":"system"}
+{"depth":1,"parent_call":"spawn_1","seq":20,"text":"Note 7.","type":"user"}
+{"depth":1,"parent_call":"spawn_1","seq":21,"step":3,"text":"","tool_calls":[{"args":{"n":7},"call_id":"call_B","tool":"note"}],"type":"assistant"}
+{"call_id":"call_B","depth":1,"ok":true,"parent_call":"spawn_1","result":"note 7","seq":22,"tool":"note","type":"tool_result"}
+{"call_id":"call_B","decision":"add_context","depth":1,"event":"post_tool","hook":"seen","parent_call":"spawn_1","seq":23,"text":"Noted.","type":"hook"}
+{"depth":1,"parent_call":"spawn_1","seq":24,"step":4,"text":"Noted 7.","tool_calls":[],"type":"assistant"}
+{"depth":1,"parent_call":"spawn_1","reason":"stop","seq":25,"type":"run_end"}
+{"call_id":"spawn_1","ok":true,"result":{"steps":2,"text":"Noted 7.","tool_calls":1},"seq":26,"tool":"core_spawn","type":"tool_result"}
+{"seq":27,"step":5,"text":"","tool_calls":[{"args":{"n":8},"call_id":"c27-0","tool":"note"}],"type":"assistant"}
+{"call_id":"c27-0","ok":true,"result":"note 8","seq":28,"tool":"note","type":"tool_result"}
+{"call_id":"c27-0","decision":"add_context","event":"post_tool","hook":"seen","seq":29,"text":"Noted.","type":"hook"}
+{"seq":30,"step":6,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":31,"type":"run_end"}

@@ -4,11 +4,11 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Protocol
 
-from .harness import SPAWN_INPUT, TURN, harness_errors
-from .log import TOP, Log, Scope, call_id, view
+from .harness import SPAWN_INPUT, TEXTS, TURN, fill, harness_errors, harness_hash, is_v05
+from .log import TOP, Log, Scope, call_id, in_scope, view
 from .render import hook_wrapper, render
 from .schema import argument_reasons, compile_schema
-from .values import canonical, excerpt, hash
+from .values import argument_text, canonical, excerpt
 
 
 class InfraFailure(Exception):
@@ -35,6 +35,8 @@ class Host(Protocol):
         """Interrupts queued for delivery at this step boundary, in arrival order (§11)."""
 
     # Optional: harness(step) -> a replacement harness to take at this step boundary, or None (§12.3).
+    # Optional: reasons(tool, args) -> the reasons text for arguments that failed a tool's input schema, from the
+    # host's own validator, or None for the engine's (§8.1).
 
 
 LIMITS = ("max_steps", "max_tool_calls", "max_depth", "max_continues", "max_hook_text")
@@ -54,6 +56,7 @@ PUSH_BACK = {"pre_tool": "deny", "user_prompt": "deny", "interrupt": "deny", "st
 ENDS_CHAIN = ("deny", "continue", "replace_context")
 _INDEX = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _SOURCE = re.compile(r"[a-zA-Z0-9_-]{1,64}\Z")
+_ENGINE_ID = re.compile(r"c[0-9]+-[0-9]+\Z")  # the form of the engine's own call ids (§7)
 _NOWHERE = object()
 
 
@@ -103,6 +106,15 @@ class _Run:
         return self.counter["step"]
 
     @property
+    def v05(self) -> bool:
+        """This run's harness is a `harness/0.5` file, run as 0.5.6 ran it (§15)."""
+        return is_v05(self.harness)
+
+    def text(self, name: str, values: dict[str, str]) -> str:
+        """One of the engine's texts (§8.2): the harness's wording, else the default."""
+        return fill(self.harness.get("texts", {}).get(name, TEXTS[name][1]), values)
+
+    @property
     def hooks(self) -> list[tuple[dict[str, Any], _Run]]:
         """Each hook with the run whose harness declared it (inherited hooks keep their harness, §10)."""
         return self.inherited + [(hook, self) for hook in self.harness.get("hooks", [])]
@@ -119,7 +131,7 @@ class _Run:
 
     def run(self, task: str | None) -> str:
         """Run to the end. A child's only user message is its task; the top level asks the host."""
-        self.append("run_start", {"harness_hash": hash(self.harness), "depth": self.scope.depth})
+        self.append("run_start", {"harness_hash": harness_hash(self.harness), "depth": self.scope.depth})
         try:
             self._start()
             pending = task
@@ -161,7 +173,7 @@ class _Run:
             self.harness = new
             self.limits = _top_limits(new)
             self._compile()
-            self.append("harness_changed", {"harness_hash": hash(new)})
+            self.append("harness_changed", {"harness_hash": harness_hash(new)})
             self._start()
             if self.steps_used >= self.limits["max_steps"]:
                 raise _Ended("limit")
@@ -187,15 +199,16 @@ class _Run:
             self.counter["step"] += 1
             for r in self._ancestry():
                 r.steps_used += 1
-            seq = len(self.log.entries) + 1
-            calls = [{"call_id": call_id(seq, i), "tool": c["tool"], "args": c["args"]}
-                     for i, c in enumerate(response.get("tool_calls", []))]
+            given = response.get("tool_calls", [])
+            calls = self._logged_calls(given)
             self.last_text = response.get("text", "")
             members = {"step": self.step, "text": self.last_text, "tool_calls": calls}
             members.update((k, response[k]) for k in ("reasoning", "reasoning_opaque") if k in response)
+            if "usage" in response and not self.v05:
+                members["usage"] = response["usage"]
             self.append("assistant", members)
-            for call in calls:
-                self._tool_call(call)
+            for call, c in zip(calls, given):
+                self._tool_call(call, c)
             if calls:
                 continue
             if continued < self.limits["max_continues"]:
@@ -205,18 +218,54 @@ class _Run:
                     continue
             return
 
-    def _tool_call(self, call: dict[str, Any]) -> None:
+    def _logged_calls(self, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The response's calls as the log holds them (§7): ids, argument texts, malformed texts."""
+        seq = len(self.log.entries) + 1
+        used = {c["call_id"] for e in self.log.entries if e["type"] == "assistant" for c in e["tool_calls"]}
+        out = []
+        for i, c in enumerate(calls):
+            # The provider's id, unless it is empty, taken, or of the engine's form; a 0.5 file never keeps it (§7, §15).
+            given = None if self.v05 else c.get("call_id")
+            cid = given if given and given not in used and not _ENGINE_ID.match(given) else call_id(seq, i)
+            used.add(cid)
+            if "malformed" in c:
+                # Its arguments go back as {} (§9.4); a 0.5 file takes the text as the arguments, as 0.5.6 did.
+                out.append({"call_id": cid, "tool": c["tool"], "args": c["malformed"]} if self.v05
+                           else {"call_id": cid, "tool": c["tool"], "args": {}, "malformed": c["malformed"]})
+                continue
+            call = {"call_id": cid, "tool": c["tool"], "args": c["args"]}
+            if not self.v05:
+                text = argument_text(c["args"])
+                if text != canonical(c["args"]):
+                    call["args_text"] = text
+            out.append(call)
+        return out
+
+    def _tool_call(self, call: dict[str, Any], response_call: dict[str, Any]) -> None:
         if self.tool_calls_used >= self.limits["max_tool_calls"]:
             raise _Ended("limit")
         for r in self._ancestry():
             r.tool_calls_used += 1
         tool = call["tool"]
+
+        def shown() -> dict[str, str]:
+            return {"tool": tool, "args": argument_text(call["args"]), "args_indented": argument_text(call["args"], True)}
+
         if tool not in self.harness.get("tools", {}):
-            self._result(call, {"ok": False, "error": "invalid arguments: unknown tool"})
+            self._result(call, {"ok": False, "error": self.text("unknown_tool", shown())})
+            return
+        if "malformed" in call:
+            values = {"tool": tool, "text": call["malformed"], "parse_error": response_call.get("parse_error", "")}
+            self._result(call, {"ok": False, "error": self.text("malformed_arguments", values)})
             return
         if not self.schemas[f"tools.{tool}.input"](call["args"]):
             schema = SPAWN_INPUT if tool == "core_spawn" else self.harness["tools"][tool].get("input")
-            self._result(call, {"ok": False, "error": "invalid arguments: " + argument_reasons(schema, call["args"])})
+            own_reasons = None if self.v05 else getattr(self.host, "reasons", None)  # §15: the engine's for 0.5
+            own = own_reasons(tool, call["args"]) if own_reasons is not None else None
+            if own is not None and (not isinstance(own, str) or not _is_json(own)):
+                raise InfraFailure("malformed reasons from the host")
+            reasons = own if own is not None else argument_reasons(schema, call["args"])
+            self._result(call, {"ok": False, "error": self.text("invalid_arguments", {**shown(), "reasons": reasons})})
             return
         pre = self._chain("pre_tool", {"call": {"tool": tool, "args": call["args"]}}, call)
         if any(d["decision"] == "deny" for d in pre):
@@ -307,9 +356,16 @@ class _Run:
             if "interrupt" in members:
                 inp["interrupt"] = dict(members["interrupt"])
             if event == "pre_request":
-                # The request's messages without the logged reasoning, which only adapters send on (§5.3, §9).
+                # The request's messages, and the usage the run's last response reported (§5.3). A 0.5 file gets
+                # them without the logged reasoning and without usage, as from 0.5.6 (§15).
+                messages = render(self.harness, self.log.entries, self.scope)["messages"]
                 inp["context"] = [{k: v for k, v in m.items() if k not in ("reasoning", "reasoning_opaque")}
-                                  for m in render(self.harness, self.log.entries, self.scope)["messages"]]
+                                  for m in messages] if self.v05 else messages
+                if not self.v05:
+                    last = next((e for e in reversed(self.log.entries)
+                                 if e["type"] == "assistant" and in_scope(e, self.scope)), None)
+                    if last is not None and "usage" in last:
+                        inp["usage"] = last["usage"]
 
             d = self._decide(hook, owner, event, inp, current["tool"] if current else None)
             where = {"call_id": call["call_id"]} if call else {}
@@ -319,7 +375,7 @@ class _Run:
                     raise InfraFailure(f"hook {hook['id']} failed")
                 continue
             entry = {"hook": hook["id"], "event": event, "decision": d["decision"]}
-            entry.update((k, d[k]) for k in ("text", "args") if k in d)
+            entry.update((k, d[k]) for k in ("text", "args", "keep", "wrap") if k in d)
             self.append("hook", {**entry, **where})
             if d["decision"] == "allow":
                 continue
@@ -373,6 +429,25 @@ class _Run:
             d = {"hook": hook, "decision": decision, "args": out["args"]}
             if "text" in out:
                 d["text"] = cap(out["text"])
+            return d
+        if decision == "replace_context" and not self.v05 and members != ["text"]:
+            # Optional `keep` (at most the context's messages) and `wrap` (§5.4); unwrapped text is not excerpted.
+            if "text" not in members or not set(members) <= {"text", "keep", "wrap"}:
+                return None
+            if not isinstance(out["text"], str) or not _is_json(out["text"]):
+                return None
+            keep = out.get("keep")
+            if keep is not None and not (_is_count(keep) and keep <= len(inp["context"])):
+                return None
+            if "keep" in out and keep is None:
+                return None
+            if "wrap" in out and not isinstance(out["wrap"], bool):
+                return None
+            d = {"hook": hook, "decision": decision, "text": out["text"] if out.get("wrap") is False else cap(out["text"])}
+            if "keep" in out:
+                d["keep"] = int(keep)
+            if "wrap" in out:
+                d["wrap"] = out["wrap"]
             return d
         if members != ["text"] or not isinstance(out["text"], str) or not _is_json(out["text"]):
             return None
@@ -438,6 +513,22 @@ def _at(value: Any, path: str) -> Any:
     return v
 
 
+def _is_count(v: Any) -> bool:
+    """A non-negative integer (a JSON number without a fractional part)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 and float(v).is_integer()
+
+
+def _is_response_call(c: Any) -> bool:
+    """A tool call of a model response (§14): `args`, or `malformed` text with an optional `parse_error`; an optional id."""
+    if not isinstance(c, dict) or not isinstance(c.get("tool"), str) or ("args" in c) == ("malformed" in c):
+        return False
+    if not isinstance(c.get("call_id", ""), str):
+        return False
+    if "malformed" in c:
+        return isinstance(c["malformed"], str) and isinstance(c.get("parse_error", ""), str)
+    return "parse_error" not in c
+
+
 def _check_response(v: Any) -> dict[str, Any]:
     """A model response as the transport delivered it; anything else breaks the interface."""
     ok = (isinstance(v, dict)
@@ -446,8 +537,9 @@ def _check_response(v: Any) -> dict[str, Any]:
           and ("reasoning_opaque" not in v or (isinstance(v["reasoning_opaque"], dict) and len(v["reasoning_opaque"]) == 2
                                                and isinstance(v["reasoning_opaque"].get("provider"), str)
                                                and "data" in v["reasoning_opaque"]))
+          and isinstance(v.get("usage", {}), dict)
           and isinstance(v.get("tool_calls", []), list)
-          and all(isinstance(c, dict) and isinstance(c.get("tool"), str) and "args" in c for c in v.get("tool_calls", [])))
+          and all(_is_response_call(c) for c in v.get("tool_calls", [])))
     if not ok or not _is_json(v):
         raise InfraFailure("malformed model response")
     return v

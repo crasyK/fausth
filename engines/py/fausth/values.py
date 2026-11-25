@@ -1,4 +1,4 @@
-"""Values (spec §1): canonical form (RFC 8785), hash, excerpt."""
+"""Values (spec §1): canonical form (RFC 8785), hash, excerpt, member order and the argument text (§9.4)."""
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 _LONE_SURROGATE = re.compile("[" + chr(0xD800) + "-" + chr(0xDFFF) + "]")
+_ARRAY_INDEX = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 
 TRUNCATED = "…[truncated]"
 
@@ -94,6 +95,37 @@ def _number(x: float) -> str:
     e = n - 1
     head = s if k == 1 else s[0] + "." + s[1:]
     return f"{head}e{'+' if e >= 0 else '-'}{abs(e)}"
+
+
+def member_names(obj: dict[str, Any]) -> list[str]:
+    """Member order (§1): names that are array indexes first, in ascending numeric order, then the others in
+    document order. ECMAScript orders an object's own keys so, and `JSON.parse` keeps it."""
+    def index(k: str) -> bool:
+        return bool(_ARRAY_INDEX.match(k)) and int(k) < 2**32 - 1
+
+    return sorted((k for k in obj if index(k)), key=int) + [k for k in obj if not index(k)]
+
+
+def argument_text(value: Any, indented: bool = False) -> str:
+    """The argument text of a value (§9.4): compact JSON, members in member order (§1), strings and numbers as in
+    the canonical form; with `indented`, two-space indentation. What ECMAScript's `JSON.stringify` writes."""
+    canonical(value)  # raises if there is no canonical form
+    return _text(value, "\n" if indented else None)
+
+
+def _text(value: Any, newline: str | None) -> str:
+    if isinstance(value, list) and value:
+        if newline is None:
+            return "[" + ",".join(_text(v, None) for v in value) + "]"
+        inner = newline + "  "
+        return "[" + inner + ("," + inner).join(_text(v, inner) for v in value) + newline + "]"
+    if isinstance(value, dict) and value:
+        names = member_names(value)
+        if newline is None:
+            return "{" + ",".join(_quote(k) + ":" + _text(value[k], None) for k in names) + "}"
+        inner = newline + "  "
+        return "{" + inner + ("," + inner).join(_quote(k) + ": " + _text(value[k], inner) for k in names) + newline + "}"
+    return canonical(value)  # a scalar, [] or {}
 
 
 def hash(value: Any) -> str:  # noqa: A001 (the spec's name)

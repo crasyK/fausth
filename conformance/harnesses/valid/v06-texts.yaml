@@ -1,0 +1,11 @@
+spec: harness/0.6
+name: pi-texts
+prompt: p
+tools:
+  read: { description: Read a file., input: { type: object, required: [path] } }
+  bash: { description: Run a command., input: { type: object, required: [command] } }
+texts:
+  unknown_tool: "Tool {tool} not found (sent {args})"
+  invalid_arguments: "Validation failed for tool \"{tool}\":\n{reasons}\n\nReceived arguments:\n{args_indented}"
+  malformed_arguments: "Invalid arguments for tool \"{tool}\": {parse_error}\n\nReceived arguments:\n{text}"
+  tool_error: "{error} {Error} {not a placeholder} {\"json\": 1}"

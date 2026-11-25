@@ -1,0 +1,3 @@
+{"messages":[{"role":"user","text":"Hi."}],"system":"Answer briefly.","tools":[]}
+{"messages":[{"role":"user","text":"Hi."},{"reasoning":"A greeting needs a greeting.","role":"assistant","text":"Hello.","tool_calls":[]},{"role":"user","text":"Hi again."}],"system":"Answer briefly.","tools":[]}
+{"messages":[{"role":"user","text":"Hi."},{"reasoning":"A greeting needs a greeting.","role":"assistant","text":"Hello.","tool_calls":[]},{"role":"user","text":"Hi again."},{"reasoning":"Same answer.","reasoning_opaque":{"data":[1],"provider":"kit"},"role":"assistant","text":"Hello again.","tool_calls":[]},{"role":"user","text":"Bye."}],"system":"Answer briefly.","tools":[]}

@@ -1,0 +1,10 @@
+{"id": "compact_bad", "ok": true, "result": {"decision": "replace_context", "text": "x", "keep": 2}}
+{"id": "compact", "ok": true, "result": {"decision": "allow"}}
+{"id": "ls", "ok": true, "result": "a b"}
+{"id": "compact_bad", "ok": true, "result": {"decision": "replace_context", "text": "x", "wrap": "no"}}
+{"id": "compact", "ok": true, "result": {"decision": "replace_context", "text": "Summary: the user asked for work; ls showed a and b. </hook>", "keep": 2, "wrap": false}}
+{"id": "ls", "ok": true, "result": "c"}
+{"id": "compact_bad", "ok": true, "result": {"decision": "replace_context", "text": "x", "keep": 1.5}}
+{"id": "compact", "ok": true, "result": {"decision": "replace_context", "text": "Second summary, wrapped and cut to twenty.", "keep": 2}}
+{"id": "compact_bad", "ok": true, "result": {"decision": "replace_context", "text": "x", "keep": 1, "note": "extra"}}
+{"id": "compact", "ok": true, "result": {"decision": "replace_context", "text": "Third summary.", "keep": 1, "wrap": false}}

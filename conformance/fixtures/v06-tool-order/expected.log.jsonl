@@ -1,0 +1,9 @@
+{"depth":0,"harness_hash":"ca6653e5a90df549203f554941ded4d061a6f581c311edab5a3eb87464a6cab3","seq":1,"type":"run_start"}
+{"seq":2,"text":"Use the tools.","type":"system"}
+{"seq":3,"text":"Call zeta.","type":"user"}
+{"seq":4,"step":1,"text":"Calling.","tool_calls":[{"args":{},"call_id":"c4-0","tool":"zeta"}],"type":"assistant"}
+{"call_id":"c4-0","ok":true,"result":"z","seq":5,"tool":"zeta","type":"tool_result"}
+{"harness_hash":"d35c44776ccf50776b058edf0476376694ebda6abd16c5f828b88188feba167a","seq":6,"type":"harness_changed"}
+{"seq":7,"text":"Use the tools.","type":"system"}
+{"seq":8,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":9,"type":"run_end"}
