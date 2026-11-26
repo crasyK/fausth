@@ -1,0 +1,25 @@
+{"depth":0,"harness_hash":"aa83f1cf55efcafb5e1b523345f61cf14ba1e86ac8162d266e11b297f2b689ff","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Read a.","type":"user"}
+{"finish":"tool_calls","seq":4,"step":1,"text":"Reading.","tool_calls":[{"args":{"path":"a"},"call_id":"call_1","tool":"raed"},{"args":{},"call_id":"call_2","tool":"ls"},{"args":{},"call_id":"call_3","tool":"ls"}],"type":"assistant","usage":{"completion_tokens":5,"prompt_tokens":10}}
+{"decision":"failed","event":"post_response","hook":"bad","seq":5,"type":"hook"}
+{"calls":[{"call_id":"call_2","tool":"ls"},{"call_id":"call_1","tool":"read"}],"decision":"modify","event":"post_response","hook":"fix","seq":6,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"see","seq":7,"type":"hook"}
+{"call_id":"call_2","ok":true,"result":"a b","seq":8,"tool":"ls","type":"tool_result"}
+{"call_id":"call_1","ok":true,"result":"contents of a","seq":9,"tool":"read","type":"tool_result"}
+{"call_id":"call_1","decision":"allow","event":"post_tool","hook":"renamed","seq":10,"type":"hook"}
+{"finish":"stop","seq":11,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"decision":"failed","event":"post_response","hook":"bad","seq":12,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"fix","seq":13,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"see","seq":14,"type":"hook"}
+{"seq":15,"text":"Again.","type":"user"}
+{"finish":"tool_calls","seq":16,"step":3,"text":"","tool_calls":[{"args":{},"call_id":"call_4","tool":"ls"}],"type":"assistant"}
+{"decision":"failed","event":"post_response","hook":"bad","seq":17,"type":"hook"}
+{"calls":[],"decision":"modify","event":"post_response","hook":"fix","seq":18,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"see","seq":19,"type":"hook"}
+{"seq":20,"text":"Bye.","type":"user"}
+{"seq":21,"step":4,"text":"Bye.","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"post_response","hook":"bad","seq":22,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"fix","seq":23,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"see","seq":24,"type":"hook"}
+{"reason":"stop","seq":25,"type":"run_end"}

@@ -7,7 +7,7 @@
 //! own: one user message, the task the binding makes from its input, and its log is not the caller's.
 
 use crate::engine::{run, Host, HostError, Request};
-use crate::harness::{harness_errors, Harness};
+use crate::harness::{fill_host_values, harness_errors, Harness};
 use crate::log::{kind, Log};
 use crate::value::{Map, Value};
 
@@ -46,13 +46,15 @@ type OnLog = Box<dyn FnMut(&Log)>;
 pub struct LaunchOptions {
     /// Picks the handed harness; by default `handed_harness`.
     pub harness: Option<Pick>,
-    /// The answer from the log of a run that ended with `stop` or `limit`; by default `{ok: true, result: <its final
-    /// text>}`.
+    /// The answer from the log of a run that ended with `stop`, `limit` or `harness_end`; by default `{ok: true,
+    /// result: <its final text>}`.
     pub answer: Option<Answer>,
     /// Whether the launched run's deployment binds an id; a handed harness that declares another is not valid.
     pub binds: Option<Binds>,
     /// Receives every launched run's log, however it ended, for the host to keep.
     pub on_log: Option<OnLog>,
+    /// The launching host's values (§2.1): the handed harness is filled with them first.
+    pub values: Option<Map>,
 }
 
 /// A binding (input → answer, §3.3) that runs the harness it is handed on `host`, `task(input)` its only user
@@ -93,6 +95,13 @@ impl<H: Host, T: Fn(&Value) -> Value> HarnessBinding<H, T> {
             m.insert("ok", Value::Bool(false));
             m.insert("error", Value::from(INVALID));
             Ok(Value::Object(m))
+        };
+        let handed = match (&self.options.values, &handed) {
+            (Some(values), Value::Object(_)) => match fill_host_values(&handed, values) {
+                Ok(filled) => filled,
+                Err(_) => return invalid(),
+            },
+            _ => handed,
         };
         if !harness_errors(&handed).is_empty() {
             return invalid();

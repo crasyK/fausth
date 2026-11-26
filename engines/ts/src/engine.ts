@@ -18,6 +18,10 @@ export interface ModelResponse {
   reasoning?: string;
   reasoning_opaque?: Json;
   usage?: { [k: string]: Json };
+  /** Why the response ended, as the provider said it (§14). */
+  finish?: string;
+  /** The response failed: the provider rejected the request or the answer broke off (§14). */
+  failure?: string;
 }
 export type Answer = { ok: true; result: Json } | { ok: false; error: string };
 export interface Interrupt { source: string; text: string }
@@ -35,7 +39,7 @@ export interface Host {
   /** A replacement harness to take at this step boundary, or null (§12.3). */
   harness?(step: number): unknown;
   /** Optional: the reasons text for arguments that failed a tool's input schema, from the host's own validator,
-   * or null for the engine's (§8.1). */
+   * or null for the engine's (§8.1). After a pre_check `modify`, `args` are the modified ones. */
   reasons?(tool: string, args: Json): string | null | undefined;
 }
 
@@ -51,26 +55,44 @@ const DEFAULTS: Effective = { max_steps: 1000, max_tool_calls: 1000, max_depth: 
 /** Decisions each event allows besides `allow` (§4), and what a failed built-in check becomes (§6). */
 const ALLOWED: Record<Event, string[]> = {
   session_start: ["add_context"],
-  user_prompt: ["deny", "add_context"],
+  user_prompt: ["deny", "replace", "add_context"],
   pre_request: ["replace_context", "add_context"],
+  post_response: ["modify", "retry", "end"],
+  pre_check: ["modify"],
   pre_tool: ["deny", "modify", "add_context"],
-  post_tool: ["replace", "add_context"],
+  post_tool: ["replace", "add_context", "end"],
   stop: ["continue", "add_context"],
   interrupt: ["deny", "add_context"],
 };
 const PUSH_BACK: Partial<Record<Event, string>> = {
   pre_tool: "deny", user_prompt: "deny", interrupt: "deny", stop: "continue", post_tool: "add_context",
 };
-const ENDS_CHAIN = new Set(["deny", "continue", "replace_context"]);
+const ENDS_CHAIN = new Set(["deny", "continue", "replace_context", "retry", "end"]);
+/** The members a `hook` entry logs when its decision has them (§7). */
+const LOGGED = ["text", "args", "shown", "args_text", "calls", "keep", "wrap", "keep_reply", "replace_context"] as const;
+/** What the response says beyond its text and calls, logged in the `assistant` entry as given (§7, §14). */
+const RESPONSE_EXTRAS = ["reasoning", "reasoning_opaque", "usage", "finish", "failure"] as const;
 
-interface Decision { hook: Hook; decision: string; text?: string; args?: Json; keep?: number; wrap?: boolean }
-interface Members { call?: { tool: string; args: Json }; result?: Answer; message?: string; interrupt?: Interrupt; continued?: number }
+type CallChange = { call_id: string; tool: string };
+interface Decision {
+  hook: Hook; decision: string; text?: string; args?: Json; keep?: number; wrap?: boolean;
+  shown?: "model" | "modified"; args_text?: string; calls?: CallChange[]; keep_reply?: boolean;
+  replace_context?: { text: string; keep?: number; wrap?: boolean };
+  /** A pre_check hook's own `args_text`, as it gave it (not logged as such). */
+  given?: string;
+}
+type ReplyCall = LoggedCall & { raw?: string };
+interface Reply { text: string; tool_calls: ReplyCall[]; [k: string]: Json | undefined }
+interface Members {
+  call?: { tool: string; args: Json; raw?: string; malformed?: string }; result?: Answer; message?: string;
+  interrupt?: Interrupt; continued?: number; reply?: Reply; context?: Json[];
+}
 /** A hook with the run whose harness declared it (inherited hooks keep their harness, §10). */
 interface Owned { hook: Hook; owner: Run }
-type Reason = "stop" | "limit" | "infra_failure" | "host_end";
+type Reason = "stop" | "limit" | "infra_failure" | "host_end" | "harness_end";
 
 class Ended extends Error {
-  constructor(readonly reason: "stop" | "limit") {
+  constructor(readonly reason: "stop" | "limit" | "harness_end") {
     super(reason);
   }
 }
@@ -131,8 +153,17 @@ class Run {
 
   /** A call's argument text in this run's harness's form (§9.4), compact or indented. */
   argumentText(call: { args: Json; raw?: string }, indented = false): string {
-    if (this.harness.argument_text !== "sorted_ascii") return argumentText(call.args, indented);
-    return sortedAsciiText(call.raw ?? argumentText(call.args), indented);
+    const form = this.harness.argument_text ?? "model_order";
+    if (form === "sorted_ascii") return sortedAsciiText(call.raw ?? argumentText(call.args), indented);
+    if (form === "as_sent" && !indented && call.raw !== undefined) return call.raw;
+    return argumentText(call.args, indented);
+  }
+
+  /** The argument text of arguments a `pre_check` hook modified (§5.4, §9.4): the hook's `args_text`, else the
+   * arguments written as for a call without `raw`. */
+  modifiedText(args: Json, given: string | undefined, indented = false): string {
+    if (given === undefined) return this.argumentText({ args }, indented);
+    return indented ? this.argumentText({ args, raw: given }, true) : given;
   }
 
   /** One of the engine's texts (§8.2): the harness's wording, else the default. */
@@ -162,7 +193,8 @@ class Run {
         if (typeof text !== "string" || !isJson(text)) throw new InfraFailure("malformed user message");
         const decisions = await this.chain("user_prompt", { message: text });
         if (decisions.some((d) => d.decision === "deny")) continue;
-        this.append("user", { text });
+        const replaced = decisions.filter((d) => d.decision === "replace").at(-1)?.text;
+        this.append("user", { text: replaced ?? text });
         this.turn = this.step;
         await this.takeTurn();
       }
@@ -214,21 +246,36 @@ class Run {
       if (this.stepsUsed >= this.limits.max_steps) throw new Ended("limit");
       if (!this.parent) await this.boundary();
       await this.chain("pre_request", {});
-      const response = checkResponse(await this.host.model(render(this.harness, this.log.entries, this.scope)));
+      const request = render(this.harness, this.log.entries, this.scope);
+      const response = checkResponse(await this.host.model(request));
       this.counter.step += 1;
       for (let r: Run | undefined = this; r; r = r.parent) r.stepsUsed += 1;
-      const calls = this.loggedCalls(response.tool_calls ?? []);
+      const given = response.tool_calls ?? [];
+      const calls = this.loggedCalls(given);
       this.lastText = response.text ?? "";
-      this.append("assistant", {
-        step: this.step,
+      const extras: { [k: string]: Json } = {};
+      for (const k of RESPONSE_EXTRAS) if (response[k] !== undefined) extras[k] = response[k] as Json;
+      this.append("assistant", { step: this.step, text: this.lastText, tool_calls: calls as Json, ...extras });
+      // The reply as logged, each call with the model's `raw` text (§5.3); the request it answers.
+      const { usage: _, ...replyExtras } = extras;
+      const reply: Reply = {
         text: this.lastText,
-        tool_calls: calls as Json,
-        ...(response.reasoning !== undefined && { reasoning: response.reasoning }),
-        ...(response.reasoning_opaque !== undefined && { reasoning_opaque: response.reasoning_opaque }),
-        ...(response.usage !== undefined && { usage: response.usage }),
-      });
-      for (const [i, call] of calls.entries()) await this.toolCall(call, response.tool_calls![i]!);
-      if (calls.length > 0) continue;
+        tool_calls: calls.map((c, i) => { const raw = (given[i] as { raw?: string }).raw; return raw === undefined ? c : { ...c, raw }; }),
+        ...replyExtras,
+      };
+      const decisions = await this.chain("post_response", { reply, context: request.messages as Json[] });
+      if (decisions.some((d) => d.decision === "end")) throw new Ended("harness_end");
+      if (decisions.some((d) => d.decision === "retry")) continue;
+      if (response.failure !== undefined) throw new InfraFailure("the model response failed and no post_response hook answered it");
+      let pairs = calls.map((c, i) => [c, given[i]!] as const);
+      const modified = decisions.filter((d) => d.decision === "modify").at(-1)?.calls;
+      if (modified) {
+        // Only the listed calls run, in that order, under their names (§5.4).
+        const byId = new Map(pairs.map((p) => [p[0].call_id, p]));
+        pairs = modified.map((m) => { const [c, r] = byId.get(m.call_id)!; return [{ ...c, tool: m.tool }, r] as const; });
+      }
+      for (const [call, r] of pairs) await this.toolCall(call, r);
+      if (pairs.length > 0) continue;
       if (continued < this.limits.max_continues) {
         const decisions = await this.chain("stop", { message: this.lastText, continued });
         if (decisions.some((d) => d.decision === "continue")) {
@@ -264,7 +311,8 @@ class Run {
   private async toolCall(call: LoggedCall, response: ResponseCall): Promise<void> {
     if (this.toolCallsUsed >= this.limits.max_tool_calls) throw new Ended("limit");
     for (let r: Run | undefined = this; r; r = r.parent) r.toolCallsUsed += 1;
-    const shown = () => ({
+    // the tool as the model named it, or as a post_response `modify` renamed it
+    let shown = () => ({
       tool: call.tool, args: argsText(call),
       args_indented: this.argumentText("malformed" in response ? call : response, true),
     });
@@ -272,28 +320,40 @@ class Run {
       this.result(call, { ok: false, error: this.text("unknown_tool", shown()) });
       return;
     }
-    if (call.malformed !== undefined) {
+    // Repair before the check (§5.4): the hooks see the model's text; the last `modify` gives the arguments.
+    const raw = "raw" in response ? response.raw : undefined;
+    const before = {
+      tool: call.tool, args: call.args, ...(raw !== undefined && { raw }), ...(call.malformed !== undefined && { malformed: call.malformed }),
+    };
+    const repair = (await this.chain("pre_check", { call: before }, call)).filter((d) => d.decision === "modify").at(-1);
+    let args = repair ? repair.args! : call.args;
+    if (repair) {
+      // The texts show the checked arguments, as `shown: modified` would (§8.2).
+      const values = { tool: call.tool, args: this.modifiedText(args, repair.given), args_indented: this.modifiedText(args, repair.given, true) };
+      shown = () => values;
+    } else if (call.malformed !== undefined) {
       const parseError = ("parse_error" in response && response.parse_error) || "";
       this.result(call, { ok: false, error: this.text("malformed_arguments", { tool: call.tool, text: call.malformed, parse_error: parseError }) });
       return;
     }
-    if (!this.schemas.get(`tools.${call.tool}.input`)!(call.args)) {
+    if (!this.schemas.get(`tools.${call.tool}.input`)!(args)) {
       const schema = call.tool === "core_spawn" ? SPAWN_INPUT : this.harness.tools![call.tool]!.input;
-      const own = this.host.reasons?.(call.tool, call.args);
+      const own = this.host.reasons?.(call.tool, args);
       if (own !== undefined && own !== null && (typeof own !== "string" || !isJson(own))) throw new InfraFailure("malformed reasons from the host");
-      const reasons = own ?? argumentReasons(schema, call.args);
+      const reasons = own ?? argumentReasons(schema, args);
       this.result(call, { ok: false, error: this.text("invalid_arguments", { ...shown(), reasons }) });
       return;
     }
-    const pre = await this.chain("pre_tool", { call: { tool: call.tool, args: call.args } }, call);
+    const pre = await this.chain("pre_tool", { call: { tool: call.tool, args } }, call);
     if (pre.some((d) => d.decision === "deny")) return;
-    const args = pre.filter((d) => d.decision === "modify").at(-1)?.args ?? call.args;
+    args = pre.filter((d) => d.decision === "modify").at(-1)?.args ?? args;
     const answer = call.tool === "core_spawn"
       ? await this.spawn(call, args as unknown as { harness: Harness; task: string })
       : checkAnswer(await this.host.call(call.tool, args), this.schemas.get(`tools.${call.tool}.output`));
     if (answer === null) return;
     this.result(call, answer);
-    await this.chain("post_tool", { call: { tool: call.tool, args }, result: answer }, call);
+    const post = await this.chain("post_tool", { call: { tool: call.tool, args }, result: answer }, call);
+    if (post.some((d) => d.decision === "end")) throw new Ended("harness_end"); // the reply's later calls don't run (§5.4)
   }
 
   private result(call: LoggedCall, answer: Answer): void {
@@ -356,6 +416,8 @@ class Run {
     const acting: Decision[] = [];
     let current = members.call;
     let replaced: string | undefined;
+    let message = members.message;
+    let reply = members.reply;
     const key = call?.tool ?? members.interrupt?.source;
     for (const { hook, owner } of this.hooks) {
       if (hook.on !== event || !matches(hook.match, key)) continue;
@@ -365,39 +427,47 @@ class Run {
       if (current) input.call = current;
       if (members.result) input.result = members.result;
       if (replaced !== undefined) input.replaced = replaced;
-      if (members.message !== undefined) input.message = members.message;
+      if (message !== undefined) input.message = message;
       if (members.interrupt) input.interrupt = { ...members.interrupt };
       if (members.continued !== undefined) input.continued = members.continued;
-      // The request's messages as they would be rendered now, and the usage the run's last response reported (§5.3).
-      if (event === "pre_request" || event === "stop") {
-        input.context = render(this.harness, this.log.entries, this.scope).messages as Json;
+      if (reply) input.reply = reply as unknown as Json;
+      // The request's messages as they would be rendered now (§5.3); on post_response, the request the response answers.
+      if (event === "pre_request" || event === "stop") input.context = render(this.harness, this.log.entries, this.scope).messages as Json;
+      if (event === "post_response") input.context = members.context!;
+      // The usage the run's last response reported (§5.3).
+      if (event === "pre_request" || event === "stop" || event === "post_response") {
         const usage = this.log.entries.findLast((e) => e.type === "assistant" && inScope(e, this.scope))?.usage;
         if (usage !== undefined) input.usage = usage;
       }
 
-      const d = await this.decide(hook, owner, event, input, current?.tool);
+      const ids = event === "post_response" ? members.reply!.tool_calls.map((c) => c.call_id) : undefined;
+      const d = await this.decide(hook, owner, event, input, current?.tool, ids);
       const where: { [k: string]: Json } = call ? { call_id: call.call_id } : {};
       if (d === null) {
         this.append("hook", { hook: hook.id, event, decision: "failed", ...where });
         if ((hook.on_failure ?? "end") === "end") throw new InfraFailure(`hook ${hook.id} failed`);
         continue;
       }
-      this.append("hook", {
-        hook: hook.id, event, decision: d.decision,
-        ...(d.text !== undefined && { text: d.text }), ...(d.args !== undefined && { args: d.args }),
-        ...(d.keep !== undefined && { keep: d.keep }), ...(d.wrap !== undefined && { wrap: d.wrap }), ...where,
-      });
+      const logged: { [k: string]: Json } = {};
+      for (const k of LOGGED) if (d[k] !== undefined) logged[k] = d[k] as Json;
+      this.append("hook", { hook: hook.id, event, decision: d.decision, ...logged, ...where });
       if (d.decision === "allow") continue;
       acting.push(d);
-      if (d.decision === "modify") current = { tool: current!.tool, args: d.args! };
-      if (d.decision === "replace") replaced = d.text;
+      if (d.decision === "modify" && event === "post_response") {
+        const originals = new Map(members.reply!.tool_calls.map((c) => [c.call_id, c]));
+        reply = { ...reply!, tool_calls: d.calls!.map((c) => ({ ...originals.get(c.call_id)!, tool: c.tool })) };
+      } else if (d.decision === "modify" && event === "pre_check") {
+        current = { tool: current!.tool, args: d.args!, ...(current!.raw !== undefined && { raw: current!.raw }) };
+      } else if (d.decision === "modify") current = { tool: current!.tool, args: d.args! };
+      if (d.decision === "replace" && event === "user_prompt") message = d.text;
+      else if (d.decision === "replace") replaced = d.text;
       if (ENDS_CHAIN.has(d.decision)) break;
     }
     return acting;
   }
 
   /** One hook's decision (§5.4), or null if the hook failed. */
-  private async decide(hook: Hook, owner: Run, event: Event, input: { [k: string]: Json }, tool?: string): Promise<Decision | null> {
+  private async decide(hook: Hook, owner: Run, event: Event, input: { [k: string]: Json }, tool?: string, ids?: string[]): Promise<Decision | null> {
     const cap = (text: string) => excerpt(text, this.limits.max_hook_text);
     if (hook.run.startsWith("core_")) {
       const w = hook.with ?? {};
@@ -420,6 +490,19 @@ class Run {
     if (typeof decision !== "string" || (decision !== "allow" && !ALLOWED[event].includes(decision))) return null;
     const members = Object.keys(out).filter((k) => k !== "decision").sort().join(",");
     if (decision === "allow") return members === "" ? { hook, decision } : null;
+    if (decision === "modify" && event === "pre_check") return this.repair(hook, out, members);
+    if (decision === "modify" && event === "post_response") return changedCalls(hook, out, members, ids ?? []);
+    if (decision === "retry") return retry(hook, out, (input.context as Json[]).length, cap);
+    if (decision === "end") {
+      if (members !== "" && members !== "text") return null;
+      if (out.text !== undefined && (typeof out.text !== "string" || !isJson(out.text))) return null;
+      return { hook, decision, ...(out.text !== undefined && { text: cap(out.text as string) }) };
+    }
+    if (decision === "replace" && event === "user_prompt") {
+      // The admitted message, whole (§5.4).
+      if (members !== "text" || typeof out.text !== "string" || !isJson(out.text)) return null;
+      return { hook, decision, text: out.text };
+    }
     if (decision === "modify") {
       if (members !== "args" && members !== "args,text") return null;
       if (out.text !== undefined && typeof out.text !== "string") return null;
@@ -442,6 +525,59 @@ class Run {
     if (members !== "text" || typeof out.text !== "string" || !isJson(out.text)) return null;
     return { hook, decision, text: cap(out.text) };
   }
+
+  /** A `pre_check` `modify` (§5.4): `args`, `shown` and, with `shown: modified`, an optional `args_text` that reads as
+   * `args`. The arguments are checked against the schema afterwards, as any call's. */
+  private repair(hook: Hook, out: { [k: string]: unknown }, members: string): Decision | null {
+    if ((members !== "args,shown" && members !== "args,args_text,shown") || (out.shown !== "model" && out.shown !== "modified")) return null;
+    if (!isJson(out.args)) return null;
+    const given = out.args_text;
+    if (given !== undefined && (out.shown !== "modified" || typeof given !== "string" || !isJson(given) || !reads(given, out.args))) return null;
+    const args = out.args as Json;
+    const d: Decision = { hook, decision: "modify", args, shown: out.shown, ...(given !== undefined && { given: given as string }) };
+    if (out.shown === "modified") {
+      const text = this.modifiedText(args, given as string | undefined);
+      if (text !== canonical(args)) d.args_text = text;
+    }
+    return d;
+  }
+}
+
+/** A `post_response` `modify` (§5.4): `calls`, a list of `{call_id, tool}` naming the reply's calls, none twice. */
+function changedCalls(hook: Hook, out: { [k: string]: unknown }, members: string, ids: string[]): Decision | null {
+  const calls = out.calls;
+  if (members !== "calls" || !Array.isArray(calls) || !isJson(calls)) return null;
+  const seen = new Set<string>();
+  for (const c of calls) {
+    if (!isObject(c) || Object.keys(c).sort().join(",") !== "call_id,tool" || typeof c.tool !== "string"
+      || typeof c.call_id !== "string" || !ids.includes(c.call_id) || seen.has(c.call_id)) return null;
+    seen.add(c.call_id);
+  }
+  return { hook, decision: "modify", calls: (calls as CallChange[]).map((c) => ({ call_id: c.call_id, tool: c.tool })) };
+}
+
+/** A `retry` (§5.4): optional `text`, `wrap`, `keep_reply` and a `replace_context` in that decision's shape. */
+function retry(hook: Hook, out: { [k: string]: unknown }, context: number, cap: (text: string) => string): Decision | null {
+  const names = Object.keys(out).filter((k) => k !== "decision");
+  if (names.some((k) => !["text", "wrap", "keep_reply", "replace_context"].includes(k))) return null;
+  if ((out.wrap !== undefined && typeof out.wrap !== "boolean") || (out.keep_reply !== undefined && typeof out.keep_reply !== "boolean")) return null;
+  if (out.text !== undefined && (typeof out.text !== "string" || !isJson(out.text))) return null;
+  const d: Decision = { hook, decision: "retry" };
+  if (out.text !== undefined) d.text = out.wrap === false ? (out.text as string) : cap(out.text as string);
+  if (out.wrap !== undefined) d.wrap = out.wrap as boolean;
+  if (out.keep_reply !== undefined) d.keep_reply = out.keep_reply as boolean;
+  if (out.replace_context !== undefined) {
+    const rc = out.replace_context;
+    if (!isObject(rc) || !("text" in rc) || Object.keys(rc).some((k) => k !== "text" && k !== "keep" && k !== "wrap")) return null;
+    if (typeof rc.text !== "string" || !isJson(rc.text)) return null;
+    if (rc.keep !== undefined && !(Number.isInteger(rc.keep) && (rc.keep as number) >= 0 && (rc.keep as number) <= context)) return null;
+    if (rc.wrap !== undefined && typeof rc.wrap !== "boolean") return null;
+    d.replace_context = {
+      text: rc.wrap === false ? rc.text : cap(rc.text),
+      ...(rc.keep !== undefined && { keep: rc.keep as number }), ...(rc.wrap !== undefined && { wrap: rc.wrap as boolean }),
+    };
+  }
+  return d;
 }
 
 function matches(match: string | string[] | undefined, key: string | undefined): boolean {
@@ -521,6 +657,8 @@ function checkResponse(v: unknown): ModelResponse {
     && (v.reasoning_opaque === undefined || (isObject(v.reasoning_opaque) && Object.keys(v.reasoning_opaque).length === 2
       && typeof v.reasoning_opaque.provider === "string" && "data" in v.reasoning_opaque))
     && (v.usage === undefined || isObject(v.usage))
+    && (v.finish === undefined || typeof v.finish === "string")
+    && (v.failure === undefined || typeof v.failure === "string")
     && (v.tool_calls === undefined || (Array.isArray(v.tool_calls) && v.tool_calls.every(isResponseCall)));
   if (!ok || !isJson(v)) throw new InfraFailure("malformed model response");
   return v as ModelResponse;

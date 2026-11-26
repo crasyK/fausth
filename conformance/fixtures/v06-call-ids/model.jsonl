@@ -1,5 +1,5 @@
 {"tool_calls": [{"tool": "note", "args": {"n": 1}, "call_id": "call_A"}, {"tool": "note", "args": {"n": 2}, "call_id": "call_A"}, {"tool": "note", "args": {"n": 3}, "call_id": "c99-0"}, {"tool": "note", "args": {"n": 4}, "call_id": ""}, {"tool": "note", "args": {"n": 5}}]}
-{"text": "More.", "tool_calls": [{"tool": "note", "args": {"n": 6}, "call_id": "call_A"}, {"tool": "core_spawn", "args": {"harness": {"spec": "harness/0.6", "name": "child", "prompt": "Child.", "tools": {"note": {"description": "Take a note.", "input": {"type": "object"}}}}, "task": "Note 7."}, "call_id": "spawn_1"}]}
+{"text": "More.", "tool_calls": [{"tool": "note", "args": {"n": 6}, "call_id": "call_A"}, {"tool": "core_spawn", "args": {"harness": {"spec": "harness/0.7", "name": "child", "prompt": "Child.", "tools": {"note": {"description": "Take a note.", "input": {"type": "object"}}}}, "task": "Note 7."}, "call_id": "spawn_1"}]}
 {"tool_calls": [{"tool": "note", "args": {"n": 7}, "call_id": "call_B"}]}
 {"text": "Noted 7."}
 {"tool_calls": [{"tool": "note", "args": {"n": 8}, "call_id": "call_B"}]}

@@ -1,0 +1,16 @@
+spec: harness/0.7
+name: m
+prompt: p
+tools:
+  read: { description: r, input: { type: object } }
+handlers:
+  check: {}
+  repair: {}
+  submit: {}
+  fill: {}
+hooks:
+  - { id: check, on: post_response, run: check }
+  - { id: repair, on: pre_check, match: [read], run: repair, on_failure: skip }
+  - { id: repair-all, on: pre_check, run: repair }
+  - { id: submit, on: post_tool, match: read, run: submit }
+  - { id: fill, on: user_prompt, run: fill }

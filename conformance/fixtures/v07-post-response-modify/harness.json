@@ -1,0 +1,131 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-post-response-modify",
+  "prompt": "Work.",
+  "tools": {
+    "read": {
+      "description": "Read a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "ls": {
+      "description": "List files.",
+      "input": {
+        "type": "object"
+      }
+    }
+  },
+  "handlers": {
+    "bad": {
+      "description": "Modifies with calls the reply doesn't have."
+    },
+    "fix": {
+      "description": "Repairs names, drops a duplicate, reorders."
+    },
+    "see": {
+      "description": "Sees the calls as the chain modified them, the request's messages and the usage.",
+      "input": {
+        "type": "object",
+        "required": [
+          "reply",
+          "context"
+        ],
+        "properties": {
+          "reply": {
+            "required": [
+              "text",
+              "tool_calls"
+            ],
+            "properties": {
+              "tool_calls": {
+                "anyOf": [
+                  {
+                    "const": [
+                      {
+                        "call_id": "call_2",
+                        "tool": "ls",
+                        "args": {}
+                      },
+                      {
+                        "call_id": "call_1",
+                        "tool": "read",
+                        "args": {
+                          "path": "a"
+                        },
+                        "raw": "{\"path\": \"a\"}"
+                      }
+                    ]
+                  },
+                  {
+                    "maxItems": 1
+                  }
+                ]
+              }
+            }
+          },
+          "context": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "renamed": {
+      "description": "Sees the view under the new names.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "items": {
+              "properties": {
+                "tool": {
+                  "enum": [
+                    "ls",
+                    "read"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "bad",
+      "on": "post_response",
+      "run": "bad",
+      "on_failure": "skip"
+    },
+    {
+      "id": "fix",
+      "on": "post_response",
+      "run": "fix"
+    },
+    {
+      "id": "see",
+      "on": "post_response",
+      "run": "see"
+    },
+    {
+      "id": "renamed",
+      "on": "post_tool",
+      "match": "read",
+      "run": "renamed"
+    }
+  ]
+}

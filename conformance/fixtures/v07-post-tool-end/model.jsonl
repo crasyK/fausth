@@ -1,0 +1,1 @@
+{"text": "Submitting.", "tool_calls": [{"call_id": "call_1", "tool": "bash", "args": {"command": "echo hi"}}, {"call_id": "call_2", "tool": "bash", "args": {"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}}, {"call_id": "call_3", "tool": "bash", "args": {"command": "ls"}}]}

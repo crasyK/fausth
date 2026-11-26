@@ -1,6 +1,6 @@
 %YAML 1.2
 ---
-spec: harness/0.6
+spec: harness/0.7
 name: blocks
 prompt: |2
     indented by two extra

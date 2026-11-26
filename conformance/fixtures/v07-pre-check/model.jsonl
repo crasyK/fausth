@@ -1,0 +1,2 @@
+{"text": "Reading.", "tool_calls": [{"call_id": "call_1", "tool": "read", "args": {"path": "a", "limit": "20"}, "raw": "{\"path\": \"a\", \"limit\": \"20\"}"}, {"call_id": "call_2", "tool": "read", "malformed": "{\"path\": \"b\",", "parse_error": "Unexpected end of JSON input"}, {"call_id": "call_3", "tool": "read", "args": {"path": 5}}, {"call_id": "call_4", "tool": "read", "args": {"path": "c"}}, {"call_id": "call_5", "tool": "read", "malformed": "nope"}, {"call_id": "call_6", "tool": "unknown", "args": {}}]}
+{"text": "Done."}

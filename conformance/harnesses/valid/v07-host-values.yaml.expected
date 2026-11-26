@@ -1,0 +1,1 @@
+{"host_values":["PKG","PROJECT_CONTEXT_2"],"name":"m","prompt":"cwd ${CWD}, pkg ${PKG}","spec":"harness/0.7"}

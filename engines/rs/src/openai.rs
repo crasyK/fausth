@@ -172,5 +172,9 @@ pub fn from_chat(body: &Value, provider: &str) -> Result<Value, HostError> {
     if let Some(usage) = body.get("usage").filter(|u| u.as_object().is_some()) {
         out.insert("usage", usage.clone()); // the provider's report, for hooks (§5.3)
     }
+    let first = body.get("choices").and_then(Value::as_array).and_then(|c| c.first());
+    if let Some(finish) = first.and_then(|f| f.get("finish_reason")).filter(|f| f.as_str().is_some()) {
+        out.insert("finish", finish.clone()); // why the response ended (§14)
+    }
     Ok(Value::Object(out))
 }

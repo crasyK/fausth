@@ -53,6 +53,10 @@ impl Map {
         self.entries.iter().find(|(k, _)| k == name).map(|(_, v)| v)
     }
 
+    pub fn get_str(&self, name: &str) -> Option<&str> {
+        self.get(name).and_then(Value::as_str)
+    }
+
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Value> {
         self.entries.iter_mut().find(|(k, _)| k == name).map(|(_, v)| v)
     }
@@ -673,6 +677,7 @@ pub fn excerpt(s: &str, n: usize) -> String {
 pub enum ArgumentForm {
     ModelOrder,
     SortedAscii,
+    AsSent,
 }
 
 /// The argument text of a value in the form `model_order` (§9.4): ECMAScript's `JSON.stringify(value)`, or with

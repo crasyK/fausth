@@ -1,5 +1,5 @@
 # Every field and every built-in, once.
-spec: harness/0.6
+spec: harness/0.7
 name: everything
 prompt: Use the tools.
 tools:

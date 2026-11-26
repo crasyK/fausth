@@ -52,9 +52,14 @@ export function view(entries: readonly Entry[], scope: Scope): ViewEntry[] {
       for (const c of e.tool_calls as { call_id: string; tool: string; args: Json }[]) {
         calls.set(c.call_id, { step: e.step as number, tool: c.tool, args: c.args });
       }
+    } else if (e.type === "hook" && e.event === "post_response" && e.decision === "modify") {
+      for (const c of e.calls as { call_id: string; tool: string }[]) {
+        const call = calls.get(c.call_id);
+        if (call) call.tool = c.tool; // a renamed call runs under its new name (§5.4)
+      }
     } else if (e.type === "hook" && typeof e.call_id === "string") {
       const call = calls.get(e.call_id);
-      if (call && e.decision === "modify") call.args = e.args as Json;
+      if (call && e.decision === "modify") call.args = e.args as Json; // pre_check and pre_tool: what the call ran with
       if (call && e.decision === "deny") out.push({ ...call, ok: false, error: e.text as string });
     } else if (e.type === "tool_result") {
       const call = calls.get(e.call_id as string);

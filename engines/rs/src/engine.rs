@@ -49,7 +49,8 @@ pub trait Host {
         None
     }
     /// The reasons text for arguments that failed a tool's input schema, from the host's own validator; `None` or
-    /// `null` for the engine's (§8.1). Anything else but a string is an infrastructure failure.
+    /// `null` for the engine's (§8.1). Anything else but a string is an infrastructure failure. After a `pre_check`
+    /// `modify`, `args` are the modified ones.
     fn reasons(&mut self, _tool: &str, _args: &Value) -> Option<Value> {
         None
     }
@@ -104,6 +105,7 @@ pub enum Reason {
     Limit,
     InfraFailure,
     HostEnd,
+    HarnessEnd,
 }
 
 impl Reason {
@@ -113,6 +115,7 @@ impl Reason {
             Reason::Limit => "limit",
             Reason::InfraFailure => "infra_failure",
             Reason::HostEnd => "host_end",
+            Reason::HarnessEnd => "harness_end",
         }
     }
 }
@@ -166,10 +169,12 @@ impl Limits {
 fn allowed(event: Event) -> &'static [&'static str] {
     match event {
         Event::SessionStart => &["add_context"],
-        Event::UserPrompt => &["deny", "add_context"],
+        Event::UserPrompt => &["deny", "replace", "add_context"],
         Event::PreRequest => &["replace_context", "add_context"],
+        Event::PostResponse => &["modify", "retry", "end"],
+        Event::PreCheck => &["modify"],
         Event::PreTool => &["deny", "modify", "add_context"],
-        Event::PostTool => &["replace", "add_context"],
+        Event::PostTool => &["replace", "add_context", "end"],
         Event::Stop => &["continue", "add_context"],
         Event::Interrupt => &["deny", "add_context"],
     }
@@ -181,11 +186,13 @@ fn push_back(event: Event) -> &'static str {
         Event::PreTool | Event::UserPrompt | Event::Interrupt => "deny",
         Event::Stop => "continue",
         Event::PostTool => "add_context",
-        Event::SessionStart | Event::PreRequest => "allow",
+        Event::SessionStart | Event::PreRequest | Event::PostResponse | Event::PreCheck => "allow",
     }
 }
 
-const ENDS_CHAIN: [&str; 3] = ["deny", "continue", "replace_context"];
+const ENDS_CHAIN: [&str; 5] = ["deny", "continue", "replace_context", "retry", "end"];
+/// What the response says beyond its text and calls, logged in the `assistant` entry as given (§7, §14).
+const RESPONSE_EXTRAS: [&str; 5] = ["reasoning", "reasoning_opaque", "usage", "finish", "failure"];
 
 /// A hook's decision (§5.4).
 #[derive(Clone, Debug)]
@@ -196,11 +203,33 @@ struct Decision {
     args: Option<Value>,
     keep: Option<f64>,
     wrap: Option<bool>,
+    /// `pre_check` `modify` (§5.4): which text later requests show, the text logged, and the hook's own text.
+    shown: Option<String>,
+    args_text: Option<String>,
+    given: Option<String>,
+    /// `post_response` `modify`: the calls that run.
+    calls: Option<Value>,
+    /// `retry`.
+    keep_reply: Option<bool>,
+    replace_context: Option<Value>,
 }
 
 impl Decision {
     fn new(hook: &Hook, decision: &str, text: Option<String>) -> Self {
-        Decision { hook: hook.id.clone(), decision: decision.into(), text, args: None, keep: None, wrap: None }
+        Decision {
+            hook: hook.id.clone(),
+            decision: decision.into(),
+            text,
+            args: None,
+            keep: None,
+            wrap: None,
+            shown: None,
+            args_text: None,
+            given: None,
+            calls: None,
+            keep_reply: None,
+            replace_context: None,
+        }
     }
 }
 
@@ -208,10 +237,16 @@ impl Decision {
 #[derive(Default)]
 struct Members {
     call: Option<(String, Value)>,
+    /// `pre_check`: the model's argument text, and its text when it wasn't JSON.
+    raw: Option<String>,
+    malformed: Option<String>,
     result: Option<Value>,
     message: Option<String>,
     interrupt: Option<(String, String)>,
     continued: Option<u64>,
+    /// `post_response`: the reply and the messages of the request it answers.
+    reply: Option<Value>,
+    context: Option<Value>,
 }
 
 /// One run: the top level or a child (§10). Runs are kept on a stack; a child's ancestors are below it.
@@ -285,6 +320,20 @@ impl Run {
                 };
                 sorted_ascii_text(raw, indented).expect("checked arguments")
             }
+            ArgumentForm::AsSent => match raw {
+                Some(r) if !indented => r.to_owned(),
+                _ => argument_text(args, indented).expect("checked arguments"),
+            },
+        }
+    }
+
+    /// The argument text of arguments a `pre_check` hook modified (§5.4, §9.4): the hook's `args_text`, else the
+    /// arguments written as for a call without `raw`.
+    fn modified_text(&self, args: &Value, given: Option<&str>, indented: bool) -> String {
+        match given {
+            None => self.argument_text(args, None, indented),
+            Some(g) if !indented => g.to_owned(),
+            Some(g) => self.argument_text(args, Some(g), true),
         }
     }
 
@@ -396,7 +445,8 @@ impl Engine<'_> {
             if decisions.iter().any(|d| d.decision == "deny") {
                 continue;
             }
-            self.append("user", obj(vec![("text", Value::from(text))]));
+            let replaced = decisions.iter().rev().find(|d| d.decision == "replace").and_then(|d| d.text.clone());
+            self.append("user", obj(vec![("text", Value::from(replaced.unwrap_or(text)))]));
             let step = self.step;
             self.cur_mut().turn = step;
             self.take_turn()?;
@@ -483,12 +533,57 @@ impl Engine<'_> {
                 ("text", Value::from(text.clone())),
                 ("tool_calls", Value::Array(calls.iter().map(|c| c.logged.clone()).collect())),
             ]);
-            for k in ["reasoning", "reasoning_opaque", "usage"] {
+            for k in RESPONSE_EXTRAS {
                 if let Some(v) = response.get(k) {
                     members.insert(k, v.clone());
                 }
             }
             self.append("assistant", members);
+            // The reply as logged, each call with the model's `raw` text (§5.3); the request it answers.
+            let reply_calls = calls
+                .iter()
+                .map(|c| {
+                    let mut m = c.logged.as_object().cloned().unwrap_or_default();
+                    if let Some(r) = &c.raw {
+                        m.insert("raw", r.clone().into());
+                    }
+                    Value::Object(m)
+                })
+                .collect();
+            let mut reply = obj(vec![("text", Value::from(text.clone())), ("tool_calls", Value::Array(reply_calls))]);
+            for k in RESPONSE_EXTRAS.into_iter().filter(|k| *k != "usage") {
+                if let Some(v) = response.get(k) {
+                    reply.insert(k, v.clone());
+                }
+            }
+            let context = Value::Array(request.messages.iter().map(|m| m.to_value()).collect());
+            let members = Members { reply: Some(Value::Object(reply)), context: Some(context), ..Members::default() };
+            let decisions = self.chain(Event::PostResponse, members, None)?;
+            if decisions.iter().any(|d| d.decision == "end") {
+                return Err(Halt::Ended(Reason::HarnessEnd));
+            }
+            if decisions.iter().any(|d| d.decision == "retry") {
+                continue;
+            }
+            if response.get("failure").is_some() {
+                return Err(Halt::Infra); // a failed response no post_response hook answered
+            }
+            let mut calls = calls;
+            if let Some(listed) = decisions.iter().rev().find(|d| d.decision == "modify").and_then(|d| d.calls.clone())
+            {
+                // Only the listed calls run, in that order, under their names (§5.4).
+                let mut by_id: HashMap<String, Call> = calls.into_iter().map(|c| (c.id.clone(), c)).collect();
+                calls = listed
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|m| {
+                        let mut c = by_id.remove(m.get_str("call_id").unwrap_or_default())?;
+                        c.tool = m.get_str("tool").unwrap_or_default().to_owned();
+                        Some(c)
+                    })
+                    .collect();
+            }
             let had_calls = !calls.is_empty();
             for call in calls {
                 self.tool_call(call)?;
@@ -576,38 +671,56 @@ impl Engine<'_> {
         for run in &mut self.runs {
             run.tool_calls_used += 1;
         }
+        // The tool as the model named it, or as a post_response `modify` renamed it.
         let run = self.cur();
-        let shown_args = ToolCall {
+        let mut shown_args = ToolCall {
             call_id: call.id.clone(),
             tool: call.tool.clone(),
             args: call.args.clone(),
             args_text: call.args_text.clone(),
         }
         .text();
-        let indented = run.argument_text(&call.args, call.raw.as_deref(), true);
+        let mut indented = run.argument_text(&call.args, call.raw.as_deref(), true);
         if run.harness.tool(&call.tool).is_none() {
             let error =
                 run.text("unknown_tool", &[("tool", &call.tool), ("args", &shown_args), ("args_indented", &indented)]);
             self.result(&call, false, Value::from(error));
             return Ok(());
         }
-        if let Some(malformed) = &call.malformed {
-            let error = run.text(
+        // Repair before the check (§5.4): the hooks see the model's text; the last `modify` gives the arguments.
+        let members = Members {
+            call: Some((call.tool.clone(), call.args.clone())),
+            raw: call.raw.clone(),
+            malformed: call.malformed.clone(),
+            ..Members::default()
+        };
+        let checks = self.chain(Event::PreCheck, members, Some(&call.id))?;
+        let repair = checks.into_iter().rev().find(|d| d.decision == "modify");
+        let mut args = call.args.clone();
+        if let Some(d) = &repair {
+            // The texts show the checked arguments, as `shown: modified` would (§8.2).
+            args = d.args.clone().unwrap_or(Value::Null);
+            let run = self.cur();
+            shown_args = run.modified_text(&args, d.given.as_deref(), false);
+            indented = run.modified_text(&args, d.given.as_deref(), true);
+        } else if let Some(malformed) = &call.malformed {
+            let error = self.cur().text(
                 "malformed_arguments",
                 &[("tool", &call.tool), ("text", malformed), ("parse_error", &call.parse_error)],
             );
             self.result(&call, false, Value::from(error));
             return Ok(());
         }
+        let run = self.cur();
         let input_key = format!("tools.{}.input", call.tool);
-        if !run.schemas[&input_key].is_valid(&call.args) {
+        if !run.schemas[&input_key].is_valid(&args) {
             let schema = if call.tool == "core_spawn" {
                 spawn_input().clone()
             } else {
                 run.harness.tool(&call.tool).and_then(|t| t.get("input")).cloned().unwrap_or(Value::Null)
             };
-            let reasons = match self.host.reasons(&call.tool, &call.args) {
-                None | Some(Value::Null) => argument_reasons(&schema, &call.args),
+            let reasons = match self.host.reasons(&call.tool, &args) {
+                None | Some(Value::Null) => argument_reasons(&schema, &args),
                 Some(Value::String(own)) => own,
                 Some(_) => return Err(Halt::Infra),
             };
@@ -619,13 +732,12 @@ impl Engine<'_> {
             self.result(&call, false, Value::from(error));
             return Ok(());
         }
-        let members = Members { call: Some((call.tool.clone(), call.args.clone())), ..Members::default() };
+        let members = Members { call: Some((call.tool.clone(), args.clone())), ..Members::default() };
         let pre = self.chain(Event::PreTool, members, Some(&call.id))?;
         if pre.iter().any(|d| d.decision == "deny") {
             return Ok(());
         }
-        let args =
-            pre.iter().rev().find(|d| d.decision == "modify").and_then(|d| d.args.clone()).unwrap_or(call.args.clone());
+        let args = pre.iter().rev().find(|d| d.decision == "modify").and_then(|d| d.args.clone()).unwrap_or(args);
         let answer = if call.tool == "core_spawn" {
             match self.spawn(&call, &args)? {
                 Some(a) => a,
@@ -643,7 +755,10 @@ impl Engine<'_> {
             Value::Object(obj(vec![("ok", false.into()), ("error", value)]))
         };
         let members = Members { call: Some((call.tool.clone(), args)), result: Some(result), ..Members::default() };
-        self.chain(Event::PostTool, members, Some(&call.id))?;
+        let post = self.chain(Event::PostTool, members, Some(&call.id))?;
+        if post.iter().any(|d| d.decision == "end") {
+            return Err(Halt::Ended(Reason::HarnessEnd)); // the reply's later calls don't run (§5.4)
+        }
         Ok(())
     }
 
@@ -686,7 +801,7 @@ impl Engine<'_> {
         match reason {
             Reason::InfraFailure => Err(Halt::Infra),
             Reason::HostEnd => Err(Halt::HostEnd),
-            Reason::Stop | Reason::Limit => {
+            Reason::Stop | Reason::Limit | Reason::HarnessEnd => {
                 let result = obj(vec![
                     ("text", child.last_text.into()),
                     ("steps", child.steps_used.into()),
@@ -756,7 +871,19 @@ impl Engine<'_> {
     fn chain(&mut self, event: Event, members: Members, call_id: Option<&str>) -> Step<Vec<Decision>> {
         let mut acting = Vec::new();
         let mut current = members.call.clone();
+        let mut malformed = members.malformed.clone();
         let mut replaced: Option<String> = None;
+        let mut message = members.message.clone();
+        let mut reply = members.reply.clone();
+        let ids: Vec<String> = members
+            .reply
+            .as_ref()
+            .and_then(|r| r.get("tool_calls"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c.get_str("call_id").map(str::to_owned))
+            .collect();
         let key = members
             .call
             .as_ref()
@@ -776,7 +903,14 @@ impl Engine<'_> {
                 ("view", Value::Array(view(&self.log.entries, &run.scope))),
             ]);
             if let Some((tool, args)) = &current {
-                input.insert("call", Value::Object(obj(vec![("tool", tool.clone().into()), ("args", args.clone())])));
+                let mut c = obj(vec![("tool", tool.clone().into()), ("args", args.clone())]);
+                if let Some(r) = &members.raw {
+                    c.insert("raw", r.clone().into());
+                }
+                if let Some(m) = &malformed {
+                    c.insert("malformed", m.clone().into());
+                }
+                input.insert("call", Value::Object(c));
             }
             if let Some(r) = &members.result {
                 input.insert("result", r.clone());
@@ -784,8 +918,11 @@ impl Engine<'_> {
             if let Some(r) = &replaced {
                 input.insert("replaced", r.clone().into());
             }
-            if let Some(m) = &members.message {
+            if let Some(m) = &message {
                 input.insert("message", m.clone().into());
+            }
+            if let Some(r) = &reply {
+                input.insert("reply", r.clone());
             }
             if let Some((source, text)) = &members.interrupt {
                 input.insert(
@@ -796,11 +933,17 @@ impl Engine<'_> {
             if let Some(c) = members.continued {
                 input.insert("continued", c.into());
             }
-            // The request's messages as they would be rendered now, and the usage the run's last response
-            // reported (§5.3).
+            // The request's messages as they would be rendered now (§5.3); on post_response, the request the
+            // response answers.
             if matches!(event, Event::PreRequest | Event::Stop) {
                 let request = render(&run.harness, &self.log.entries, &run.scope);
                 input.insert("context", Value::Array(request.messages.iter().map(|m| m.to_value()).collect()));
+            }
+            if let Some(c) = &members.context {
+                input.insert("context", c.clone());
+            }
+            // The usage the run's last response reported (§5.3).
+            if matches!(event, Event::PreRequest | Event::Stop | Event::PostResponse) {
                 let last = self.log.entries.iter().rev().find(|e| kind(e) == "assistant" && in_scope(e, &run.scope));
                 if let Some(usage) = last.and_then(|e| e.get("usage")) {
                     input.insert("usage", usage.clone());
@@ -808,7 +951,7 @@ impl Engine<'_> {
             }
             let input = Value::Object(input);
             let tool = current.as_ref().map(|(t, _)| t.clone());
-            let decision = self.decide(&hook, owner, event, &input, tool.as_deref())?;
+            let decision = self.decide(&hook, owner, event, &input, tool.as_deref(), &ids)?;
             let mut entry = obj(vec![("hook", hook.id.clone().into()), ("event", event.name().into())]);
             let Some(d) = decision else {
                 entry.insert("decision", "failed".into());
@@ -828,11 +971,26 @@ impl Engine<'_> {
             if let Some(a) = &d.args {
                 entry.insert("args", a.clone());
             }
+            if let Some(s) = &d.shown {
+                entry.insert("shown", s.clone().into());
+            }
+            if let Some(t) = &d.args_text {
+                entry.insert("args_text", t.clone().into());
+            }
+            if let Some(c) = &d.calls {
+                entry.insert("calls", c.clone());
+            }
             if let Some(k) = d.keep {
                 entry.insert("keep", k.into());
             }
             if let Some(w) = d.wrap {
                 entry.insert("wrap", w.into());
+            }
+            if let Some(k) = d.keep_reply {
+                entry.insert("keep_reply", k.into());
+            }
+            if let Some(r) = &d.replace_context {
+                entry.insert("replace_context", r.clone());
             }
             if let Some(id) = call_id {
                 entry.insert("call_id", id.into());
@@ -841,10 +999,28 @@ impl Engine<'_> {
             if d.decision == "allow" {
                 continue;
             }
-            if d.decision == "modify" {
+            if d.decision == "modify" && event == Event::PostResponse {
+                let originals = members.reply.as_ref().and_then(|r| r.get("tool_calls")).and_then(Value::as_array);
+                let listed = d.calls.as_ref().and_then(Value::as_array).cloned().unwrap_or_default();
+                let modified = listed
+                    .iter()
+                    .filter_map(|m| {
+                        let id = m.get_str("call_id")?;
+                        let mut c = originals?.iter().find(|c| c.get_str("call_id") == Some(id))?.clone();
+                        c.as_object_mut()?.insert("tool", m.get("tool")?.clone());
+                        Some(c)
+                    })
+                    .collect();
+                if let Some(Value::Object(r)) = &mut reply {
+                    r.insert("tool_calls", Value::Array(modified));
+                }
+            } else if d.decision == "modify" {
                 current = current.map(|(t, _)| (t, d.args.clone().unwrap_or(Value::Null)));
+                malformed = None;
             }
-            if d.decision == "replace" {
+            if d.decision == "replace" && event == Event::UserPrompt {
+                message = d.text.clone();
+            } else if d.decision == "replace" {
                 replaced = d.text.clone();
             }
             let ends = ENDS_CHAIN.contains(&d.decision.as_str());
@@ -864,6 +1040,7 @@ impl Engine<'_> {
         event: Event,
         input: &Value,
         tool: Option<&str>,
+        ids: &[String],
     ) -> Step<Option<Decision>> {
         let max = self.cur().limits.hook_text();
         let cap = |t: &str| excerpt(t, max);
@@ -904,6 +1081,33 @@ impl Engine<'_> {
         let text = out.get("text");
         if decision == "allow" {
             return Ok((members.is_empty()).then(|| Decision::new(hook, "allow", None)));
+        }
+        if decision == "modify" && event == Event::PreCheck {
+            return Ok(self.repair(hook, out, &members));
+        }
+        if decision == "modify" && event == Event::PostResponse {
+            return Ok(changed_calls(hook, out, &members, ids));
+        }
+        if decision == "retry" {
+            let context = input.get("context").and_then(Value::as_array).map_or(0, Vec::len);
+            return Ok(retry(hook, out, context, &cap));
+        }
+        if decision == "end" {
+            if !members.is_empty() && members != "text" {
+                return Ok(None);
+            }
+            return Ok(match text {
+                None => Some(Decision::new(hook, "end", None)),
+                Some(Value::String(t)) => Some(Decision::new(hook, "end", Some(cap(t)))),
+                Some(_) => None,
+            });
+        }
+        if decision == "replace" && event == Event::UserPrompt {
+            // The admitted message, whole (§5.4).
+            return Ok(match text {
+                Some(Value::String(t)) if members == "text" => Some(Decision::new(hook, "replace", Some(t.clone()))),
+                _ => None,
+            });
         }
         if decision == "modify" {
             if members != "args" && members != "args,text" {
@@ -953,6 +1157,104 @@ impl Engine<'_> {
             _ => Ok(None),
         }
     }
+
+    /// A `pre_check` `modify` (§5.4): `args`, `shown` and, with `shown: modified`, an optional `args_text` that reads
+    /// as `args`. The arguments are checked against the schema afterwards, as any call's.
+    fn repair(&self, hook: &Hook, out: &Map, members: &str) -> Option<Decision> {
+        if members != "args,shown" && members != "args,args_text,shown" {
+            return None;
+        }
+        let shown = out.get_str("shown")?;
+        if shown != "model" && shown != "modified" {
+            return None;
+        }
+        let args = out.get("args")?;
+        if !is_json(args) {
+            return None;
+        }
+        let given = match out.get("args_text") {
+            None => None,
+            Some(Value::String(g)) if shown == "modified" && reads(g, args) => Some(g.clone()),
+            Some(_) => return None,
+        };
+        let mut d = Decision::new(hook, "modify", None);
+        d.args = Some(args.clone());
+        d.shown = Some(shown.to_owned());
+        if shown == "modified" {
+            let text = self.cur().modified_text(args, given.as_deref(), false);
+            if text != canon(args) {
+                d.args_text = Some(text);
+            }
+        }
+        d.given = given;
+        Some(d)
+    }
+}
+
+/// A `post_response` `modify` (§5.4): `calls`, a list of `{call_id, tool}` naming the reply's calls, none twice.
+fn changed_calls(hook: &Hook, out: &Map, members: &str, ids: &[String]) -> Option<Decision> {
+    let calls = out.get("calls")?.as_array()?;
+    if members != "calls" {
+        return None;
+    }
+    let mut seen: Vec<&str> = Vec::new();
+    let mut listed = Vec::new();
+    for c in calls {
+        let m = c.as_object()?;
+        let (id, tool) = (m.get_str("call_id")?, m.get_str("tool")?);
+        if m.len() != 2 || !ids.iter().any(|i| i == id) || seen.contains(&id) || !is_json(c) {
+            return None;
+        }
+        seen.push(id);
+        listed.push(Value::Object(obj(vec![("call_id", id.into()), ("tool", tool.into())])));
+    }
+    let mut d = Decision::new(hook, "modify", None);
+    d.calls = Some(Value::Array(listed));
+    Some(d)
+}
+
+/// A `retry` (§5.4): optional `text`, `wrap`, `keep_reply` and a `replace_context` in that decision's shape.
+fn retry(hook: &Hook, out: &Map, context: usize, cap: &dyn Fn(&str) -> String) -> Option<Decision> {
+    if out.keys().any(|k| !matches!(k.as_str(), "decision" | "text" | "wrap" | "keep_reply" | "replace_context")) {
+        return None;
+    }
+    let flag = |k: &str| match out.get(k) {
+        None => Some(None),
+        Some(Value::Bool(b)) => Some(Some(*b)),
+        Some(_) => None,
+    };
+    let (wrap, keep_reply) = (flag("wrap")?, flag("keep_reply")?);
+    let text = match out.get("text") {
+        None => None,
+        Some(Value::String(t)) => Some(if wrap == Some(false) { t.clone() } else { cap(t) }),
+        Some(_) => return None,
+    };
+    let mut d = Decision::new(hook, "retry", text);
+    d.wrap = wrap;
+    d.keep_reply = keep_reply;
+    if let Some(rc) = out.get("replace_context") {
+        let rc = rc.as_object()?;
+        if rc.keys().any(|k| !matches!(k.as_str(), "text" | "keep" | "wrap")) {
+            return None;
+        }
+        let text = rc.get_str("text")?;
+        let mut next = Map::new();
+        if let Some(k) = rc.get("keep") {
+            let k = k.as_f64().filter(|k| k.fract() == 0.0 && *k >= 0.0 && *k <= context as f64)?;
+            next.insert("keep", k.into());
+        }
+        let rc_wrap = match rc.get("wrap") {
+            None => None,
+            Some(Value::Bool(b)) => Some(*b),
+            Some(_) => return None,
+        };
+        next.insert("text", Value::from(if rc_wrap == Some(false) { text.to_owned() } else { cap(text) }));
+        if let Some(w) = rc_wrap {
+            next.insert("wrap", w.into());
+        }
+        d.replace_context = Some(Value::Object(next));
+    }
+    Some(d)
 }
 
 /// A built-in check (§6): `None` if it passes, else the failure text.
@@ -1077,6 +1379,8 @@ fn check_response(v: Value) -> Step<Value> {
                 })
             })
             && m.get("usage").is_none_or(|u| u.as_object().is_some())
+            && opt_str("finish")
+            && opt_str("failure")
             && m.get("tool_calls").is_none_or(|c| c.as_array().is_some_and(|c| c.iter().all(is_response_call)))
     });
     if !ok || !is_json(&v) {

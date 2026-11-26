@@ -73,6 +73,7 @@ export function fromChat(body: unknown, provider: string): Obj {
   if (typeof reasoning === "string" && reasoning) out.reasoning = reasoning;
   if (message.reasoning_details) out.reasoning_opaque = { provider, data: message.reasoning_details as Json };
   if (isObject(body) && isObject(body.usage)) out.usage = body.usage as Obj; // the provider's report, for hooks (§5.3)
+  if (typeof first.finish_reason === "string") out.finish = first.finish_reason; // why the response ended (§14)
   return out;
 }
 

@@ -1,0 +1,20 @@
+{"depth":0,"harness_hash":"acdc2389a50206815343bee4b0242c3e8e56853308085be3313f35192d792f0c","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Please solve this issue: list the files.","type":"user"}
+{"finish":"stop","seq":4,"step":1,"text":"Thinking about it.","tool_calls":[],"type":"assistant"}
+{"decision":"failed","event":"post_response","hook":"bad","seq":5,"type":"hook"}
+{"decision":"retry","event":"post_response","hook":"format","seq":6,"text":"Tool call error:\n\n<error>\nNo tool calls found in the response.\n</error>","type":"hook","wrap":false}
+{"finish":"length","seq":7,"step":2,"text":"Let me th","tool_calls":[],"type":"assistant"}
+{"decision":"failed","event":"post_response","hook":"bad","seq":8,"type":"hook"}
+{"decision":"retry","event":"post_response","hook":"format","keep_reply":true,"seq":9,"text":"Your reply was cut off. Contin…[truncated]","type":"hook"}
+{"finish":"tool_calls","seq":10,"step":3,"text":"ing.","tool_calls":[{"args":{"command":"ls"},"call_id":"call_1","tool":"bash"}],"type":"assistant","usage":{"prompt_tokens":100}}
+{"decision":"allow","event":"post_response","hook":"bad","seq":11,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"format","seq":12,"type":"hook"}
+{"call_id":"call_1","ok":true,"result":"a.txt b.txt","seq":13,"tool":"bash","type":"tool_result"}
+{"finish":"length","seq":14,"step":4,"text":"A very long answer","tool_calls":[],"type":"assistant","usage":{"completion_tokens":50,"prompt_tokens":500}}
+{"decision":"allow","event":"post_response","hook":"bad","seq":15,"type":"hook"}
+{"decision":"retry","event":"post_response","hook":"format","replace_context":{"keep":2,"text":"Summary: the user asked for work; ls listed two files.","wrap":false},"seq":16,"text":"Shorter please.","type":"hook"}
+{"finish":"stop","seq":17,"step":5,"text":"Short.","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"post_response","hook":"bad","seq":18,"type":"hook"}
+{"decision":"allow","event":"post_response","hook":"format","seq":19,"type":"hook"}
+{"reason":"stop","seq":20,"type":"run_end"}

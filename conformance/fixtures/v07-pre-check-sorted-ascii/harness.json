@@ -1,0 +1,41 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-pre-check-sorted-ascii",
+  "prompt": "Work.",
+  "argument_text": "sorted_ascii",
+  "tools": {
+    "read": {
+      "description": "Read a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "handlers": {
+    "repair": {
+      "description": "Repairs unreadable arguments; the model is shown the repaired text."
+    }
+  },
+  "hooks": [
+    {
+      "id": "repair",
+      "on": "pre_check",
+      "run": "repair"
+    }
+  ],
+  "texts": {
+    "invalid_arguments": "{args} | {args_indented}"
+  }
+}

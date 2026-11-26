@@ -57,10 +57,14 @@ def view(entries: list[dict[str, Any]], scope: Scope) -> list[dict[str, Any]]:
         if e["type"] == "assistant":
             for c in e["tool_calls"]:
                 calls[c["call_id"]] = {"step": e["step"], "tool": c["tool"], "args": c["args"]}
+        elif e["type"] == "hook" and e["event"] == "post_response" and e["decision"] == "modify":
+            for c in e["calls"]:  # a renamed call runs under its new name (§5.4)
+                if c["call_id"] in calls:
+                    calls[c["call_id"]]["tool"] = c["tool"]
         elif e["type"] == "hook" and "call_id" in e:
             call = calls.get(e["call_id"])
             if call is not None and e["decision"] == "modify":
-                call["args"] = e["args"]
+                call["args"] = e["args"]  # pre_check and pre_tool: the arguments the call ran with
             if call is not None and e["decision"] == "deny":
                 out.append({**call, "ok": False, "error": e["text"]})
         elif e["type"] == "tool_result":

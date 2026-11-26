@@ -88,6 +88,8 @@ def from_chat(body: Any, provider: str) -> dict[str, Any]:
         out["reasoning_opaque"] = {"provider": provider, "data": message["reasoning_details"]}
     if isinstance(body.get("usage"), dict):
         out["usage"] = body["usage"]  # the provider's report, for hooks (§5.3)
+    if isinstance(choices[0].get("finish_reason"), str):
+        out["finish"] = choices[0]["finish_reason"]  # why the response ended (§14)
     return out
 
 

@@ -1,12 +1,13 @@
-// The harness file (spec §2, §3, §5.1, §6, §8.2): reading it and checking it.
+// The harness file (spec §2, §2.1, §3, §5.1, §6, §8.2): reading it, filling its host values, checking it.
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { parseDocument } from "yaml";
-import schema06 from "../../../schema/harness.v0.6.json" with { type: "json" };
+import schema07 from "../../../schema/harness.v0.7.json" with { type: "json" };
 import { compileSchema } from "./schema.js";
 import { canonical, hash, type ArgumentForm, type Json } from "./values.js";
 
 export type Event =
-  | "session_start" | "user_prompt" | "pre_request" | "pre_tool" | "post_tool" | "stop" | "interrupt";
+  | "session_start" | "user_prompt" | "pre_request" | "post_response" | "pre_check" | "pre_tool" | "post_tool"
+  | "stop" | "interrupt";
 export type Schema = { [key: string]: Json };
 
 export interface Tool { description?: string; input?: Schema; output?: Schema }
@@ -39,10 +40,12 @@ export interface Harness {
   texts?: { [name in TextName]?: string };
   /** How a call's arguments go back to the model (§9.4); `model_order` when absent. */
   argument_text?: ArgumentForm;
+  /** The host values the file uses beyond the standard ones (§2.1). */
+  host_values?: string[];
 }
 
-/** The only spec value this engine runs: a 0.6 engine runs only `harness/0.6` files (spec, Versions). */
-export const SPEC = "harness/0.6";
+/** The only spec value this engine runs: a 0.7 engine runs only `harness/0.7` files (spec, Versions). */
+export const SPEC = "harness/0.7";
 
 /** The engine's texts (§8.2): each one's placeholders and its default (`tool_error` has none: §9.3). */
 export const TEXTS: Record<TextName, { placeholders: string[]; default?: string }> = {
@@ -68,6 +71,44 @@ export function toolIds(h: Harness): string[] {
 /** `harness_hash` (§2): the hash of the resolved harness with its tool order. */
 export function harnessHash(h: Harness): Promise<string> {
   return hash([h as unknown as Json, toolIds(h)]);
+}
+
+/** The standard host values (§2.1); a file declares any other name it uses in `host_values`. */
+export const STANDARD_VALUES = ["CWD", "HOME", "DATE", "YEAR", "TIMEZONE", "OS", "MODEL", "PROVIDER"] as const;
+const BLOCK = /\n\n\$\{if ([A-Z][A-Z0-9_]*)\}\n([\s\S]*?)\n\$\{end\}(?=\n\n|$)/g;
+const SLOT = /\n\n\$\{([A-Z][A-Z0-9_]*)\}(?=\n\n|$)/g;
+const TOKEN = /\$\$\{|\$\{([A-Z][A-Z0-9_]*)\}|\$\{(?:if |end\})/g;
+
+/** The harness with its host values filled in (§2.1): `prompt` and every tool's `description`. Throws for a load
+ * error: a name neither standard nor declared, a name without a value, a value that isn't a string, or `${if …}` /
+ * `${end}` outside a block. The harness itself is checked by `harnessErrors`, not here. */
+export function fillHostValues(harness: Harness, values: Record<string, unknown>): Harness {
+  const declared = Array.isArray(harness.host_values) ? harness.host_values.filter((n) => typeof n === "string") : [];
+  const known = new Set<string>([...STANDARD_VALUES, ...declared]);
+  const value = (name: string): string => {
+    if (!known.has(name)) throw new Error(`\${${name}} is neither a standard host value nor declared in host_values`);
+    if (!Object.hasOwn(values, name)) throw new Error(`no value for \${${name}}`);
+    const v = values[name];
+    if (typeof v !== "string") throw new Error(`the value of \${${name}} is not a string`);
+    return v;
+  };
+  const fillText = (text: string): string => {
+    const blocks = text.replace(BLOCK, (_, name: string, body: string) => (value(name) !== "" ? `\n\n${body}` : ""));
+    const slots = blocks.replace(SLOT, (whole, name: string) => (value(name) !== "" ? whole : ""));
+    return slots.replace(TOKEN, (whole, name: string | undefined) => {
+      if (whole === "$${") return "${";
+      if (name === undefined) throw new Error("${if …} or ${end} outside a block");
+      return value(name);
+    });
+  };
+  const out: Harness = { ...harness };
+  if (typeof out.prompt === "string") out.prompt = fillText(out.prompt);
+  if (out.tools && typeof out.tools === "object") {
+    out.tools = Object.fromEntries(Object.entries(out.tools).map(([id, t]) => [
+      id, t && typeof t === "object" && typeof t.description === "string" ? { ...t, description: fillText(t.description) } : t,
+    ]));
+  }
+  return out;
 }
 
 export const BUILT_INS = new Set(["core_called_since", "core_last_result", "core_count", "core_deny", "core_context"]);
@@ -115,7 +156,7 @@ function toJson(v: unknown): Json {
 }
 
 const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
-const checkStructure = ajv.compile(schema06);
+const checkStructure = ajv.compile(schema07);
 
 /** What is wrong with a harness; empty if it is valid. */
 export function harnessErrors(value: unknown): string[] {
@@ -155,7 +196,7 @@ export function harnessErrors(value: unknown): string[] {
       errors.push(`hook ${hook.id}: ${hook.run} is not a declared handler or a built-in`);
     }
     const toolRefs: unknown[] = [];
-    if ((hook.on === "pre_tool" || hook.on === "post_tool") && hook.match !== undefined && hook.match !== "*") {
+    if ((hook.on === "pre_check" || hook.on === "pre_tool" || hook.on === "post_tool") && hook.match !== undefined && hook.match !== "*") {
       toolRefs.push(...[hook.match].flat());
     }
     if (BUILT_INS.has(hook.run)) toolRefs.push(...[hook.with?.tool].flat(), ...(hook.with?.since === TURN ? [] : [hook.with?.since]));

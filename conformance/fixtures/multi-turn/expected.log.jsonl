@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"09ea1e83bede1c3da17492fdee828483eb4195616fe3b3c1188979a644ceaa2d","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"4b56ddd8fae207bf4cf5a3ebfa8d8a57e1486e2f631c0e69b3f92e9cf3df81b9","seq":1,"type":"run_start"}
 {"seq":2,"text":"Use echo.","type":"system"}
 {"seq":3,"text":"Say hi.","type":"user"}
 {"seq":4,"step":1,"text":"Hi.","tool_calls":[],"type":"assistant"}

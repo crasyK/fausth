@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.6",
+  "spec": "harness/0.7",
   "name": "v06-stop-context",
   "prompt": "Answer questions about the code.",
   "tools": {
@@ -184,7 +184,7 @@
       "on_failure": "skip",
       "with": {
         "harness": {
-          "spec": "harness/0.6",
+          "spec": "harness/0.7",
           "name": "session-title",
           "prompt": "You name chat sessions. Given the user's opening message, write a title of 3 to 7 words.\n\nReply with JSON only: {\"title\": \"...\"}",
           "handlers": {

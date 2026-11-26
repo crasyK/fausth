@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","text":"Go."}],"system":"Work.","tools":[{"description":"Execute a bash command","input":{"properties":{"command":{"type":"string"}},"required":["command"],"type":"object"},"name":"bash"}]}

@@ -1,0 +1,9 @@
+{"depth":0,"harness_hash":"31053e6934ac068d55d126f9e4a06b0f4d752cbd53688e4c708234a545e9cbad","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"seq":4,"step":1,"text":"Submitting.","tool_calls":[{"args":{"command":"echo hi"},"call_id":"call_1","tool":"bash"},{"args":{"command":"echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"},"call_id":"call_2","tool":"bash"},{"args":{"command":"ls"},"call_id":"call_3","tool":"bash"}],"type":"assistant"}
+{"call_id":"call_1","ok":true,"result":"hi\n","seq":5,"tool":"bash","type":"tool_result"}
+{"call_id":"call_1","decision":"allow","event":"post_tool","hook":"submitted","seq":6,"type":"hook"}
+{"call_id":"call_2","ok":true,"result":"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n","seq":7,"tool":"bash","type":"tool_result"}
+{"call_id":"call_2","decision":"end","event":"post_tool","hook":"submitted","seq":8,"text":"Submitted: the output starts with the submit line","type":"hook"}
+{"reason":"harness_end","seq":9,"type":"run_end"}

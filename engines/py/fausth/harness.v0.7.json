@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Harness file (spec v0.6)",
-  "description": "Structure of a resolved harness (spec sections 2, 3, 5.1, 6, 8.2, 9.4, 12). Engines also check what a schema cannot express: ids unique across tools and handlers, unique hook ids, hook references to declared handlers and tools, that every embedded schema compiles, and the placeholders of the texts (8.2).",
+  "title": "Harness file (spec v0.7)",
+  "description": "Structure of a resolved harness (spec sections 2, 2.1, 3, 5.1, 6, 8.2, 9.4, 12). Engines also check what a schema cannot express: ids unique across tools and handlers, unique hook ids, hook references to declared handlers and tools, that every embedded schema compiles, and the placeholders of the texts (8.2).",
   "type": "object",
   "required": ["spec", "name", "prompt"],
   "additionalProperties": false,
   "properties": {
-    "spec": { "const": "harness/0.6" },
+    "spec": { "const": "harness/0.7" },
     "name": { "type": "string", "minLength": 1 },
     "prompt": { "type": "string" },
     "tools": {
@@ -24,7 +24,16 @@
       "additionalProperties": { "$ref": "#/$defs/handler" }
     },
     "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
-    "argument_text": { "enum": ["model_order", "sorted_ascii"] },
+    "argument_text": { "enum": ["model_order", "sorted_ascii", "as_sent"] },
+    "host_values": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$",
+        "not": { "enum": ["CWD", "HOME", "DATE", "YEAR", "TIMEZONE", "OS", "MODEL", "PROVIDER"] }
+      }
+    },
     "texts": {
       "type": "object",
       "additionalProperties": false,
@@ -86,7 +95,7 @@
       "properties": {
         "id": { "type": "string", "pattern": "^[a-zA-Z0-9_.-]{1,64}$" },
         "on": {
-          "enum": ["session_start", "user_prompt", "pre_request", "pre_tool", "post_tool", "stop", "interrupt"]
+          "enum": ["session_start", "user_prompt", "pre_request", "post_response", "pre_check", "pre_tool", "post_tool", "stop", "interrupt"]
         },
         "match": {
           "anyOf": [
@@ -101,12 +110,16 @@
       },
       "allOf": [
         {
-          "if": { "required": ["on"], "properties": { "on": { "enum": ["session_start", "user_prompt", "pre_request", "stop"] } } },
+          "if": { "required": ["on"], "properties": { "on": { "enum": ["session_start", "user_prompt", "pre_request", "post_response", "stop"] } } },
           "then": { "not": { "required": ["match"] } }
         },
         {
           "if": { "required": ["on", "run"], "properties": { "on": { "enum": ["session_start", "pre_request"] }, "run": { "pattern": "^core_" } } },
           "then": { "properties": { "run": { "const": "core_context" } } }
+        },
+        {
+          "if": { "required": ["on"], "properties": { "on": { "enum": ["post_response", "pre_check"] } } },
+          "then": { "properties": { "run": { "not": { "pattern": "^core_" } } } }
         },
         {
           "if": { "required": ["run"], "properties": { "run": { "const": "core_called_since" } } },

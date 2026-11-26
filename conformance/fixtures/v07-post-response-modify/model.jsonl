@@ -1,0 +1,4 @@
+{"text": "Reading.", "tool_calls": [{"call_id": "call_1", "tool": "raed", "args": {"path": "a"}, "raw": "{\"path\": \"a\"}"}, {"call_id": "call_2", "tool": "ls", "args": {}}, {"call_id": "call_3", "tool": "ls", "args": {}}], "finish": "tool_calls", "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+{"text": "Done.", "finish": "stop"}
+{"tool_calls": [{"call_id": "call_4", "tool": "ls", "args": {}}], "finish": "tool_calls"}
+{"text": "Bye."}

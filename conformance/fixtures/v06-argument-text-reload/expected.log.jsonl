@@ -1,9 +1,9 @@
-{"depth":0,"harness_hash":"3a87bf9b125050b44afe8b6a431bf8334e6ae41566616ef8e43b85fd8a3210a1","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"88e24e21b8f8e12e3da99a1787b0537760c24b530abc0c37bbbdcaa4df6d5779","seq":1,"type":"run_start"}
 {"seq":2,"text":"Take notes.","type":"system"}
 {"seq":3,"text":"Note it twice.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{"a":1,"b":"é"},"args_text":"{\"b\":\"é\",\"a\":1}","call_id":"c4-0","tool":"note"}],"type":"assistant"}
 {"call_id":"c4-0","ok":true,"result":"n1","seq":5,"tool":"note","type":"tool_result"}
-{"harness_hash":"3a07b2fb875a45ec6f15d18b18bf968bb209a5d3c50c4df8fc2f894602b80582","seq":6,"type":"harness_changed"}
+{"harness_hash":"23649d021742e3018e3d6e7c0e463cb0fc50d5204274e854de5a531685f9acf2","seq":6,"type":"harness_changed"}
 {"seq":7,"text":"Take notes.","type":"system"}
 {"seq":8,"step":2,"text":"","tool_calls":[{"args":{"a":1,"b":"é"},"args_text":"{\"a\":1.0,\"b\":\"\\u00e9\"}","call_id":"c8-0","tool":"note"}],"type":"assistant"}
 {"call_id":"c8-0","ok":true,"result":"n2","seq":9,"tool":"note","type":"tool_result"}

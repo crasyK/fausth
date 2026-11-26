@@ -93,6 +93,14 @@ pub fn view(entries: &[Entry], scope: &Scope) -> Vec<Value> {
                     calls.insert(id, (step.clone(), tool, c.get("args").cloned().unwrap_or(Value::Null)));
                 }
             }
+            "hook" if e.get_str("event") == Some("post_response") && e.get_str("decision") == Some("modify") => {
+                // A renamed call runs under its new name (§5.4).
+                for m in e.get("calls").and_then(Value::as_array).into_iter().flatten() {
+                    if let Some(c) = calls.get_mut(m.get_str("call_id").unwrap_or_default()) {
+                        c.1 = m.get_str("tool").unwrap_or_default().to_owned();
+                    }
+                }
+            }
             "hook" => {
                 let Some(id) = e.get("call_id").and_then(Value::as_str) else { continue };
                 let Some(c) = calls.get_mut(id) else { continue };

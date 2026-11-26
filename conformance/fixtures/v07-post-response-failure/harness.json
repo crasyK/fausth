@@ -1,0 +1,17 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-post-response-failure",
+  "prompt": "Work.",
+  "handlers": {
+    "look": {
+      "description": "Lets the reply through."
+    }
+  },
+  "hooks": [
+    {
+      "id": "look",
+      "on": "post_response",
+      "run": "look"
+    }
+  ]
+}

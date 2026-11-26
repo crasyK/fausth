@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"57e4753c2f26dd8cbfb9a61f44f743e96310bab451e392146608bd5491c5330a","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"2a325044ff1349aebbe3737df83909401012d04b1655bea044f3e7c72d7c98a7","seq":1,"type":"run_start"}
 {"seq":2,"text":"Help the user.","type":"system"}
 {"decision":"deny","event":"user_prompt","hook":"closed","seq":3,"text":"This bot is closed today.","type":"hook"}
 {"decision":"deny","event":"user_prompt","hook":"closed","seq":4,"text":"This bot is closed today.","type":"hook"}

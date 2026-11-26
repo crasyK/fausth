@@ -1,0 +1,5 @@
+{"id": "repair", "ok": true, "result": {"decision": "modify", "args": {"path": "é", "limit": 1}, "shown": "modified"}}
+{"id": "read", "ok": true, "result": "é"}
+{"id": "repair", "ok": true, "result": {"decision": "modify", "args": {"z": 1, "path": "x"}, "shown": "modified", "args_text": "{\"z\": 1.0, \"path\": \"x\"}"}}
+{"id": "repair", "ok": true, "result": {"decision": "modify", "args": {"path": "y"}, "shown": "model"}}
+{"id": "read", "ok": true, "result": "y"}

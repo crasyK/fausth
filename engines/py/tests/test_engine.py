@@ -4,7 +4,7 @@ import pytest
 from fausth.engine import run
 
 HARNESS = {
-    "spec": "harness/0.6", "name": "n", "prompt": "p",
+    "spec": "harness/0.7", "name": "n", "prompt": "p",
     "tools": {"edit": {"description": "Edit.", "input": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}}},
     "texts": {"invalid_arguments": 'Validation failed for tool "{tool}":\n{reasons}'},
 }
@@ -68,3 +68,11 @@ def test_raw_may_differ_from_args_in_how_it_writes_them():
     log = run({**HARNESS, "argument_text": "sorted_ascii"}, _Host(call=call))
     assert log.entries[-1]["reason"] == "stop"
     assert next(e for e in log.entries if e["type"] == "assistant")["tool_calls"][0]["args_text"] == '{"n":18446744073709551615,"path":"a"}'
+
+
+# 0.7 (§14): `finish` and `failure` are strings when a response has them.
+@pytest.mark.parametrize("extra", [{"finish": 1}, {"failure": None}])
+def test_finish_and_failure_must_be_strings(extra):
+    host = _Host()
+    host.replies = [{"text": "x", **extra}]
+    assert run(HARNESS, host).entries[-1]["reason"] == "infra_failure"

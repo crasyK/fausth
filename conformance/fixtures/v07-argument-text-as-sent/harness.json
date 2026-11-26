@@ -1,0 +1,26 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-argument-text-as-sent",
+  "prompt": "Work.",
+  "argument_text": "as_sent",
+  "tools": {
+    "bash": {
+      "description": "Execute a bash command",
+      "input": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  },
+  "texts": {
+    "invalid_arguments": "{args} | {args_indented}",
+    "malformed_arguments": "{text}"
+  }
+}

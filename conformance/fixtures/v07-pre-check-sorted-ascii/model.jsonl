@@ -1,0 +1,2 @@
+{"tool_calls": [{"call_id": "call_1", "tool": "read", "malformed": "{\"path\": \"é\", \"limit\": 1,"}, {"call_id": "call_2", "tool": "read", "malformed": "{\"z\": 1.0, \"path\": \"x\""}, {"call_id": "call_3", "tool": "read", "args": {"path": "y"}, "raw": "{\"path\": \"y\"}"}]}
+{"text": "Done."}

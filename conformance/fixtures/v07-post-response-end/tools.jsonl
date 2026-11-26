@@ -1,0 +1,4 @@
+{"id": "gate", "ok": true, "result": {"decision": "allow"}}
+{"id": "ls", "ok": true, "result": "a"}
+{"id": "gate", "ok": true, "result": {"decision": "retry", "replace_context": {"text": "Compacted: ls showed a.", "wrap": false}}}
+{"id": "gate", "ok": true, "result": {"decision": "end", "text": "a third reply in a row with only unknown tools"}}

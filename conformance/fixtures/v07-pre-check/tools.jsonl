@@ -1,0 +1,21 @@
+{"id": "bad", "ok": true, "result": {"decision": "modify", "args": {}, "shown": "model", "args_text": "{}"}}
+{"id": "repair", "ok": true, "result": {"decision": "modify", "args": {"path": "a", "limit": 20}, "shown": "model"}}
+{"id": "seen", "ok": true, "result": {"decision": "allow"}}
+{"id": "read", "ok": true, "result": "contents of a"}
+{"id": "after", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "modify", "args": {"path": "b"}, "shown": "modified", "args_text": "{\"path\": \"c\"}"}}
+{"id": "repair", "ok": true, "result": {"decision": "modify", "args": {"path": "b"}, "shown": "modified", "args_text": "{\"path\": \"b\"}"}}
+{"id": "seen", "ok": true, "result": {"decision": "allow"}}
+{"id": "read", "ok": true, "result": "contents of b"}
+{"id": "after", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "modify", "args": {"path": 5}, "shown": "both"}}
+{"id": "repair", "ok": true, "result": {"decision": "modify", "args": {"path": 6, "note": "x"}, "shown": "modified"}}
+{"id": "seen", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "allow"}}
+{"id": "repair", "ok": true, "result": {"decision": "allow"}}
+{"id": "seen", "ok": true, "result": {"decision": "allow"}}
+{"id": "read", "ok": true, "result": "contents of c"}
+{"id": "after", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "allow"}}
+{"id": "repair", "ok": true, "result": {"decision": "allow"}}
+{"id": "seen", "ok": true, "result": {"decision": "allow"}}

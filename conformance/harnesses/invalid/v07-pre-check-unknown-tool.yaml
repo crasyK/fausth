@@ -1,0 +1,9 @@
+spec: harness/0.7
+name: m
+prompt: p
+tools:
+  read: { description: r, input: { type: object } }
+handlers:
+  h: {}
+hooks:
+  - { id: a, on: pre_check, match: nope, run: h }

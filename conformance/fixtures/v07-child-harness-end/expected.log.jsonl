@@ -1,0 +1,14 @@
+{"depth":0,"harness_hash":"1ca509a06eaaeb2fb4c59e50fd89bc428e2c7a22d8131e77e6d9408f4bfcc1a2","seq":1,"type":"run_start"}
+{"seq":2,"text":"Delegate.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"harness":{"handlers":{"submit":{}},"hooks":[{"id":"submitted","match":"bash","on":"post_tool","run":"submit"}],"name":"child","prompt":"Do it.","spec":"harness/0.7","tools":{"bash":{"description":"Execute a bash command","input":{"properties":{"command":{"type":"string"}},"required":["command"],"type":"object"}}}},"task":"Submit."},"args_text":"{\"harness\":{\"spec\":\"harness/0.7\",\"name\":\"child\",\"prompt\":\"Do it.\",\"tools\":{\"bash\":{\"description\":\"Execute a bash command\",\"input\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},\"required\":[\"command\"]}}},\"handlers\":{\"submit\":{}},\"hooks\":[{\"id\":\"submitted\",\"on\":\"post_tool\",\"match\":\"bash\",\"run\":\"submit\"}]},\"task\":\"Submit.\"}","call_id":"call_1","tool":"core_spawn"}],"type":"assistant"}
+{"depth":1,"harness_hash":"94c9f9e705f2163027749d96f70b90497ccc9b3a5264ba17d9be33f73d741e8e","parent_call":"call_1","seq":5,"type":"run_start"}
+{"depth":1,"parent_call":"call_1","seq":6,"text":"Do it.","type":"system"}
+{"depth":1,"parent_call":"call_1","seq":7,"text":"Submit.","type":"user"}
+{"depth":1,"parent_call":"call_1","seq":8,"step":2,"text":"Child says done.","tool_calls":[{"args":{"command":"echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"},"call_id":"call_2","tool":"bash"}],"type":"assistant"}
+{"call_id":"call_2","depth":1,"ok":true,"parent_call":"call_1","result":"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n","seq":9,"tool":"bash","type":"tool_result"}
+{"call_id":"call_2","decision":"end","depth":1,"event":"post_tool","hook":"submitted","parent_call":"call_1","seq":10,"type":"hook"}
+{"depth":1,"parent_call":"call_1","reason":"harness_end","seq":11,"type":"run_end"}
+{"call_id":"call_1","ok":true,"result":{"steps":1,"text":"Child says done.","tool_calls":1},"seq":12,"tool":"core_spawn","type":"tool_result"}
+{"seq":13,"step":3,"text":"The child finished.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":14,"type":"run_end"}

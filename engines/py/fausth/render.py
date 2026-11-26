@@ -36,7 +36,8 @@ def _joined(parts: list[str]) -> str:
 
 def _messages(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The messages the items make (§9.3): tool messages built, user contributions in a row merged. An item marked
-    `kept` (kept by a `replace_context`) stays as it was: it never merges into the message before it."""
+    `kept` (kept by a `replace_context`) stays as it was: it never merges into the message before it. One marked
+    `alone` (the unwrapped text of a `retry`) merges with neither neighbour."""
     messages: list[dict[str, Any]] = []
     for item in items:
         if "slot" in item:
@@ -48,11 +49,19 @@ def _messages(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                        "text": "".join(m + "\n" for m in s["modifies"]) + body + _joined(s["contexts"])}
         else:
             message = dict(item)
-        if message["role"] == "user" and messages and messages[-1]["role"] == "user" and not message.get("kept"):
-            messages[-1]["text"] += "\n\n" + message["text"]
+        last = messages[-1] if messages else None
+        if (message["role"] == "user" and last is not None and last["role"] == "user" and not message.get("kept")
+                and not message.get("alone") and not last.get("alone")):
+            last["text"] += "\n\n" + message["text"]
         else:
             messages.append(message)
     return messages
+
+
+def _replaced(items: list[dict[str, Any]], text: str, keep: int) -> list[dict[str, Any]]:
+    """The items after a `replace_context`: one user message, then the newest `keep` messages as they were (§9.3)."""
+    kept = [{**m, "kept": True} for m in _messages(items)[-keep:]] if keep > 0 else []
+    return [{"role": "user", "text": text}, *kept]
 
 
 def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope) -> dict[str, Any]:
@@ -60,6 +69,8 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
     system = ""
     items: list[dict[str, Any]] = []
     slots: dict[str, dict[str, Any]] = {}  # a call's tool message while its log entries are read (§9.3)
+    calls: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}  # a call as the request shows it, and as logged
+    reply: dict[str, Any] | None = None  # the last assistant item and its tool items, for `post_response` (§5.4)
     user_contexts: list[str] = []
     interrupt_contexts: list[str] = []
 
@@ -77,14 +88,18 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
             interrupt_contexts = []
         elif t == "assistant":
             # A call's `malformed` text is the log's record; the request carries what goes back (§9.4).
-            calls = [{k: v for k, v in c.items() if k != "malformed"} for c in e["tool_calls"]]
-            item = {"role": "assistant", "text": e["text"], "tool_calls": calls}
+            shown = [{k: v for k, v in c.items() if k != "malformed"} for c in e["tool_calls"]]
+            item = {"role": "assistant", "text": e["text"], "tool_calls": shown}
             item.update((k, e[k]) for k in ("reasoning", "reasoning_opaque") if k in e)  # the adapter decides (§9)
-            items.append(item)
-            for c in e["tool_calls"]:
+            tool_items = []
+            for c in shown:
                 slot = {"call_id": c["call_id"], "tool": c["tool"], "modifies": [], "contexts": []}
                 slots[c["call_id"]] = slot
-                items.append({"role": "tool", "slot": slot})
+                calls[c["call_id"]] = (c, {k: v for k, v in c.items() if k in ("args", "args_text")})
+                tool_items.append({"role": "tool", "slot": slot})
+            items.append(item)
+            items.extend(tool_items)
+            reply = {"item": item, "tools": tool_items}
         elif t == "tool_result":
             slot = slots.get(e["call_id"])
             if slot is not None:
@@ -96,6 +111,50 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
                 wrapper = ""
             else:
                 wrapper = text if e.get("wrap") is False else hook_wrapper(event, e["hook"], decision, text)
+            if event == "pre_check":
+                if decision == "modify" and e["call_id"] in calls:
+                    # `shown: modified` puts the modified arguments and their text in later requests; `model` keeps
+                    # (or puts back) the model's (§5.4).
+                    c, model = calls[e["call_id"]]
+                    c.pop("args_text", None)
+                    if e["shown"] == "modified":
+                        c["args"] = e["args"]
+                        if "args_text" in e:
+                            c["args_text"] = e["args_text"]
+                    else:
+                        c.update(model)
+                continue
+            if event == "post_response":
+                if reply is not None and decision == "modify":
+                    # The listed calls, in that order, under their names; their tool messages likewise (§9.3).
+                    item, tool_items = reply["item"], reply["tools"]
+                    by_id = {c["call_id"]: (c, ti) for c, ti in zip(item["tool_calls"], tool_items)}
+                    start = next(i for i, x in enumerate(items) if x is item)
+                    new_calls, new_tools = [], []
+                    for m in e["calls"]:
+                        c, ti = by_id[m["call_id"]]
+                        c["tool"] = m["tool"]
+                        ti["slot"]["tool"] = m["tool"]
+                        new_calls.append(c)
+                        new_tools.append(ti)
+                    item["tool_calls"] = new_calls
+                    items[start + 1:start + 1 + len(tool_items)] = new_tools
+                    reply["tools"] = new_tools
+                elif reply is not None and decision == "retry":
+                    item, tool_items = reply["item"], reply["tools"]
+                    start = next(i for i, x in enumerate(items) if x is item)
+                    del items[start:start + 1 + len(tool_items)]
+                    if "replace_context" in e:
+                        rc = e["replace_context"]
+                        rtext = rc["text"] if rc.get("wrap") is False else hook_wrapper(
+                            event, e["hook"], "replace_context", rc["text"])
+                        items = _replaced(items, rtext, rc.get("keep", 0))
+                    if e.get("keep_reply") is True:
+                        items.extend([item, *tool_items])
+                    if "text" in e:
+                        items.append({"role": "user", "text": wrapper, **({"alone": True} if e.get("wrap") is False else {})})
+                    reply = None
+                continue
             slot = slots.get(e["call_id"]) if "call_id" in e else None
             if slot is not None:
                 if decision == "modify":
@@ -107,6 +166,7 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
                 elif decision == "add_context":
                     slot["contexts"].append(wrapper)
             elif event == "user_prompt":
+                # A `replace` is in the `user` entry already.
                 if decision == "add_context":
                     user_contexts.append(wrapper)
                 if decision == "deny":
@@ -118,13 +178,11 @@ def render(harness: dict[str, Any], entries: list[dict[str, Any]], scope: Scope)
                     interrupt_contexts = []
             elif event == "pre_request" and decision == "replace_context":
                 # The newest `keep` messages stay as they were; the text replaces the ones before them.
-                keep = e.get("keep", 0)
-                kept = [{**m, "kept": True} for m in _messages(items)[-keep:]] if keep > 0 else []
-                items = [{"role": "user", "text": wrapper}, *kept]
+                items = _replaced(items, wrapper, e.get("keep", 0))
             elif event in ("pre_request", "stop") and decision in ("add_context", "continue"):
                 items.append({"role": "user", "text": wrapper})
 
-    messages = [{k: v for k, v in m.items() if k != "kept"} for m in _messages(items)]
+    messages = [{k: v for k, v in m.items() if k not in ("kept", "alone")} for m in _messages(items)]
     declared = harness.get("tools", {})
     tools = [{"name": name, **shown_tool(name, declared[name])} for name in tool_ids(harness)]
     return {"system": system, "tools": tools, "messages": messages}

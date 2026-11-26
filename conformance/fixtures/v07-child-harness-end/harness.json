@@ -1,0 +1,27 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-child-harness-end",
+  "prompt": "Delegate.",
+  "tools": {
+    "core_spawn": {},
+    "bash": {
+      "description": "Execute a bash command",
+      "input": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  },
+  "handlers": {
+    "submit": {
+      "description": "Ends the run at the submit line."
+    }
+  }
+}

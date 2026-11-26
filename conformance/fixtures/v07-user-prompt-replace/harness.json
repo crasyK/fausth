@@ -1,0 +1,47 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-user-prompt-replace",
+  "prompt": "You are a helpful assistant that can interact with a computer.",
+  "handlers": {
+    "instance": {
+      "description": "Fills mini-swe-agent's instance_template with the task and the machine."
+    },
+    "check": {
+      "description": "Sees the message as the chain replaced it.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "pattern": "^(Please solve|plain)"
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "instance",
+      "on": "user_prompt",
+      "run": "instance",
+      "with": {
+        "instance_template": "Please solve this issue: {{task}}\n\n<system_information>\n{{system}}\n</system_information>"
+      }
+    },
+    {
+      "id": "check",
+      "on": "user_prompt",
+      "run": "check"
+    },
+    {
+      "id": "tip",
+      "on": "user_prompt",
+      "run": "core_context",
+      "with": {
+        "text": "A tip that is longer than the limit."
+      }
+    }
+  ],
+  "limits": {
+    "max_hook_text": 10
+  }
+}

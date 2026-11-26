@@ -1,0 +1,621 @@
+{
+ "about": "Spec v0.7 section 2.1. Each case fills `harness` with `values`; the result must equal `filled` (same canonical form), or the fill must fail when `error` is true.",
+ "cases": [
+  {
+   "name": "placeholders in the prompt, standard and declared",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "Main documentation: ${PKG}/README.md\nCurrent working directory: ${CWD}",
+    "host_values": [
+     "PKG"
+    ]
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai",
+    "PKG": "/usr/lib/pi"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "Main documentation: /usr/lib/pi/README.md\nCurrent working directory: /app",
+    "host_values": [
+     "PKG"
+    ]
+   }
+  },
+  {
+   "name": "tool descriptions are filled; handler descriptions, texts and with are not",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "p",
+    "tools": {
+     "websearch": {
+      "description": "The current year is ${YEAR}.",
+      "input": {
+       "type": "object"
+      }
+     },
+     "core_spawn": {
+      "description": "Spawn in ${CWD}."
+     }
+    },
+    "handlers": {
+     "x": {
+      "description": "${YEAR}"
+     }
+    },
+    "texts": {
+     "tool_error": "${YEAR} {error}"
+    },
+    "hooks": [
+     {
+      "id": "a",
+      "on": "stop",
+      "run": "x",
+      "with": {
+       "text": "${YEAR}"
+      }
+     }
+    ]
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "p",
+    "tools": {
+     "websearch": {
+      "description": "The current year is 2026.",
+      "input": {
+       "type": "object"
+      }
+     },
+     "core_spawn": {
+      "description": "Spawn in /app."
+     }
+    },
+    "handlers": {
+     "x": {
+      "description": "${YEAR}"
+     }
+    },
+    "texts": {
+     "tool_error": "${YEAR} {error}"
+    },
+    "hooks": [
+     {
+      "id": "a",
+      "on": "stop",
+      "run": "x",
+      "with": {
+       "text": "${YEAR}"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "a slot with a value is filled",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${TOOLCHAIN}\n\nB",
+    "host_values": [
+     "TOOLCHAIN"
+    ]
+   },
+   "values": {
+    "TOOLCHAIN": "Python toolchain: python3=missing."
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\nPython toolchain: python3=missing.\n\nB",
+    "host_values": [
+     "TOOLCHAIN"
+    ]
+   }
+  },
+  {
+   "name": "an empty slot disappears with its blank line, in the middle and at the end",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${TOOLCHAIN}\n\nB\n\n${WORKSPACE}",
+    "host_values": [
+     "TOOLCHAIN",
+     "WORKSPACE"
+    ]
+   },
+   "values": {
+    "TOOLCHAIN": "",
+    "WORKSPACE": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\nB",
+    "host_values": [
+     "TOOLCHAIN",
+     "WORKSPACE"
+    ]
+   }
+  },
+  {
+   "name": "two empty slots in a row",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${X}\n\n${Y}\n\nB",
+    "host_values": [
+     "X",
+     "Y"
+    ]
+   },
+   "values": {
+    "X": "",
+    "Y": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\nB",
+    "host_values": [
+     "X",
+     "Y"
+    ]
+   }
+  },
+  {
+   "name": "a placeholder that isn't a whole paragraph is not a slot",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${X} and more\n\n${X}\nB\n\n${X}",
+    "host_values": [
+     "X"
+    ]
+   },
+   "values": {
+    "X": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n and more\n\n\nB",
+    "host_values": [
+     "X"
+    ]
+   }
+  },
+  {
+   "name": "a placeholder at the very start is not a slot",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${X}\n\nB",
+    "host_values": [
+     "X"
+    ]
+   },
+   "values": {
+    "X": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "\n\nB",
+    "host_values": [
+     "X"
+    ]
+   }
+  },
+  {
+   "name": "a block is kept when its value isn't empty, and may hold paragraphs and placeholders",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if CODING}\nYou are a coding agent in ${CWD}.\n\nBe careful.\n${end}\n\nB",
+    "host_values": [
+     "CODING"
+    ]
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai",
+    "CODING": "yes"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\nYou are a coding agent in /app.\n\nBe careful.\n\nB",
+    "host_values": [
+     "CODING"
+    ]
+   }
+  },
+  {
+   "name": "a block disappears when its value is empty, also at the end",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if CODING}\nBrief.\n${end}\n\nB\n\n${if WSL}\nNote.\n${end}",
+    "host_values": [
+     "CODING",
+     "WSL"
+    ]
+   },
+   "values": {
+    "CODING": "",
+    "WSL": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\nB",
+    "host_values": [
+     "CODING",
+     "WSL"
+    ]
+   }
+  },
+  {
+   "name": "a block body may hold a slot",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if C}\nx\n\n${S}\n\ny\n${end}",
+    "host_values": [
+     "C",
+     "S"
+    ]
+   },
+   "values": {
+    "C": "1",
+    "S": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\nx\n\ny",
+    "host_values": [
+     "C",
+     "S"
+    ]
+   }
+  },
+  {
+   "name": "the shortest body: two blocks in a row are two blocks",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if C}\none\n${end}\n\n${if D}\ntwo\n${end}\n\nB",
+    "host_values": [
+     "C",
+     "D"
+    ]
+   },
+   "values": {
+    "C": "1",
+    "D": ""
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\none\n\nB",
+    "host_values": [
+     "C",
+     "D"
+    ]
+   }
+  },
+  {
+   "name": "a ${end} that doesn't end a paragraph is in the body, and step 3 meets it",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if C}\none\n${end} not yet\n${end}\n\nB",
+    "host_values": [
+     "C"
+    ]
+   },
+   "values": {
+    "C": "1"
+   },
+   "error": true
+  },
+  {
+   "name": "$${ writes ${ (left to right), and values are not read again",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "$${HOME} is literal, $$${HOME} keeps a dollar, $${if X} and $${end} too; cwd ${CWD}"
+   },
+   "values": {
+    "CWD": "${HOME}",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${HOME} is literal, $${HOME} keeps a dollar, ${if X} and ${end} too; cwd ${HOME}"
+   }
+  },
+  {
+   "name": "other dollars and braces stay",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${home} ${HOME:-x} $HOME ${ HOME } $ {HOME} ${1} $"
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${home} ${HOME:-x} $HOME ${ HOME } $ {HOME} ${1} $"
+   }
+  },
+  {
+   "name": "a file without placeholders is unchanged, and extra values are allowed",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "Plain.",
+    "tools": {
+     "t": {
+      "description": "Plain tool.",
+      "input": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai",
+    "UNUSED": "x"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "Plain.",
+    "tools": {
+     "t": {
+      "description": "Plain tool.",
+      "input": {
+       "type": "object"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "every standard name",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${CWD}|${HOME}|${DATE}|${YEAR}|${TIMEZONE}|${OS}|${MODEL}|${PROVIDER}"
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai"
+   },
+   "filled": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "/app|/root|2026-11-26|2026|UTC+00:00|Linux|glm-5.3-flash|openai"
+   }
+  },
+  {
+   "name": "a name neither standard nor declared",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${PKG}"
+   },
+   "values": {
+    "PKG": "/x"
+   },
+   "error": true
+  },
+  {
+   "name": "a declared name without a value",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${PKG}",
+    "host_values": [
+     "PKG"
+    ]
+   },
+   "values": {},
+   "error": true
+  },
+  {
+   "name": "a standard name without a value",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${CWD}"
+   },
+   "values": {
+    "HOME": "/root"
+   },
+   "error": true
+  },
+  {
+   "name": "a value that isn't a string",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "${YEAR}"
+   },
+   "values": {
+    "YEAR": 2026
+   },
+   "error": true
+  },
+  {
+   "name": "an undeclared name in a tool description",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "p",
+    "tools": {
+     "t": {
+      "description": "${NOPE}",
+      "input": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "values": {
+    "CWD": "/app",
+    "HOME": "/root",
+    "DATE": "2026-11-26",
+    "YEAR": "2026",
+    "TIMEZONE": "UTC+00:00",
+    "OS": "Linux",
+    "MODEL": "glm-5.3-flash",
+    "PROVIDER": "openai"
+   },
+   "error": true
+  },
+  {
+   "name": "an undeclared name in an empty slot",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${NOPE}",
+    "host_values": [
+     "X"
+    ]
+   },
+   "values": {
+    "NOPE": ""
+   },
+   "error": true
+  },
+  {
+   "name": "an undeclared name in a removed block",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if NOPE}\nx\n${end}"
+   },
+   "values": {
+    "NOPE": ""
+   },
+   "error": true
+  },
+  {
+   "name": "${if} inside a line is not a block",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A ${if C} x ${end}",
+    "host_values": [
+     "C"
+    ]
+   },
+   "values": {
+    "C": "1"
+   },
+   "error": true
+  },
+  {
+   "name": "a block not followed by a blank line or the end",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if C}\nx\n${end}\nB",
+    "host_values": [
+     "C"
+    ]
+   },
+   "values": {
+    "C": "1"
+   },
+   "error": true
+  },
+  {
+   "name": "a stray ${end}",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A ${end}"
+   },
+   "values": {},
+   "error": true
+  },
+  {
+   "name": "nested blocks",
+   "harness": {
+    "spec": "harness/0.7",
+    "name": "m",
+    "prompt": "A\n\n${if C}\n\n${if D}\nx\n${end}\n${end}",
+    "host_values": [
+     "C",
+     "D"
+    ]
+   },
+   "values": {
+    "C": "1",
+    "D": "1"
+   },
+   "error": true
+  }
+ ]
+}

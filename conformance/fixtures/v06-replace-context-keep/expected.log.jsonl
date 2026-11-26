@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"b8d77afc73538bf7d3bbe540a4dd981b228f4ce3565a939ab769d54adf980ccd","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"7ca6a97a408328137f35462f8ef0ffde92ce34af6109e13f9936d89392b2b1b3","seq":1,"type":"run_start"}
 {"seq":2,"text":"Work.","type":"system"}
 {"seq":3,"text":"Work.","type":"user"}
 {"decision":"failed","event":"pre_request","hook":"bad","seq":4,"type":"hook"}

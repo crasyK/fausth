@@ -1,0 +1,4 @@
+{"id": "bash", "ok": true, "result": "hi\n"}
+{"id": "submit", "ok": true, "result": {"decision": "allow"}}
+{"id": "bash", "ok": true, "result": "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n"}
+{"id": "submit", "ok": true, "result": {"decision": "end", "text": "Submitted: the output starts with the submit line"}}

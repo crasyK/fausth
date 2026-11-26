@@ -1,5 +1,5 @@
 # a boolean mapping key (YAML 1.2: on/yes stay strings, true does not)
-spec: harness/0.6
+spec: harness/0.7
 name: base
 prompt: p
 handlers: { h: {} }

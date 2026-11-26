@@ -1,0 +1,25 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-post-response-end",
+  "prompt": "Work.",
+  "tools": {
+    "ls": {
+      "description": "List files.",
+      "input": {
+        "type": "object"
+      }
+    }
+  },
+  "handlers": {
+    "gate": {
+      "description": "Compacts after a context overflow, ends after a reply with only unknown tools."
+    }
+  },
+  "hooks": [
+    {
+      "id": "gate",
+      "on": "post_response",
+      "run": "gate"
+    }
+  ]
+}

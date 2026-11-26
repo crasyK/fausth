@@ -1,0 +1,52 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-post-response-retry",
+  "prompt": "Work.",
+  "tools": {
+    "bash": {
+      "description": "Execute a bash command",
+      "input": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  },
+  "handlers": {
+    "bad": {
+      "description": "Retries in ways that fail."
+    },
+    "format": {
+      "description": "mini-swe-agent's format check, pi's compact-and-retry, OpenCode's continuation.",
+      "input": {
+        "type": "object",
+        "required": [
+          "reply",
+          "context"
+        ]
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "bad",
+      "on": "post_response",
+      "run": "bad",
+      "on_failure": "skip"
+    },
+    {
+      "id": "format",
+      "on": "post_response",
+      "run": "format"
+    }
+  ],
+  "limits": {
+    "max_hook_text": 30
+  }
+}

@@ -1,7 +1,7 @@
 //! The shared conformance suite (`conformance/`, spec §14): values, harnesses, the log, the Chat Completions
 //! mapping, and every fixture replayed to both expected files byte for byte.
 
-use fausth::harness::{fill, harness_hash, read_harness, Harness};
+use fausth::harness::{fill, fill_host_values, harness_hash, read_harness, Harness};
 use fausth::log::{call_id, view, Log, Scope};
 use fausth::openai::{from_chat, to_chat, ReasoningReplay};
 use fausth::render::Request;
@@ -161,6 +161,27 @@ fn harnesses_invalid() {
     f.done(files.len());
 }
 
+/// 0.7 (§2.1): host values, filled at load (`host-values.json`).
+#[test]
+fn host_values() {
+    let v = vectors("host-values.json");
+    let cases = list(&v, "cases");
+    let mut f = Failures::default();
+    for c in cases {
+        let values = c.get("values").and_then(Value::as_object).unwrap();
+        let got = fill_host_values(c.get("harness").unwrap(), values);
+        match (got, c.get("error") == Some(&Value::Bool(true))) {
+            (Ok(h), false) => f.check(canon(&h) == canon(c.get("filled").unwrap()), || {
+                format!("{}: {}", str_of(c, "name"), canon(&h))
+            }),
+            (Err(_), true) => {}
+            (Ok(_), true) => f.check(false, || format!("{}: should fail", str_of(c, "name"))),
+            (Err(e), false) => f.check(false, || format!("{}: {e}", str_of(c, "name"))),
+        }
+    }
+    f.done(cases.len());
+}
+
 /// 0.6 (§2, §8.2, §9): the tool order, the hash that sees it, and the texts' placeholders.
 #[test]
 fn harness_tool_order_hash_and_fill() {
@@ -170,10 +191,10 @@ fn harness_tool_order_hash_and_fill() {
         ))
         .unwrap()
     };
-    let h = Harness::new(ordered("harness/0.6"));
+    let h = Harness::new(ordered("harness/0.7"));
     assert_eq!(h.tool_ids(), ["2", "10", "zeta", "Alpha", "007"]);
     assert!(fausth::harness_errors(h.value()).is_empty());
-    assert!(!fausth::harness_errors(&ordered("harness/0.5")).is_empty());
+    assert!(!fausth::harness_errors(&ordered("harness/0.6")).is_empty());
     let ids = Value::Array(["2", "10", "zeta", "Alpha", "007"].map(Value::from).to_vec());
     assert_eq!(h.hash(), hash(&Value::Array(vec![h.value().clone(), ids])).unwrap());
 

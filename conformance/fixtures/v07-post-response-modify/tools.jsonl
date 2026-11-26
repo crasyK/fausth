@@ -1,0 +1,15 @@
+{"id": "bad", "ok": true, "result": {"decision": "modify", "calls": [{"call_id": "nope", "tool": "ls"}]}}
+{"id": "fix", "ok": true, "result": {"decision": "modify", "calls": [{"call_id": "call_2", "tool": "ls"}, {"call_id": "call_1", "tool": "read"}]}}
+{"id": "see", "ok": true, "result": {"decision": "allow"}}
+{"id": "ls", "ok": true, "result": "a b"}
+{"id": "read", "ok": true, "result": "contents of a"}
+{"id": "renamed", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "modify", "calls": [{"call_id": "call_1", "tool": "ls"}]}}
+{"id": "fix", "ok": true, "result": {"decision": "allow"}}
+{"id": "see", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "modify", "calls": [{"call_id": "call_4", "tool": "ls"}, {"call_id": "call_4", "tool": "ls"}]}}
+{"id": "fix", "ok": true, "result": {"decision": "modify", "calls": []}}
+{"id": "see", "ok": true, "result": {"decision": "allow"}}
+{"id": "bad", "ok": true, "result": {"decision": "allow"}}
+{"id": "fix", "ok": true, "result": {"decision": "allow"}}
+{"id": "see", "ok": true, "result": {"decision": "allow"}}

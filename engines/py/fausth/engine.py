@@ -36,7 +36,7 @@ class Host(Protocol):
 
     # Optional: harness(step) -> a replacement harness to take at this step boundary, or None (§12.3).
     # Optional: reasons(tool, args) -> the reasons text for arguments that failed a tool's input schema, from the
-    # host's own validator, or None for the engine's (§8.1).
+    # host's own validator, or None for the engine's (§8.1). After a pre_check `modify`, `args` are the modified ones.
 
 
 LIMITS = ("max_steps", "max_tool_calls", "max_depth", "max_continues", "max_hook_text")
@@ -45,15 +45,21 @@ DEFAULTS = {"max_steps": 1000, "max_tool_calls": 1000, "max_depth": 1, "max_cont
 # Decisions each event allows besides `allow` (§4), and what a failed built-in check becomes (§6).
 ALLOWED = {
     "session_start": ("add_context",),
-    "user_prompt": ("deny", "add_context"),
+    "user_prompt": ("deny", "replace", "add_context"),
     "pre_request": ("replace_context", "add_context"),
+    "post_response": ("modify", "retry", "end"),
+    "pre_check": ("modify",),
     "pre_tool": ("deny", "modify", "add_context"),
-    "post_tool": ("replace", "add_context"),
+    "post_tool": ("replace", "add_context", "end"),
     "stop": ("continue", "add_context"),
     "interrupt": ("deny", "add_context"),
 }
 PUSH_BACK = {"pre_tool": "deny", "user_prompt": "deny", "interrupt": "deny", "stop": "continue", "post_tool": "add_context"}
-ENDS_CHAIN = ("deny", "continue", "replace_context")
+ENDS_CHAIN = ("deny", "continue", "replace_context", "retry", "end")
+# The members a `hook` entry logs when its decision has them (§7).
+LOGGED = ("text", "args", "shown", "args_text", "calls", "keep", "wrap", "keep_reply", "replace_context")
+# What the response says beyond its text and calls, logged in the `assistant` entry as given (§7, §14).
+RESPONSE_EXTRAS = ("reasoning", "reasoning_opaque", "usage", "finish", "failure")
 _INDEX = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _SOURCE = re.compile(r"[a-zA-Z0-9_-]{1,64}\Z")
 _ENGINE_ID = re.compile(r"c[0-9]+-[0-9]+\Z")  # the form of the engine's own call ids (§7)
@@ -107,9 +113,19 @@ class _Run:
 
     def argument_text(self, call: dict[str, Any], indented: bool = False) -> str:
         """A call's argument text in this run's harness's form (§9.4), compact or indented."""
-        if self.harness.get("argument_text") != "sorted_ascii":
-            return argument_text(call["args"], indented)
-        return sorted_ascii_text(call["raw"] if "raw" in call else argument_text(call["args"]), indented)
+        form = self.harness.get("argument_text", "model_order")
+        if form == "sorted_ascii":
+            return sorted_ascii_text(call["raw"] if "raw" in call else argument_text(call["args"]), indented)
+        if form == "as_sent" and not indented and "raw" in call:
+            return call["raw"]
+        return argument_text(call["args"], indented)
+
+    def modified_text(self, args: Any, given: str | None, indented: bool = False) -> str:
+        """The argument text of arguments a `pre_check` hook modified (§5.4, §9.4): the hook's `args_text`, else the
+        arguments written as for a call without `raw`."""
+        if given is None:
+            return self.argument_text({"args": args}, indented)
+        return given if not indented else self.argument_text({"args": args, "raw": given}, True)
 
     def text(self, name: str, values: dict[str, str]) -> str:
         """One of the engine's texts (§8.2): the harness's wording, else the default."""
@@ -143,9 +159,11 @@ class _Run:
                     raise _Ended("stop")
                 if not isinstance(text, str) or not _is_json(text):
                     raise InfraFailure("malformed user message")
-                if any(d["decision"] == "deny" for d in self._chain("user_prompt", {"message": text})):
+                decisions = self._chain("user_prompt", {"message": text})
+                if any(d["decision"] == "deny" for d in decisions):
                     continue
-                self.append("user", {"text": text})
+                replaced = [d["text"] for d in decisions if d["decision"] == "replace"]
+                self.append("user", {"text": replaced[-1] if replaced else text})
                 self.turn = self.step
                 self._turn()
         except _Ended as e:
@@ -196,7 +214,8 @@ class _Run:
             if self.parent is None:
                 self._boundary()
             self._chain("pre_request", {})
-            response = _check_response(self.host.model(render(self.harness, self.log.entries, self.scope)))
+            request = render(self.harness, self.log.entries, self.scope)
+            response = _check_response(self.host.model(request))
             self.counter["step"] += 1
             for r in self._ancestry():
                 r.steps_used += 1
@@ -204,13 +223,28 @@ class _Run:
             calls = self._logged_calls(given)
             self.last_text = response.get("text", "")
             members = {"step": self.step, "text": self.last_text, "tool_calls": calls}
-            members.update((k, response[k]) for k in ("reasoning", "reasoning_opaque") if k in response)
-            if "usage" in response:
-                members["usage"] = response["usage"]
+            members.update((k, response[k]) for k in RESPONSE_EXTRAS if k in response)
             self.append("assistant", members)
-            for call, c in zip(calls, given):
+            # The reply as logged, each call with the model's `raw` text (§5.3); the request it answers.
+            reply = {"text": self.last_text,
+                     "tool_calls": [{**call, **({"raw": c["raw"]} if "raw" in c else {})} for call, c in zip(calls, given)]}
+            reply.update((k, response[k]) for k in RESPONSE_EXTRAS if k in response and k != "usage")
+            decisions = self._chain("post_response", {"reply": reply, "context": request["messages"]})
+            if any(d["decision"] == "end" for d in decisions):
+                raise _Ended("harness_end")
+            if any(d["decision"] == "retry" for d in decisions):
+                continue
+            if "failure" in response:
+                raise InfraFailure("the model response failed and no post_response hook answered it")
+            pairs = list(zip(calls, given))
+            modified = [d["calls"] for d in decisions if d["decision"] == "modify"]
+            if modified:
+                # Only the listed calls run, in that order, under their names (§5.4).
+                by_id = {call["call_id"]: (call, c) for call, c in pairs}
+                pairs = [({**by_id[m["call_id"]][0], "tool": m["tool"]}, by_id[m["call_id"]][1]) for m in modified[-1]]
+            for call, c in pairs:
                 self._tool_call(call, c)
-            if calls:
+            if pairs:
                 continue
             if continued < self.limits["max_continues"]:
                 stop = self._chain("stop", {"message": self.last_text, "continued": continued})
@@ -245,7 +279,7 @@ class _Run:
             raise _Ended("limit")
         for r in self._ancestry():
             r.tool_calls_used += 1
-        tool = call["tool"]
+        tool = call["tool"]  # as the model named it, or as a post_response `modify` renamed it
 
         def shown() -> dict[str, str]:
             given = {"args": call["args"]} if "malformed" in response_call else response_call
@@ -254,24 +288,38 @@ class _Run:
         if tool not in self.harness.get("tools", {}):
             self._result(call, {"ok": False, "error": self.text("unknown_tool", shown())})
             return
+        # Repair before the check (§5.4): the hooks see the model's text; the last `modify` gives the arguments.
+        before: dict[str, Any] = {"tool": tool, "args": call["args"]}
+        if "raw" in response_call:
+            before["raw"] = response_call["raw"]
         if "malformed" in call:
+            before["malformed"] = call["malformed"]
+        repairs = [d for d in self._chain("pre_check", {"call": before}, call) if d["decision"] == "modify"]
+        args = repairs[-1]["args"] if repairs else call["args"]
+        if repairs:
+            # The texts show the checked arguments, as `shown: modified` would (§8.2).
+            given_text = repairs[-1].get("given")
+            values = {"tool": tool, "args": self.modified_text(args, given_text),
+                      "args_indented": self.modified_text(args, given_text, True)}
+            shown = lambda: values  # noqa: E731
+        elif "malformed" in call:
             values = {"tool": tool, "text": call["malformed"], "parse_error": response_call.get("parse_error", "")}
             self._result(call, {"ok": False, "error": self.text("malformed_arguments", values)})
             return
-        if not self.schemas[f"tools.{tool}.input"](call["args"]):
+        if not self.schemas[f"tools.{tool}.input"](args):
             schema = SPAWN_INPUT if tool == "core_spawn" else self.harness["tools"][tool].get("input")
             own_reasons = getattr(self.host, "reasons", None)
-            own = own_reasons(tool, call["args"]) if own_reasons is not None else None
+            own = own_reasons(tool, args) if own_reasons is not None else None
             if own is not None and (not isinstance(own, str) or not _is_json(own)):
                 raise InfraFailure("malformed reasons from the host")
-            reasons = own if own is not None else argument_reasons(schema, call["args"])
+            reasons = own if own is not None else argument_reasons(schema, args)
             self._result(call, {"ok": False, "error": self.text("invalid_arguments", {**shown(), "reasons": reasons})})
             return
-        pre = self._chain("pre_tool", {"call": {"tool": tool, "args": call["args"]}}, call)
+        pre = self._chain("pre_tool", {"call": {"tool": tool, "args": args}}, call)
         if any(d["decision"] == "deny" for d in pre):
             return
         modified = [d["args"] for d in pre if d["decision"] == "modify"]
-        args = modified[-1] if modified else call["args"]
+        args = modified[-1] if modified else args
         if tool == "core_spawn":
             answer = self._spawn(call, args)
         else:
@@ -279,7 +327,9 @@ class _Run:
         if answer is None:
             return
         self._result(call, answer)
-        self._chain("post_tool", {"call": {"tool": tool, "args": args}, "result": answer}, call)
+        post = self._chain("post_tool", {"call": {"tool": tool, "args": args}, "result": answer}, call)
+        if any(d["decision"] == "end" for d in post):
+            raise _Ended("harness_end")  # the reply's later calls don't run (§5.4)
 
     def _result(self, call: dict[str, Any], answer: dict[str, Any]) -> None:
         self.append("tool_result", {"call_id": call["call_id"], "tool": call["tool"], **answer})
@@ -338,6 +388,8 @@ class _Run:
         acting: list[dict[str, Any]] = []
         current = members.get("call")
         replaced = None
+        message = members.get("message")
+        reply = members.get("reply")
         key = call["tool"] if call else members.get("interrupt", {}).get("source")
         for hook, owner in self.hooks:
             if hook["on"] != event or not _matches(hook.get("match", "*"), key):
@@ -350,21 +402,28 @@ class _Run:
                 inp["result"] = members["result"]
             if replaced is not None:
                 inp["replaced"] = replaced
-            for k in ("message", "continued"):
-                if k in members:
-                    inp[k] = members[k]
+            if message is not None:
+                inp["message"] = message
+            if "continued" in members:
+                inp["continued"] = members["continued"]
             if "interrupt" in members:
                 inp["interrupt"] = dict(members["interrupt"])
+            if reply is not None:
+                inp["reply"] = reply
             if event in ("pre_request", "stop"):
-                # The request's messages as they would be rendered now, and the usage the run's last response
-                # reported (§5.3).
+                # The request's messages as they would be rendered now (§5.3).
                 inp["context"] = render(self.harness, self.log.entries, self.scope)["messages"]
+            if event == "post_response":
+                inp["context"] = members["context"]  # the request this response answers
+            if event in ("pre_request", "stop", "post_response"):
+                # The usage the run's last response reported (§5.3).
                 last = next((e for e in reversed(self.log.entries)
                              if e["type"] == "assistant" and in_scope(e, self.scope)), None)
                 if last is not None and "usage" in last:
                     inp["usage"] = last["usage"]
 
-            d = self._decide(hook, owner, event, inp, current["tool"] if current else None)
+            ids = [c["call_id"] for c in members["reply"]["tool_calls"]] if event == "post_response" else None
+            d = self._decide(hook, owner, event, inp, current["tool"] if current else None, ids)
             where = {"call_id": call["call_id"]} if call else {}
             if d is None:
                 self.append("hook", {"hook": hook["id"], "event": event, "decision": "failed", **where})
@@ -372,21 +431,28 @@ class _Run:
                     raise InfraFailure(f"hook {hook['id']} failed")
                 continue
             entry = {"hook": hook["id"], "event": event, "decision": d["decision"]}
-            entry.update((k, d[k]) for k in ("text", "args", "keep", "wrap") if k in d)
+            entry.update((k, d[k]) for k in LOGGED if k in d)
             self.append("hook", {**entry, **where})
             if d["decision"] == "allow":
                 continue
             acting.append(d)
-            if d["decision"] == "modify":
+            if d["decision"] == "modify" and event == "post_response":
+                originals = {c["call_id"]: c for c in members["reply"]["tool_calls"]}
+                reply = {**reply, "tool_calls": [{**originals[c["call_id"]], "tool": c["tool"]} for c in d["calls"]]}
+            elif d["decision"] == "modify" and event == "pre_check":
+                current = {"tool": current["tool"], "args": d["args"], **({"raw": current["raw"]} if "raw" in current else {})}
+            elif d["decision"] == "modify":
                 current = {"tool": current["tool"], "args": d["args"]}
-            if d["decision"] == "replace":
+            if d["decision"] == "replace" and event == "user_prompt":
+                message = d["text"]
+            elif d["decision"] == "replace":
                 replaced = d["text"]
             if d["decision"] in ENDS_CHAIN:
                 break
         return acting
 
     def _decide(self, hook: dict[str, Any], owner: _Run, event: str, inp: dict[str, Any],
-                tool: str | None) -> dict[str, Any] | None:
+                tool: str | None, ids: list[str] | None = None) -> dict[str, Any] | None:
         """One hook's decision (§5.4), or None if the hook failed."""
         def cap(text: str) -> str:
             return excerpt(text, self.limits["max_hook_text"])
@@ -416,6 +482,21 @@ class _Run:
         members = sorted(k for k in out if k != "decision")
         if decision == "allow":
             return {"hook": hook, "decision": decision} if not members else None
+        if decision == "modify" and event == "pre_check":
+            return self._repair(hook, out, members)
+        if decision == "modify" and event == "post_response":
+            return _calls(hook, out, members, ids or [])
+        if decision == "retry":
+            return _retry(hook, out, members, len(inp["context"]), cap)
+        if decision == "end":
+            if members not in ([], ["text"]) or ("text" in out and not (isinstance(out["text"], str) and _is_json(out["text"]))):
+                return None
+            return {"hook": hook, "decision": decision, **({"text": cap(out["text"])} if "text" in out else {})}
+        if decision == "replace" and event == "user_prompt":
+            # The admitted message, whole (§5.4).
+            if members != ["text"] or not isinstance(out["text"], str) or not _is_json(out["text"]):
+                return None
+            return {"hook": hook, "decision": decision, "text": out["text"]}
         if decision == "modify":
             if members not in (["args"], ["args", "text"]):
                 return None
@@ -449,6 +530,67 @@ class _Run:
         if members != ["text"] or not isinstance(out["text"], str) or not _is_json(out["text"]):
             return None
         return {"hook": hook, "decision": decision, "text": cap(out["text"])}
+
+    def _repair(self, hook: dict[str, Any], out: dict[str, Any], members: list[str]) -> dict[str, Any] | None:
+        """A `pre_check` `modify` (§5.4): `args`, `shown` and, with `shown: modified`, an optional `args_text` that reads
+        as `args`. The arguments are checked against the schema afterwards, as any call's."""
+        if members not in (["args", "shown"], ["args", "args_text", "shown"]) or out["shown"] not in ("model", "modified"):
+            return None
+        if not _is_json(out["args"]):
+            return None
+        given = out.get("args_text")
+        if given is not None and (out["shown"] != "modified" or not isinstance(given, str) or not _is_json(given)
+                                  or not _reads(given, out["args"])):
+            return None
+        d = {"hook": hook, "decision": "modify", "args": out["args"], "shown": out["shown"], "given": given}
+        if out["shown"] == "modified":
+            text = self.modified_text(out["args"], given)
+            if text != canonical(out["args"]):
+                d["args_text"] = text
+        return d
+
+
+def _calls(hook: dict[str, Any], out: dict[str, Any], members: list[str], ids: list[str]) -> dict[str, Any] | None:
+    """A `post_response` `modify` (§5.4): `calls`, a list of `{call_id, tool}` naming the reply's calls, none twice."""
+    calls = out.get("calls")
+    if members != ["calls"] or not isinstance(calls, list) or not _is_json(calls):
+        return None
+    seen: set[str] = set()
+    for c in calls:
+        if not (isinstance(c, dict) and set(c) == {"call_id", "tool"} and isinstance(c["tool"], str)
+                and c["call_id"] in ids and c["call_id"] not in seen):
+            return None
+        seen.add(c["call_id"])
+    return {"hook": hook, "decision": "modify", "calls": [{"call_id": c["call_id"], "tool": c["tool"]} for c in calls]}
+
+
+def _retry(hook: dict[str, Any], out: dict[str, Any], members: list[str], context: int,
+           cap: Callable[[str], str]) -> dict[str, Any] | None:
+    """A `retry` (§5.4): optional `text`, `wrap`, `keep_reply` and a `replace_context` in that decision's shape."""
+    if not set(members) <= {"text", "wrap", "keep_reply", "replace_context"}:
+        return None
+    if any(k in out and not isinstance(out[k], bool) for k in ("wrap", "keep_reply")):
+        return None
+    if "text" in out and not (isinstance(out["text"], str) and _is_json(out["text"])):
+        return None
+    d: dict[str, Any] = {"hook": hook, "decision": "retry"}
+    if "text" in out:
+        d["text"] = out["text"] if out.get("wrap") is False else cap(out["text"])
+    d.update((k, out[k]) for k in ("wrap", "keep_reply") if k in out)
+    if "replace_context" in out:
+        rc = out["replace_context"]
+        if not (isinstance(rc, dict) and "text" in rc and set(rc) <= {"text", "keep", "wrap"}):
+            return None
+        if not (isinstance(rc["text"], str) and _is_json(rc["text"])):
+            return None
+        if "keep" in rc and not (_is_count(rc["keep"]) and rc["keep"] <= context):
+            return None
+        if "wrap" in rc and not isinstance(rc["wrap"], bool):
+            return None
+        d["replace_context"] = {"text": rc["text"] if rc.get("wrap") is False else cap(rc["text"]),
+                                **({"keep": int(rc["keep"])} if "keep" in rc else {}),
+                                **({"wrap": rc["wrap"]} if "wrap" in rc else {})}
+    return d
 
 
 def _matches(match: Any, key: str | None) -> bool:
@@ -544,6 +686,8 @@ def _check_response(v: Any) -> dict[str, Any]:
                                                and isinstance(v["reasoning_opaque"].get("provider"), str)
                                                and "data" in v["reasoning_opaque"]))
           and isinstance(v.get("usage", {}), dict)
+          and isinstance(v.get("finish", ""), str)
+          and isinstance(v.get("failure", ""), str)
           and isinstance(v.get("tool_calls", []), list)
           and all(_is_response_call(c) for c in v.get("tool_calls", [])))
     if not ok or not _is_json(v):

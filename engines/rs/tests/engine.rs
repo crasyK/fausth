@@ -11,7 +11,7 @@ use fausth::{run, Harness, Log};
 
 fn harness() -> Harness {
     Harness::new(json(
-        r#"{"spec": "harness/0.6", "name": "n", "prompt": "p",
+        r#"{"spec": "harness/0.7", "name": "n", "prompt": "p",
             "tools": {"edit": {"description": "Edit.", "input": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}}},
             "texts": {"invalid_arguments": "Validation failed for tool \"{tool}\":\n{reasons}"}}"#,
     ))
@@ -134,4 +134,13 @@ fn arguments_with_a_lone_surrogate_break_the_interface() {
         r#"{"choices": [{"message": {"content": "", "tool_calls": [{"id": "a", "function": {"name": "t", "arguments": "{\"x\": \"\\ud800\"}"}}]}}]}"#,
     );
     assert!(matches!(fausth::openai::from_chat(&answer, "kit"), Err(fausth::HostError::Infra(_))));
+}
+
+/// 0.7 (§14): `finish` and `failure` are strings when a response has them.
+#[test]
+fn finish_and_failure_must_be_strings() {
+    for extra in [r#"{"text": "x", "finish": 1}"#, r#"{"text": "x", "failure": null}"#] {
+        let mut h = Scripted::new(vec![json(extra)]).users(&["Go."]);
+        assert_eq!(reason(&run(&harness(), &mut h)), "infra_failure", "{extra}");
+    }
 }

@@ -1,0 +1,11 @@
+{"depth":0,"harness_hash":"d1640a44eb0d7cf2d33720ff1fd3c87f175b13ef5d3404f9c2e913a54ff371c0","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"seq":4,"step":1,"text":"First.","tool_calls":[{"args":{},"call_id":"call_1","tool":"ls"}],"type":"assistant"}
+{"decision":"allow","event":"post_response","hook":"gate","seq":5,"type":"hook"}
+{"call_id":"call_1","ok":true,"result":"a","seq":6,"tool":"ls","type":"tool_result"}
+{"failure":"context_length_exceeded: the prompt is too long","finish":"error","seq":7,"step":2,"text":"","tool_calls":[],"type":"assistant"}
+{"decision":"retry","event":"post_response","hook":"gate","replace_context":{"text":"Compacted: ls showed a.","wrap":false},"seq":8,"type":"hook"}
+{"finish":"tool_calls","seq":9,"step":3,"text":"","tool_calls":[{"args":{},"call_id":"call_2","tool":"lss"}],"type":"assistant"}
+{"decision":"end","event":"post_response","hook":"gate","seq":10,"text":"a third reply in a row with only unknown tools","type":"hook"}
+{"reason":"harness_end","seq":11,"type":"run_end"}

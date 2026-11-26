@@ -6,7 +6,7 @@
 // caller's hooks and is not narrowed against the caller's harness (unlike `core_spawn`, §10). It is a top-level run
 // of its own: one user message, the task the binding makes from its input, and its log is not the caller's.
 import { InfraFailure, run, type Host } from "./engine.js";
-import { harnessErrors, type Harness } from "./harness.js";
+import { fillHostValues, harnessErrors, type Harness } from "./harness.js";
 import type { Log } from "./log.js";
 import type { Json } from "./values.js";
 
@@ -32,13 +32,15 @@ export function finalText(log: Log): string {
 export interface LaunchOptions {
   /** Picks the handed harness; by default `handedHarness`. */
   harness?: (input: Json) => unknown;
-  /** The answer from the log of a run that ended with `stop` or `limit`; by default `{ok: true, result: <its
-   * final text>}`. */
+  /** The answer from the log of a run that ended with `stop`, `limit` or `harness_end`; by default `{ok: true,
+   * result: <its final text>}`. */
   answer?: (log: Log) => unknown;
   /** Whether the launched run's deployment binds an id; a handed harness that declares another is not valid. */
   binds?: (id: string) => boolean;
   /** Receives every launched run's log, however it ended, for the host to keep. */
   onLog?: (log: Log) => void;
+  /** The launching host's values (§2.1): the handed harness is filled with them first. */
+  values?: Record<string, string>;
 }
 
 /** A binding (input → answer, §3.3) that runs the harness it is handed on `host`, `task(input)` its only user
@@ -50,7 +52,14 @@ export interface LaunchOptions {
 export function harnessBinding(host: Host, task: (input: Json) => unknown, options: LaunchOptions = {}): Binding {
   const pick = options.harness ?? handedHarness;
   return async (input) => {
-    const handed = pick(input);
+    let handed = pick(input);
+    if (options.values && handed && typeof handed === "object" && !Array.isArray(handed)) {
+      try {
+        handed = fillHostValues(handed as Harness, options.values);
+      } catch {
+        return { ok: false, error: INVALID };
+      }
+    }
     if (harnessErrors(handed).length > 0 || (options.binds && !declared(handed as Harness).every(options.binds))) {
       return { ok: false, error: INVALID };
     }

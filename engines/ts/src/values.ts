@@ -60,8 +60,8 @@ export function argumentText(value: unknown, indented = false): string {
 }
 
 /** How a call's arguments go back to the model (§9.4): a harness's `argument_text`. */
-export type ArgumentForm = "model_order" | "sorted_ascii";
-export const ARGUMENT_FORMS: readonly ArgumentForm[] = ["model_order", "sorted_ascii"];
+export type ArgumentForm = "model_order" | "sorted_ascii" | "as_sent";
+export const ARGUMENT_FORMS: readonly ArgumentForm[] = ["model_order", "sorted_ascii", "as_sent"];
 
 /** A JSON value as Python's `json.loads` reads it: an integer token stays exact (its digits), any other number is a
  * double; a name that occurs twice keeps its last value. */

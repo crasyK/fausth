@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .engine import Host, InfraFailure, run
-from .harness import harness_errors
+from .harness import fill_host_values, harness_errors
 from .log import Log
 
 Binding = Callable[[Any], dict[str, Any]]
@@ -32,21 +32,27 @@ def final_text(log: Log) -> str:
 
 def harness_binding(host: Host, task: Callable[[Any], Any], *, harness: Callable[[Any], Any] = handed_harness,
                     answer: Callable[[Log], Any] | None = None, binds: Callable[[str], bool] | None = None,
-                    on_log: Callable[[Log], None] | None = None) -> Binding:
+                    on_log: Callable[[Log], None] | None = None, values: dict[str, str] | None = None) -> Binding:
     """A binding (input → answer, §3.3) that runs the harness it is handed on `host`, `task(input)` its only user
     message.
 
-    `harness(input)` picks the handed harness (default `handed_harness`). If it isn't valid (§2, §3, §5.1), or
+    `harness(input)` picks the handed harness (default `handed_harness`); with `values`, its host values are filled
+    first (§2.1). If they can't be, if it isn't valid (§2, §3, §5.1), or if it
     declares an id that `binds` says the launched run's deployment doesn't bind, the answer is `ok: false`,
     `child harness is not valid`: world feedback for a tool, a failed hook for a handler (§5.4). `host` serves the
     launched run (its model transport and its own bindings); its `user()` is never asked. A task that isn't a
     string is an infrastructure failure. `answer(log)` makes the answer from the log of a run that ended with
-    `stop` or `limit`; by default `{ok: true, result: <its final text>}`. `on_log(log)` receives every launched
+    `stop`, `limit` or `harness_end`; by default `{ok: true, result: <its final text>}`. `on_log(log)` receives every launched
     run's log, however it ended, for the host to keep. A run that ends with `infra_failure` or `host_end` leaves the
     binding without an answer: InfraFailure, the caller's infrastructure failure (§3.3).
     """
     def call(input: Any) -> dict[str, Any]:
         handed = harness(input)
+        if values is not None and isinstance(handed, dict):
+            try:
+                handed = fill_host_values(handed, values)
+            except ValueError:
+                return dict(INVALID)
         if harness_errors(handed) or (binds is not None and not all(binds(i) for i in _declared(handed))):
             return dict(INVALID)
         text = task(input)

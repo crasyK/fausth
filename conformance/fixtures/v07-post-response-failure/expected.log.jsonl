@@ -1,0 +1,6 @@
+{"depth":0,"harness_hash":"03f2aa43ec0162c8aa0295865a62f8cd260ace0a102e6a257ce11c22bbdf4f06","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Go.","type":"user"}
+{"failure":"the stream broke off","seq":4,"step":1,"text":"Partial","tool_calls":[],"type":"assistant"}
+{"decision":"allow","event":"post_response","hook":"look","seq":5,"type":"hook"}
+{"reason":"infra_failure","seq":6,"type":"run_end"}

@@ -1,0 +1,5 @@
+{"id": "instance", "ok": true, "result": {"decision": "replace", "text": "Please solve this issue: fix the bug\n\n<system_information>\nLinux 6.8.0 x86_64\n</system_information>"}}
+{"id": "check", "ok": true, "result": {"decision": "allow"}}
+{"id": "instance", "ok": true, "result": {"decision": "deny", "text": "not now"}}
+{"id": "instance", "ok": true, "result": {"decision": "allow"}}
+{"id": "check", "ok": true, "result": {"decision": "allow"}}

@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.6",
+  "spec": "harness/0.7",
   "name": "spawn-modified",
   "prompt": "Delegate.",
   "tools": {

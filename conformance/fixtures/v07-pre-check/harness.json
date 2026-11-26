@@ -1,0 +1,125 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-pre-check",
+  "prompt": "Work.",
+  "tools": {
+    "read": {
+      "description": "Read a file.",
+      "input": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "handlers": {
+    "bad": {
+      "description": "Modifies in ways that fail."
+    },
+    "repair": {
+      "description": "OpenCode's and Hermes's repairs."
+    },
+    "seen": {
+      "description": "Sees the repaired arguments, and no malformed text after a repair.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "call": {
+            "required": [
+              "tool",
+              "args"
+            ],
+            "properties": {
+              "args": {
+                "properties": {
+                  "limit": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "anyOf": [
+              {
+                "not": {
+                  "required": [
+                    "malformed"
+                  ]
+                }
+              },
+              {
+                "properties": {
+                  "args": {
+                    "const": {}
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "after": {
+      "description": "Sees the view with the arguments the calls ran with.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "items": {
+              "properties": {
+                "args": {
+                  "properties": {
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "hooks": [
+    {
+      "id": "bad",
+      "on": "pre_check",
+      "match": "read",
+      "run": "bad",
+      "on_failure": "skip"
+    },
+    {
+      "id": "repair",
+      "on": "pre_check",
+      "run": "repair"
+    },
+    {
+      "id": "seen",
+      "on": "pre_check",
+      "match": [
+        "read"
+      ],
+      "run": "seen"
+    },
+    {
+      "id": "after",
+      "on": "post_tool",
+      "match": "read",
+      "run": "after"
+    }
+  ],
+  "texts": {
+    "invalid_arguments": "bad {tool} {args} | {args_indented} ({reasons})",
+    "malformed_arguments": "unreadable {tool}: {text}"
+  }
+}

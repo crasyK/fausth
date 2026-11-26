@@ -1,11 +1,11 @@
-{"depth":0,"harness_hash":"d67f159906a6f8553327e7f349ad9b007a109aae81c3f47fddf94c47fd8f7ba4","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"a4538896393800e6c716436b494ba4568d4781dfb8791fdbe3cf13ac3ed886b3","seq":1,"type":"run_start"}
 {"seq":2,"text":"Use echo.","type":"system"}
 {"seq":3,"text":"Go.","type":"user"}
 {"seq":4,"step":1,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c4-0","tool":"echo"}],"type":"assistant"}
 {"call_id":"c4-0","ok":true,"result":{"n":1},"seq":5,"tool":"echo","type":"tool_result"}
 {"seq":6,"step":2,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c6-0","tool":"echo"}],"type":"assistant"}
 {"call_id":"c6-0","ok":true,"result":{"n":1},"seq":7,"tool":"echo","type":"tool_result"}
-{"harness_hash":"3ff6eeed40c81d892e9e8b19b4c3387ccdff5febfac5a9eefb7a409f41e0a67b","seq":8,"type":"harness_changed"}
+{"harness_hash":"5c2b4d169b31ef2f61e6b250b12eb9ff8e0d3ecd4b10df3ae4a86c2fcfb09edb","seq":8,"type":"harness_changed"}
 {"seq":9,"text":"Use echo.","type":"system"}
 {"seq":10,"step":3,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c10-0","tool":"echo"}],"type":"assistant"}
 {"reason":"limit","seq":11,"type":"run_end"}

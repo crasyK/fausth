@@ -1,0 +1,11 @@
+{"id": "bad", "ok": true, "result": {"decision": "retry", "replace_context": {"text": "x", "keep": 99}}}
+{"id": "format", "ok": true, "result": {"decision": "retry", "text": "Tool call error:\n\n<error>\nNo tool calls found in the response.\n</error>", "wrap": false}}
+{"id": "bad", "ok": true, "result": {"decision": "retry", "keep_reply": "yes"}}
+{"id": "format", "ok": true, "result": {"decision": "retry", "text": "Your reply was cut off. Continue from where you left off.", "keep_reply": true}}
+{"id": "bad", "ok": true, "result": {"decision": "allow"}}
+{"id": "format", "ok": true, "result": {"decision": "allow"}}
+{"id": "bash", "ok": true, "result": "a.txt b.txt"}
+{"id": "bad", "ok": true, "result": {"decision": "allow"}}
+{"id": "format", "ok": true, "result": {"decision": "retry", "replace_context": {"text": "Summary: the user asked for work; ls listed two files.", "keep": 2, "wrap": false}, "text": "Shorter please."}}
+{"id": "bad", "ok": true, "result": {"decision": "allow"}}
+{"id": "format", "ok": true, "result": {"decision": "allow"}}

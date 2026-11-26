@@ -160,12 +160,12 @@ fn ecma_pattern(pattern: &str) -> String {
     out
 }
 
-/// The structure check of a harness file (§2): `schema/harness.v0.6.json`, with the 2020-12 meta-schema for the
+/// The structure check of a harness file (§2): `schema/harness.v0.7.json`, with the 2020-12 meta-schema for the
 /// schemas it holds.
 pub fn structure() -> &'static Check {
     static STRUCTURE: OnceLock<Check> = OnceLock::new();
     STRUCTURE.get_or_init(|| {
-        let text = include_str!("../../../schema/harness.v0.6.json");
+        let text = include_str!("../../../schema/harness.v0.7.json");
         let schema = crate::value::parse_json(text).expect("the harness schema is JSON");
         compile_schema(&schema).expect("the harness schema compiles")
     })

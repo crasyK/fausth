@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.6",
+  "spec": "harness/0.7",
   "name": "live-reload",
   "prompt": "You are v1.",
   "tools": {

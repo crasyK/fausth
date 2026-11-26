@@ -7,7 +7,7 @@ import type { Request } from "./render.js";
 import type { Json } from "./values.js";
 
 const harness: Harness = {
-  spec: "harness/0.6", name: "n", prompt: "p",
+  spec: "harness/0.7", name: "n", prompt: "p",
   tools: { edit: { description: "Edit.", input: { type: "object", required: ["path"], properties: { path: { type: "string" } } } } },
   texts: { invalid_arguments: "Validation failed for tool \"{tool}\":\n{reasons}" },
 };
@@ -64,3 +64,13 @@ test("raw may differ from args in how it writes them", async () => {
   const assistant = log.entries.find((e) => e.type === "assistant") as unknown as { tool_calls: { args_text?: string }[] };
   assert.equal(assistant.tool_calls[0]?.args_text, '{"n":18446744073709551615,"path":"a"}');
 });
+
+// 0.7 (§14): `finish` and `failure` are strings when a response has them.
+for (const extra of [{ finish: 1 }, { failure: null }]) {
+  test(`a response whose ${Object.keys(extra)[0]} isn't a string breaks the interface`, async () => {
+    const h = host();
+    h.model = async () => ({ text: "x", ...extra });
+    const log = await run(harness, h);
+    assert.equal(log.entries.at(-1)!.reason, "infra_failure");
+  });
+}

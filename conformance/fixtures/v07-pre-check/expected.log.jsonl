@@ -1,0 +1,30 @@
+{"depth":0,"harness_hash":"4a633988feb34fd889d578165fb45e82431c4a3cfb6c77c6b80a467bfacdda93","seq":1,"type":"run_start"}
+{"seq":2,"text":"Work.","type":"system"}
+{"seq":3,"text":"Read.","type":"user"}
+{"seq":4,"step":1,"text":"Reading.","tool_calls":[{"args":{"limit":"20","path":"a"},"args_text":"{\"path\":\"a\",\"limit\":\"20\"}","call_id":"call_1","tool":"read"},{"args":{},"call_id":"call_2","malformed":"{\"path\": \"b\",","tool":"read"},{"args":{"path":5},"call_id":"call_3","tool":"read"},{"args":{"path":"c"},"call_id":"call_4","tool":"read"},{"args":{},"call_id":"call_5","malformed":"nope","tool":"read"},{"args":{},"call_id":"call_6","tool":"unknown"}],"type":"assistant"}
+{"call_id":"call_1","decision":"failed","event":"pre_check","hook":"bad","seq":5,"type":"hook"}
+{"args":{"limit":20,"path":"a"},"call_id":"call_1","decision":"modify","event":"pre_check","hook":"repair","seq":6,"shown":"model","type":"hook"}
+{"call_id":"call_1","decision":"allow","event":"pre_check","hook":"seen","seq":7,"type":"hook"}
+{"call_id":"call_1","ok":true,"result":"contents of a","seq":8,"tool":"read","type":"tool_result"}
+{"call_id":"call_1","decision":"allow","event":"post_tool","hook":"after","seq":9,"type":"hook"}
+{"call_id":"call_2","decision":"failed","event":"pre_check","hook":"bad","seq":10,"type":"hook"}
+{"args":{"path":"b"},"args_text":"{\"path\": \"b\"}","call_id":"call_2","decision":"modify","event":"pre_check","hook":"repair","seq":11,"shown":"modified","type":"hook"}
+{"call_id":"call_2","decision":"allow","event":"pre_check","hook":"seen","seq":12,"type":"hook"}
+{"call_id":"call_2","ok":true,"result":"contents of b","seq":13,"tool":"read","type":"tool_result"}
+{"call_id":"call_2","decision":"allow","event":"post_tool","hook":"after","seq":14,"type":"hook"}
+{"call_id":"call_3","decision":"failed","event":"pre_check","hook":"bad","seq":15,"type":"hook"}
+{"args":{"note":"x","path":6},"args_text":"{\"path\":6,\"note\":\"x\"}","call_id":"call_3","decision":"modify","event":"pre_check","hook":"repair","seq":16,"shown":"modified","type":"hook"}
+{"call_id":"call_3","decision":"allow","event":"pre_check","hook":"seen","seq":17,"type":"hook"}
+{"call_id":"call_3","error":"bad read {\"path\":6,\"note\":\"x\"} | {\n  \"path\": 6,\n  \"note\": \"x\"\n} (unknown member note (members: limit, path); path: must be a string)","ok":false,"seq":18,"tool":"read","type":"tool_result"}
+{"call_id":"call_4","decision":"allow","event":"pre_check","hook":"bad","seq":19,"type":"hook"}
+{"call_id":"call_4","decision":"allow","event":"pre_check","hook":"repair","seq":20,"type":"hook"}
+{"call_id":"call_4","decision":"allow","event":"pre_check","hook":"seen","seq":21,"type":"hook"}
+{"call_id":"call_4","ok":true,"result":"contents of c","seq":22,"tool":"read","type":"tool_result"}
+{"call_id":"call_4","decision":"allow","event":"post_tool","hook":"after","seq":23,"type":"hook"}
+{"call_id":"call_5","decision":"allow","event":"pre_check","hook":"bad","seq":24,"type":"hook"}
+{"call_id":"call_5","decision":"allow","event":"pre_check","hook":"repair","seq":25,"type":"hook"}
+{"call_id":"call_5","decision":"allow","event":"pre_check","hook":"seen","seq":26,"type":"hook"}
+{"call_id":"call_5","error":"unreadable read: nope","ok":false,"seq":27,"tool":"read","type":"tool_result"}
+{"call_id":"call_6","error":"invalid arguments: unknown tool","ok":false,"seq":28,"tool":"unknown","type":"tool_result"}
+{"seq":29,"step":2,"text":"Done.","tool_calls":[],"type":"assistant"}
+{"reason":"stop","seq":30,"type":"run_end"}

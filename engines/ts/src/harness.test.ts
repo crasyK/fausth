@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { fill, harnessErrors, harnessHash, readHarness, toolIds, type Harness } from "./harness.js";
+import { fill, fillHostValues, harnessErrors, harnessHash, readHarness, toolIds, type Harness } from "./harness.js";
 import { canonical, hash } from "./values.js";
 
 const dir = new URL("../../../conformance/harnesses/", import.meta.url);
@@ -31,7 +31,7 @@ for (const f of files("invalid")) {
 }
 
 // 0.6 (§2, §8.2, §9): the tool order, the hash that sees it, and the texts' placeholders.
-const ordered = (spec = "harness/0.6") => readHarness(`spec: ${spec}
+const ordered = (spec = "harness/0.7") => readHarness(`spec: ${spec}
 name: n
 prompt: p
 tools:
@@ -46,9 +46,9 @@ test("tools come in member order: array-index ids first, the rest as declared", 
   assert.deepEqual(toolIds(ordered()), ["2", "10", "zeta", "Alpha", "007"]);
 });
 
-test("a 0.6 engine runs only harness/0.6 files", () => {
+test("a 0.7 engine runs only harness/0.7 files", () => {
   assert.deepEqual(harnessErrors(ordered()), []);
-  assert.notDeepEqual(harnessErrors(ordered("harness/0.5")), []);
+  assert.notDeepEqual(harnessErrors(ordered("harness/0.6")), []);
 });
 
 test("harness_hash sees the tool order", async () => {
@@ -63,3 +63,14 @@ test("harness_hash sees the tool order", async () => {
 test("fill replaces each placeholder once and leaves other braces", () => {
   assert.equal(fill('{tool}: {x} {"a": 1} {y z} {tool}', { tool: "{x}", x: "y" }), '{x}: y {"a": 1} {y z} {x}');
 });
+
+// 0.7 (§2.1): host values, filled at load.
+const hostValues = JSON.parse(readFileSync(new URL("../../../conformance/host-values.json", import.meta.url), "utf8")) as {
+  cases: { name: string; harness: Harness; values: Record<string, unknown>; filled?: Harness; error?: boolean }[];
+};
+for (const c of hostValues.cases) {
+  test(`host values: ${c.name}`, () => {
+    if (c.error) assert.throws(() => fillHostValues(c.harness, c.values));
+    else assert.equal(canonical(fillHostValues(c.harness, c.values)), canonical(c.filled));
+  });
+}

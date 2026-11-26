@@ -1,4 +1,4 @@
-"""The harness file (spec §2, §3, §5.1, §6, §8.2): reading it and checking it."""
+"""The harness file (spec §2, §2.1, §3, §5.1, §6, §8.2): reading it, filling its host values, checking it."""
 from __future__ import annotations
 
 import json
@@ -19,7 +19,7 @@ from yaml.scanner import Scanner
 from .schema import compile_schema, structure_validator
 from .values import canonical, hash, member_names, number
 
-SPEC = "harness/0.6"  # the only spec value this engine runs (spec, Versions)
+SPEC = "harness/0.7"  # the only spec value this engine runs (spec, Versions)
 
 # The engine's texts (§8.2): each one's placeholders and its default (`tool_error` has none: §9.3).
 TEXTS = {
@@ -44,6 +44,52 @@ def tool_ids(harness: dict[str, Any]) -> list[str]:
 def harness_hash(harness: dict[str, Any]) -> str:
     """`harness_hash` (§2): the hash of the resolved harness with its tool order."""
     return hash([harness, tool_ids(harness)])
+
+
+# The standard host values (§2.1); a file declares any other name it uses in `host_values`.
+STANDARD_VALUES = ("CWD", "HOME", "DATE", "YEAR", "TIMEZONE", "OS", "MODEL", "PROVIDER")
+_BLOCK = re.compile(r"\n\n\$\{if ([A-Z][A-Z0-9_]*)\}\n(.*?)\n\$\{end\}(?=\n\n|\Z)", re.S)
+_SLOT = re.compile(r"\n\n\$\{([A-Z][A-Z0-9_]*)\}(?=\n\n|\Z)")
+_TOKEN = re.compile(r"\$\$\{|\$\{([A-Z][A-Z0-9_]*)\}|\$\{(?:if |end\})")
+
+
+def fill_host_values(harness: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    """The harness with its host values filled in (§2.1): `prompt` and every tool's `description`. Raises ValueError
+    for a load error: a name neither standard nor declared, a name without a value, a value that isn't a string, or
+    `${if …}` / `${end}` outside a block. The harness itself is checked by `harness_errors`, not here."""
+    declared = harness.get("host_values", [])
+    known = set(STANDARD_VALUES) | {n for n in (declared if isinstance(declared, list) else []) if isinstance(n, str)}
+
+    def value(name: str) -> str:
+        if name not in known:
+            raise ValueError(f"${{{name}}} is neither a standard host value nor declared in host_values")
+        if name not in values:
+            raise ValueError(f"no value for ${{{name}}}")
+        v = values[name]
+        if not isinstance(v, str):
+            raise ValueError(f"the value of ${{{name}}} is not a string")
+        return v
+
+    def token(m: re.Match[str]) -> str:
+        if m.group(0) == "$${":
+            return "${"
+        if m.group(1) is None:
+            raise ValueError("${if …} or ${end} outside a block")
+        return value(m.group(1))
+
+    def fill(text: str) -> str:
+        text = _BLOCK.sub(lambda m: "\n\n" + m.group(2) if value(m.group(1)) != "" else "", text)
+        text = _SLOT.sub(lambda m: m.group(0) if value(m.group(1)) != "" else "", text)
+        return _TOKEN.sub(token, text)
+
+    out = dict(harness)
+    if isinstance(out.get("prompt"), str):
+        out["prompt"] = fill(out["prompt"])
+    if isinstance(out.get("tools"), dict):
+        out["tools"] = {tid: ({**t, "description": fill(t["description"])}
+                              if isinstance(t, dict) and isinstance(t.get("description"), str) else t)
+                        for tid, t in out["tools"].items()}
+    return out
 
 
 BUILT_INS = frozenset({"core_called_since", "core_last_result", "core_count", "core_deny", "core_context"})
@@ -207,7 +253,7 @@ def read_harness(text: str) -> Any:
         loader.dispose()
 
 
-_STRUCTURE = structure_validator(json.loads((files("fausth") / "harness.v0.6.json").read_text("utf-8")))
+_STRUCTURE = structure_validator(json.loads((files("fausth") / "harness.v0.7.json").read_text("utf-8")))
 
 
 def harness_errors(value: Any) -> list[str]:
@@ -246,7 +292,7 @@ def harness_errors(value: Any) -> list[str]:
             errors.append(f"hook {hook_id}: {run} is not a declared handler or a built-in")
         tool_refs: list[Any] = []
         match = hook.get("match", "*")
-        if hook["on"] in ("pre_tool", "post_tool") and match != "*":
+        if hook["on"] in ("pre_check", "pre_tool", "post_tool") and match != "*":
             tool_refs += match if isinstance(match, list) else [match]
         if run in BUILT_INS:
             tool = hook.get("with", {}).get("tool")

@@ -93,9 +93,9 @@ def test_a_stop_handler_launches_the_harness_its_hook_hands_it_and_both_logs_sta
     assert [e["hook"] for e in logs[0].entries if e["type"] == "hook"] == ["save"]
 
 
-SUMMARIZER = {"spec": "harness/0.6", "name": "summarizer", "prompt": "Summarize the text in one line."}
+SUMMARIZER = {"spec": "harness/0.7", "name": "summarizer", "prompt": "Summarize the text in one line."}
 ORCHESTRATOR = {
-    "spec": "harness/0.6", "name": "orchestrator", "prompt": "Delegate.",
+    "spec": "harness/0.7", "name": "orchestrator", "prompt": "Delegate.",
     "tools": {"run_agent": {"description": "Run a sub-agent harness on a task.", "input": {
         "type": "object", "required": ["harness", "task"], "additionalProperties": False,
         "properties": {"harness": {"type": "object"}, "task": {"type": "string"}}}}},
@@ -143,7 +143,7 @@ def test_a_handed_harness_that_cannot_run_is_world_feedback_for_a_tool(harness):
 
 
 def test_a_handed_harness_that_cannot_run_fails_a_handlers_hook():
-    caller = {"spec": "harness/0.6", "name": "c", "prompt": "p", "handlers": {"make_title": {}},
+    caller = {"spec": "harness/0.7", "name": "c", "prompt": "p", "handlers": {"make_title": {}},
               "hooks": [{"id": "title", "on": "stop", "run": "make_title", "with": {"harness": {"name": "x"}}}]}
     log = run(caller, Scripted([{"text": "Hi."}], {"make_title": harness_binding(Scripted([]), lambda i: "t")}, user=["Hello."]))
     assert [e.get("decision") for e in log.entries if e["type"] == "hook"] == ["failed"]
@@ -161,7 +161,7 @@ def test_a_launched_run_that_ends_without_an_answer_is_the_bindings_infrastructu
     log = run(ORCHESTRATOR, orchestrator_host(harness_binding(Scripted([reply]), task_argument)))
     assert log.entries[-1]["reason"] == "infra_failure"
     # ... and fails a handler's hook, which on_failure: skip lets pass.
-    caller = {"spec": "harness/0.6", "name": "c", "prompt": "p", "handlers": {"make_title": {}},
+    caller = {"spec": "harness/0.7", "name": "c", "prompt": "p", "handlers": {"make_title": {}},
               "hooks": [{"id": "title", "on": "stop", "run": "make_title", "on_failure": "skip",
                          "with": {"harness": SUMMARIZER}}]}
     log = run(caller, Scripted([{"text": "Hi."}], {"make_title": harness_binding(Scripted([reply]), lambda i: "t")},
@@ -180,3 +180,15 @@ def test_the_handed_harness_and_the_final_text():
     assert handed_harness({"harness": 2}) == 2 and handed_harness({"event": "stop", "with": {}}) is None
     assert final_text(run(SUMMARIZER, Scripted([{"text": "One."}], user=["a"]))) == "One."
     assert final_text(run(SUMMARIZER, Scripted([InfraFailure("x")], user=["a"]))) == ""
+
+
+# 0.7 (§2.1, §13.1): the binding fills the handed harness's host values first.
+def test_a_launched_harness_gets_the_launching_hosts_values():
+    handed = {**SUMMARIZER, "prompt": "Summarize in ${CWD} for ${OWNER}.", "host_values": ["OWNER"]}
+    launched = Scripted([{"text": "One."}])
+    binding = harness_binding(launched, task_argument, values={"CWD": "/app", "OWNER": "me"})
+    assert binding({"harness": handed, "task": "t"}) == {"ok": True, "result": "One."}
+    assert launched.requests[0]["system"] == "Summarize in /app for me."
+    # one whose values can't be filled is not launched
+    assert harness_binding(Scripted([]), task_argument, values={"CWD": "/app"})({"harness": handed, "task": "t"}) \
+        == {"ok": False, "error": "child harness is not valid"}

@@ -1,9 +1,9 @@
-{"depth":0,"harness_hash":"65948f07c8673763bf965c79b64ce37e393bd9171b25c452c10bcbf54011aeb2","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"34e88fef916d404d7b2348516c9d1c671ccb9ab6a4bc415efa61f073fa2a7675","seq":1,"type":"run_start"}
 {"seq":2,"text":"Delegate.","type":"system"}
 {"seq":3,"text":"Delegate.","type":"user"}
-{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"harness":{"name":"worker","prompt":"Echo.","spec":"harness/0.6","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo twice."},"args_text":"{\"harness\":{\"spec\":\"harness/0.6\",\"name\":\"worker\",\"prompt\":\"Echo.\",\"tools\":{\"echo\":{\"description\":\"Echo the input.\",\"input\":{\"type\":\"object\"}}}},\"task\":\"Echo twice.\"}","call_id":"c4-0","tool":"core_spawn"}],"type":"assistant"}
-{"args":{"harness":{"hooks":[{"id":"echo-once","match":"echo","on":"pre_tool","run":"core_count","with":{"max":1,"tool":"echo"}}],"name":"worker","prompt":"Echo.","spec":"harness/0.6","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo twice."},"call_id":"c4-0","decision":"modify","event":"pre_tool","hook":"add-rules","seq":5,"text":"added the house rules","type":"hook"}
-{"depth":1,"harness_hash":"a4465fad2f2f4d05bea0ff4c69f75667eb26008f130013f3f65e8d66ff74a7b3","parent_call":"c4-0","seq":6,"type":"run_start"}
+{"seq":4,"step":1,"text":"","tool_calls":[{"args":{"harness":{"name":"worker","prompt":"Echo.","spec":"harness/0.7","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo twice."},"args_text":"{\"harness\":{\"spec\":\"harness/0.7\",\"name\":\"worker\",\"prompt\":\"Echo.\",\"tools\":{\"echo\":{\"description\":\"Echo the input.\",\"input\":{\"type\":\"object\"}}}},\"task\":\"Echo twice.\"}","call_id":"c4-0","tool":"core_spawn"}],"type":"assistant"}
+{"args":{"harness":{"hooks":[{"id":"echo-once","match":"echo","on":"pre_tool","run":"core_count","with":{"max":1,"tool":"echo"}}],"name":"worker","prompt":"Echo.","spec":"harness/0.7","tools":{"echo":{"description":"Echo the input.","input":{"type":"object"}}}},"task":"Echo twice."},"call_id":"c4-0","decision":"modify","event":"pre_tool","hook":"add-rules","seq":5,"text":"added the house rules","type":"hook"}
+{"depth":1,"harness_hash":"17777f2dae6d20c8e98d1aa8b2e383b21d394c6aba34d85b275eb5deb33d8db8","parent_call":"c4-0","seq":6,"type":"run_start"}
 {"depth":1,"parent_call":"c4-0","seq":7,"text":"Echo.","type":"system"}
 {"depth":1,"parent_call":"c4-0","seq":8,"text":"Echo twice.","type":"user"}
 {"depth":1,"parent_call":"c4-0","seq":9,"step":2,"text":"","tool_calls":[{"args":{"n":1},"call_id":"c9-0","tool":"echo"},{"args":{"n":2},"call_id":"c9-1","tool":"echo"}],"type":"assistant"}

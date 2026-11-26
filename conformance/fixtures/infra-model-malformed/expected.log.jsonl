@@ -1,4 +1,4 @@
-{"depth":0,"harness_hash":"492013a082beb1a73d5fdba43b57407a6e14089e37f8d8d3ac94f3ea8217351a","seq":1,"type":"run_start"}
+{"depth":0,"harness_hash":"911cb898764cf0bf8287c041375cdcd45b81de49234f8b05f03f9dd719005b24","seq":1,"type":"run_start"}
 {"seq":2,"text":"Use echo.","type":"system"}
 {"seq":3,"text":"Go.","type":"user"}
 {"reason":"infra_failure","seq":4,"type":"run_end"}

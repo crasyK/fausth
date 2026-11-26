@@ -1,0 +1,2 @@
+{"tool_calls": [{"call_id": "call_1", "tool": "bash", "args": {"command": "printf ü"}, "raw": "{ \"command\" : \"printf \\u00fc\" }"}, {"call_id": "call_2", "tool": "bash", "args": {"command": "ls"}}, {"call_id": "call_3", "tool": "bash", "args": {"command": "x", "n": 1}, "raw": "{\"n\": 1.0, \"command\": \"x\"}"}, {"call_id": "call_4", "tool": "bash", "args": {"command": 5, "x": [1]}, "raw": "{\"command\": 5,  \"x\": [1]}"}, {"call_id": "call_5", "tool": "bash", "malformed": "{\"command\": "}]}
+{"text": "Done."}

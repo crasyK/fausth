@@ -1,5 +1,5 @@
 {
-  "spec": "harness/0.6",
+  "spec": "harness/0.7",
   "name": "infra-tool-unreachable",
   "prompt": "Use echo.",
   "tools": {

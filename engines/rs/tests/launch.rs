@@ -130,12 +130,12 @@ fn a_stop_handler_launches_the_harness_its_hook_hands_it() {
 }
 
 fn summarizer() -> Value {
-    json(r#"{"spec": "harness/0.6", "name": "summarizer", "prompt": "Summarize the text in one line."}"#)
+    json(r#"{"spec": "harness/0.7", "name": "summarizer", "prompt": "Summarize the text in one line."}"#)
 }
 
 fn orchestrator() -> Harness {
     Harness::new(json(
-        r#"{"spec": "harness/0.6", "name": "orchestrator", "prompt": "Delegate.",
+        r#"{"spec": "harness/0.7", "name": "orchestrator", "prompt": "Delegate.",
             "tools": {"run_agent": {"description": "Run a sub-agent harness on a task.", "input": {
               "type": "object", "required": ["harness", "task"], "additionalProperties": false,
               "properties": {"harness": {"type": "object"}, "task": {"type": "string"}}}}},
@@ -222,7 +222,7 @@ fn caller(with_harness: Value, skip: bool) -> Harness {
     if skip {
         hook.as_object_mut().unwrap().insert("on_failure", "skip".into());
     }
-    let mut h = json(r#"{"spec": "harness/0.6", "name": "c", "prompt": "p", "handlers": {"make_title": {}}}"#);
+    let mut h = json(r#"{"spec": "harness/0.7", "name": "c", "prompt": "p", "handlers": {"make_title": {}}}"#);
     h.as_object_mut().unwrap().insert("hooks", Value::Array(vec![hook]));
     Harness::new(h)
 }
@@ -300,4 +300,30 @@ fn the_handed_harness_and_the_final_text() {
     let mut failing = Scripted::default().users(&["a"]);
     failing.replies.push_back(Err(HostError::Infra("x".into())));
     assert_eq!(final_text(&run(&Harness::new(summarizer()), &mut failing)), "");
+}
+
+/// 0.7 (§2.1, §13.1): the binding fills the handed harness's host values first.
+#[test]
+fn a_launched_harness_gets_the_launching_hosts_values() {
+    let mut handed = summarizer();
+    let m = handed.as_object_mut().unwrap();
+    m.insert("prompt", "Summarize in ${CWD} for ${OWNER}.".into());
+    m.insert("host_values", Value::Array(vec!["OWNER".into()]));
+    let values = |pairs: &[(&str, &str)]| {
+        let mut v = fausth::Map::new();
+        for (k, x) in pairs {
+            v.insert(*k, (*x).into());
+        }
+        Some(v)
+    };
+    let input = obj(&[("harness", handed.clone()), ("task", "t".into())]);
+    let launched = Scripted::new(vec![json(r#"{"text": "One."}"#)]);
+    let requests = launched.requests.clone();
+    let options = LaunchOptions { values: values(&[("CWD", "/app"), ("OWNER", "me")]), ..LaunchOptions::default() };
+    let mut binding = harness_binding(launched, task_argument, options);
+    assert_eq!(canon(&binding.call(&input).unwrap()), r#"{"ok":true,"result":"One."}"#);
+    assert_eq!(requests.borrow()[0].system, "Summarize in /app for me.");
+    let options = LaunchOptions { values: values(&[("CWD", "/app")]), ..LaunchOptions::default() };
+    let mut unfilled = harness_binding(Scripted::default(), task_argument, options);
+    assert_eq!(canon(&unfilled.call(&input).unwrap()), r#"{"error":"child harness is not valid","ok":false}"#);
 }

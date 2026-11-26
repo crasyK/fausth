@@ -48,31 +48,41 @@ interface Slot {
   replaced?: string;
   contexts: string[];
 }
+type AssistantItem = { role: "assistant"; text: string; tool_calls: ToolCall[]; reasoning?: string; reasoning_opaque?: Json };
+type ToolItem = { role: "tool"; slot: Slot };
 /** A message so far, or a tool message still being read. `kept`: a message a `replace_context` kept, which
- * stays as it was (it never merges into the message before it, §9.3). */
+ * stays as it was (it never merges into the message before it, §9.3). `alone`: the unwrapped text of a `retry`,
+ * which merges with neither neighbour. */
 type Item = ({ role: "user"; text: string }
-  | { role: "assistant"; text: string; tool_calls: ToolCall[]; reasoning?: string; reasoning_opaque?: Json }
-  | { role: "tool"; slot: Slot }
-  | { role: "tool"; call_id: string; tool: string; text: string }) & { kept?: boolean };
+  | AssistantItem
+  | ToolItem
+  | { role: "tool"; call_id: string; tool: string; text: string }) & { kept?: boolean; alone?: boolean };
+type Built = Message & { kept?: boolean; alone?: boolean };
 
 const joined = (parts: string[]) => parts.map((p) => `\n\n${p}`).join("");
 
 /** The messages the items make (§9.3): tool messages built, user contributions in a row merged. */
-function messagesOf(items: Item[]): (Message & { kept?: boolean })[] {
-  const messages: (Message & { kept?: boolean })[] = [];
+function messagesOf(items: Item[]): Built[] {
+  const messages: Built[] = [];
   for (const item of items) {
-    let message: Message & { kept?: boolean };
+    let message: Built;
     if (item.role === "tool" && "slot" in item) {
       const s = item.slot;
       const body = s.denied ?? s.replaced ?? s.result;
       if (body === undefined) continue; // the call never finished
       message = { role: "tool", call_id: s.call_id, tool: s.tool, text: s.modifies.map((m) => `${m}\n`).join("") + body + joined(s.contexts) };
-    } else message = { ...item } as Message & { kept?: boolean };
+    } else message = { ...item } as Built;
     const last = messages.at(-1);
-    if (message.role === "user" && last?.role === "user" && !message.kept) last.text += `\n\n${message.text}`;
+    if (message.role === "user" && last?.role === "user" && !message.kept && !message.alone && !last.alone) last.text += `\n\n${message.text}`;
     else messages.push(message);
   }
   return messages;
+}
+
+/** The items after a `replace_context`: one user message, then the newest `keep` messages as they were (§9.3). */
+function replaced(items: Item[], text: string, keep: number): Item[] {
+  const kept = keep > 0 ? messagesOf(items).slice(-keep).map((m) => ({ ...m, kept: true }) as Item) : [];
+  return [{ role: "user", text }, ...kept];
 }
 
 export function render(harness: Harness, entries: readonly Entry[], scope: Scope): Request {
@@ -80,6 +90,10 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
   let system = "";
   let items: Item[] = [];
   const slots = new Map<string, Slot>();
+  /** A call as the request shows it, and the model's arguments and text (for `shown: model`, §5.4). */
+  const calls = new Map<string, { call: ToolCall; model: { args: Json; args_text?: string } }>();
+  /** The last assistant item and its tool items, for `post_response` (§5.4). */
+  let reply: { item: AssistantItem; tools: ToolItem[] } | undefined;
   let userContexts: string[] = [];
   let interruptContexts: string[] = [];
 
@@ -94,17 +108,21 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
       interruptContexts = [];
     } else if (e.type === "assistant") {
       // A call's `malformed` text is the log's record; the request carries what goes back (§9.4).
-      const calls = (e.tool_calls as LoggedCall[]).map(({ malformed: _, ...call }) => call);
-      items.push({ // the adapter decides whether the reasoning goes back (§9)
-        role: "assistant", text: e.text as string, tool_calls: calls,
+      const shown = (e.tool_calls as LoggedCall[]).map(({ malformed: _, ...call }) => call);
+      const item: AssistantItem = { // the adapter decides whether the reasoning goes back (§9)
+        role: "assistant", text: e.text as string, tool_calls: shown,
         ...(e.reasoning !== undefined && { reasoning: e.reasoning as string }),
         ...(e.reasoning_opaque !== undefined && { reasoning_opaque: e.reasoning_opaque as Json }),
-      });
-      for (const c of calls) {
+      };
+      const toolItems: ToolItem[] = [];
+      for (const c of shown) {
         const slot: Slot = { call_id: c.call_id, tool: c.tool, modifies: [], contexts: [] };
         slots.set(c.call_id, slot);
-        items.push({ role: "tool", slot });
+        calls.set(c.call_id, { call: c, model: { args: c.args, ...(c.args_text !== undefined && { args_text: c.args_text }) } });
+        toolItems.push({ role: "tool", slot });
       }
+      items.push(item, ...toolItems);
+      reply = { item, tools: toolItems };
     } else if (e.type === "tool_result") {
       const slot = slots.get(e.call_id as string);
       if (slot) slot.result = e.ok ? resultText(true, e.result as Json) : resultText(false, e.error as Json, toolError);
@@ -113,6 +131,49 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
       const decision = e.decision as string;
       const text = decision === "modify" ? ((e.text as string | undefined) ?? "args changed") : (e.text as string);
       const wrapper = text === undefined ? "" : e.wrap === false ? text : hookWrapper(event, e.hook as string, decision, text);
+      if (event === "pre_check") {
+        const known = calls.get(e.call_id as string);
+        if (decision === "modify" && known) {
+          // `shown: modified` puts the modified arguments and their text in later requests; `model` keeps (or puts
+          // back) the model's (§5.4).
+          const { call, model } = known;
+          delete call.args_text;
+          if (e.shown === "modified") {
+            call.args = e.args as Json;
+            if (e.args_text !== undefined) call.args_text = e.args_text as string;
+          } else Object.assign(call, model);
+        }
+        continue;
+      }
+      if (event === "post_response") {
+        if (reply && decision === "modify") {
+          // The listed calls, in that order, under their names; their tool messages likewise (§9.3).
+          const { item, tools } = reply;
+          const byId = new Map(item.tool_calls.map((c, i) => [c.call_id, { call: c, tool: tools[i]! }]));
+          const start = items.indexOf(item);
+          const newCalls: ToolCall[] = [];
+          const newTools: ToolItem[] = [];
+          for (const m of e.calls as { call_id: string; tool: string }[]) {
+            const { call, tool } = byId.get(m.call_id)!;
+            call.tool = m.tool;
+            tool.slot.tool = m.tool;
+            newCalls.push(call);
+            newTools.push(tool);
+          }
+          item.tool_calls = newCalls;
+          items.splice(start + 1, tools.length, ...newTools);
+          reply.tools = newTools;
+        } else if (reply && decision === "retry") {
+          const { item, tools } = reply;
+          items.splice(items.indexOf(item), 1 + tools.length);
+          const rc = e.replace_context as { text: string; keep?: number; wrap?: boolean } | undefined;
+          if (rc) items = replaced(items, rc.wrap === false ? rc.text : hookWrapper(event, e.hook as string, "replace_context", rc.text), rc.keep ?? 0);
+          if (e.keep_reply === true) items.push(item, ...tools);
+          if (e.text !== undefined) items.push({ role: "user", text: wrapper, ...(e.wrap === false && { alone: true }) });
+          reply = undefined;
+        }
+        continue;
+      }
       const slot = typeof e.call_id === "string" ? slots.get(e.call_id) : undefined;
       if (slot) {
         if (decision === "modify") slot.modifies.push(wrapper);
@@ -120,6 +181,7 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
         else if (decision === "replace") slot.replaced = wrapper;
         else if (decision === "add_context") slot.contexts.push(wrapper);
       } else if (event === "user_prompt") {
+        // A `replace` is in the `user` entry already.
         if (decision === "add_context") userContexts.push(wrapper);
         if (decision === "deny") userContexts = [];
       } else if (event === "interrupt") {
@@ -127,16 +189,14 @@ export function render(harness: Harness, entries: readonly Entry[], scope: Scope
         if (decision === "deny") interruptContexts = [];
       } else if (event === "pre_request" && decision === "replace_context") {
         // The newest `keep` messages stay as they were; the text replaces the ones before them.
-        const keep = (e.keep as number | undefined) ?? 0;
-        const kept = keep > 0 ? messagesOf(items).slice(-keep).map((m) => ({ ...m, kept: true })) : [];
-        items = [{ role: "user", text: wrapper }, ...kept];
+        items = replaced(items, wrapper, (e.keep as number | undefined) ?? 0);
       } else if ((event === "pre_request" || event === "stop") && (decision === "add_context" || decision === "continue")) {
         items.push({ role: "user", text: wrapper });
       }
     }
   }
 
-  const messages = messagesOf(items).map(({ kept: _, ...m }) => m as Message);
+  const messages = messagesOf(items).map(({ kept: _, alone: __, ...m }) => m as Message);
   const declared = harness.tools ?? {};
   const tools = toolIds(harness).map((name) => ({ name, ...shownTool(name, declared[name]!) }));
   return { system, tools, messages };

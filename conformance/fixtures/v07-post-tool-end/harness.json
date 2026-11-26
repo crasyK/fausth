@@ -1,0 +1,37 @@
+{
+  "spec": "harness/0.7",
+  "name": "v07-post-tool-end",
+  "prompt": "Work.",
+  "tools": {
+    "bash": {
+      "description": "Execute a bash command",
+      "input": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  },
+  "handlers": {
+    "submit": {
+      "description": "Ends the run at the submit line."
+    }
+  },
+  "hooks": [
+    {
+      "id": "submitted",
+      "on": "post_tool",
+      "match": "bash",
+      "run": "submit",
+      "with": {
+        "line": "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+      }
+    }
+  ]
+}

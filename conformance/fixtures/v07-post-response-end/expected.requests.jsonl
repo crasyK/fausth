@@ -1,0 +1,3 @@
+{"messages":[{"role":"user","text":"Go."}],"system":"Work.","tools":[{"description":"List files.","input":{"type":"object"},"name":"ls"}]}
+{"messages":[{"role":"user","text":"Go."},{"role":"assistant","text":"First.","tool_calls":[{"args":{},"call_id":"call_1","tool":"ls"}]},{"call_id":"call_1","role":"tool","text":"a","tool":"ls"}],"system":"Work.","tools":[{"description":"List files.","input":{"type":"object"},"name":"ls"}]}
+{"messages":[{"role":"user","text":"Compacted: ls showed a."}],"system":"Work.","tools":[{"description":"List files.","input":{"type":"object"},"name":"ls"}]}

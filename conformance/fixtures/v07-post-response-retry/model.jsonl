@@ -1,0 +1,5 @@
+{"text": "Thinking about it.", "finish": "stop"}
+{"text": "Let me th", "finish": "length"}
+{"text": "ing.", "tool_calls": [{"call_id": "call_1", "tool": "bash", "args": {"command": "ls"}, "raw": "{\"command\": \"ls\"}"}], "finish": "tool_calls", "usage": {"prompt_tokens": 100}}
+{"text": "A very long answer", "finish": "length", "usage": {"prompt_tokens": 500, "completion_tokens": 50}}
+{"text": "Short.", "finish": "stop"}

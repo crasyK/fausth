@@ -82,9 +82,9 @@ test("a stop handler launches the harness its hook hands it, and both logs stay 
   assert.deepEqual(logs[0]!.entries.filter((e) => e.type === "hook").map((e) => e.hook), ["save"]);
 });
 
-const SUMMARIZER: Harness = { spec: "harness/0.6", name: "summarizer", prompt: "Summarize the text in one line." };
+const SUMMARIZER: Harness = { spec: "harness/0.7", name: "summarizer", prompt: "Summarize the text in one line." };
 const ORCHESTRATOR: Harness = {
-  spec: "harness/0.6", name: "orchestrator", prompt: "Delegate.",
+  spec: "harness/0.7", name: "orchestrator", prompt: "Delegate.",
   tools: { run_agent: { description: "Run a sub-agent harness on a task.", input: {
     type: "object", required: ["harness", "task"], additionalProperties: false,
     properties: { harness: { type: "object" }, task: { type: "string" } } } } },
@@ -128,7 +128,7 @@ test("a handed harness that can't run is world feedback for a tool", async () =>
 });
 
 test("a handed harness that can't run fails a handler's hook", async () => {
-  const caller: Harness = { spec: "harness/0.6", name: "c", prompt: "p", handlers: { make_title: {} },
+  const caller: Harness = { spec: "harness/0.7", name: "c", prompt: "p", handlers: { make_title: {} },
     hooks: [{ id: "title", on: "stop", run: "make_title", with: { harness: { name: "x" } } }] };
   const log = await run(caller, scripted([{ text: "Hi." }], { make_title: harnessBinding(scripted([]), () => "t") }, [], ["Hello."]));
   assert.deepEqual(log.entries.filter((e) => e.type === "hook").map((e) => e.decision), ["failed"]);
@@ -145,7 +145,7 @@ test("a launched run that ends without an answer is the binding's infrastructure
     const log = await run(ORCHESTRATOR, orchestratorHost(harnessBinding(scripted([reply()]), taskArgument)));
     assert.equal(log.entries.at(-1)?.reason, "infra_failure");
     // ... and fails a handler's hook, which on_failure: skip lets pass.
-    const caller: Harness = { spec: "harness/0.6", name: "c", prompt: "p", handlers: { make_title: {} },
+    const caller: Harness = { spec: "harness/0.7", name: "c", prompt: "p", handlers: { make_title: {} },
       hooks: [{ id: "title", on: "stop", run: "make_title", on_failure: "skip", with: { harness: SUMMARIZER as unknown as Json } }] };
     const skipped = await run(caller, scripted([{ text: "Hi." }], { make_title: harnessBinding(scripted([reply()]), () => "t") }, [], ["Hello."]));
     assert.deepEqual(skipped.entries.filter((e) => e.type === "hook").map((e) => e.decision), ["failed"]);
@@ -163,4 +163,15 @@ test("the handed harness and the final text", async () => {
   assert.equal(handedHarness({ event: "stop", with: {} }), undefined);
   assert.equal(finalText(await run(SUMMARIZER, scripted([{ text: "One." }], {}, [], ["a"]))), "One.");
   assert.equal(finalText(await run(SUMMARIZER, scripted([new InfraFailure("x")], {}, [], ["a"]))), "");
+});
+
+// 0.7 (§2.1, §13.1): the binding fills the handed harness's host values first.
+test("a launched harness gets the launching host's values", async () => {
+  const handed = { ...SUMMARIZER, prompt: "Summarize in ${CWD} for ${OWNER}.", host_values: ["OWNER"] };
+  const launched = scripted([{ text: "One." }]);
+  const binding = harnessBinding(launched, taskArgument, { values: { CWD: "/app", OWNER: "me" } });
+  assert.deepEqual(await binding({ harness: handed, task: "t" } as unknown as Json), { ok: true, result: "One." });
+  assert.equal(launched.requests[0]!.system, "Summarize in /app for me.");
+  const unfilled = harnessBinding(scripted([]), taskArgument, { values: { CWD: "/app" } });
+  assert.deepEqual(await unfilled({ harness: handed, task: "t" } as unknown as Json), { ok: false, error: "child harness is not valid" });
 });
