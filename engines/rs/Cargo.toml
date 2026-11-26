@@ -1,9 +1,9 @@
 [package]
 name = "fausth"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Faust Harness: Rust engine (spec v0.6)"
+description = "Faust Harness: Rust engine (spec v0.7)"
 
 [dependencies]
 sha2 = "0.10"

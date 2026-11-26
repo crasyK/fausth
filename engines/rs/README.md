@@ -1,7 +1,7 @@
-# Fausth engine in Rust (spec v0.6)
+# Fausth engine in Rust (spec v0.7)
 
-The third engine for [spec v0.6](../../docs/spec-v0.6.md), next to `engines/py` and `engines/ts`. It runs only
-`harness/0.6` files and reproduces every conformance fixture byte for byte: the log and the rendered requests. It is
+The third engine for [spec v0.7](../../docs/spec-v0.7.md), next to `engines/py` and `engines/ts`. It runs only
+`harness/0.7` files and reproduces every conformance fixture byte for byte: the log and the rendered requests. It is
 here so that Mouseion can give a Rust harness (Codex) a runner in its own language.
 
 ## Build, test, replay
@@ -15,7 +15,7 @@ examples/differential/run.sh     # differential checks against the TS engine and
 ```
 
 `target/` stays in this folder (`.gitignore`d). The harness schema is read at build time from
-`../../schema/harness.v0.6.json` (`include_str!`), so the crate builds inside this repository; no copy can drift.
+`../../schema/harness.v0.7.json` (`include_str!`), so the crate builds inside this repository; no copy can drift.
 
 ## Conformance
 
@@ -28,12 +28,13 @@ ports of `engine.test.ts`, `schema.test.ts` and `launch.test.ts`). All pass:
 | `values.json`: excerpt | 7 |
 | `values.json`: argument text `model_order` (compact and indented) | 8 |
 | `values.json`: `sorted_ascii` (compact and indented), plus 7 texts that must fail | 9 + 7 |
-| `harnesses/valid` (canonical form equals `*.expected`) | 16 |
-| `harnesses/invalid` (each rejected; reasons checked by hand to be the intended ones) | 121 |
+| `harnesses/valid` (canonical form equals `*.expected`) | 19 |
+| `harnesses/invalid` (each rejected; reasons checked by hand to be the intended ones) | 132 |
+| `host-values.json`: filled harnesses and load errors (§2.1) | 27 |
 | `log.json`: log text, views, call ids | 1 text, 3 views, 3 ids |
-| `openai.json`: request, answers, `reasoning_replay` cases, default, invalid values | 20 |
-| `fixtures/*` replayed: `expected.log.jsonl` and `expected.requests.jsonl` byte for byte | 61 of 61 |
-| launch pair `v06-stop-context` + `v06-stop-title-run`, binding live, both fixtures' expected files | 1 (+ 6 launch tests) |
+| `openai.json`: request, answers, `reasoning_replay` cases, default, invalid values | 22 |
+| `fixtures/*` replayed: `expected.log.jsonl` and `expected.requests.jsonl` byte for byte | 71 of 71 |
+| launch pair `v06-stop-context` + `v06-stop-title-run`, binding live, both fixtures' expected files | 1 (+ 7 launch tests) |
 
 The differential checks (`examples/differential/run.sh`, needs `node` with `engines/ts` installed and `python3`)
 compare with the other engines on inputs the suite doesn't have: 300,000 doubles (ECMAScript and Python `repr`

@@ -1,4 +1,4 @@
-//! Rust engine for the Fausth harness spec v0.6 (`docs/spec-v0.6.md`); it runs only `harness/0.6` files.
+//! Rust engine for the Fausth harness spec v0.7 (`docs/spec-v0.7.md`); it runs only `harness/0.7` files.
 //!
 //! The twin of `engines/ts` and `engines/py`: for every conformance fixture the three produce byte-identical logs
 //! and requests. A host implements [`Host`] and calls [`run`] with a checked [`Harness`]; [`replay`] answers a run

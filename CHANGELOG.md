@@ -1,5 +1,141 @@
 # Changelog
 
+## 0.7.0 — 2026-11-26 (not tagged)
+
+Spec v0.7 (`docs/spec-v0.7.md`; v0.6 moves to `docs/archive/specs/` with its schema). Four changes, the user's
+decision of 2026-11-26 after Mouseion's first review round (decision 10 in Mouseion's `docs/plan-automation.md`
+§4): its rebuilds of pi 1.5.2, Hermes Agent 0.22.6, OpenCode 2.2.7 and mini-swe-agent 2.4.6 each recorded what
+Fausth would need as a spec diff, and these four were the most pressing. The rest of the round (compaction shapes,
+aliases, `$include`, `check_arguments: none`, JSON-escaped texts, `wrap: false` on `add_context`, the system prompt in
+the hook input, calls left out of later requests) waits for review 2 (spec Appendix B).
+
+### Moving a file from 0.6 to 0.7
+- **In the file:** change `spec: harness/0.6` to `spec: harness/0.7`. Nothing else is required.
+- **Placeholders:** a host now fills `${NAME}` in `prompt` and in tool descriptions when it loads the file
+  (`fill_host_values` / `fillHostValues`, §2.1). A file whose prompt or tool descriptions hold a literal `${NAME}`
+  (an uppercase name; a shell snippet, say) writes it `$${NAME}`; one that holds `${if …}` or `${end}` likewise. A
+  host that filled its own placeholders before the engine (Mouseion's loaders) declares the names it uses beyond the
+  standard ones in `host_values` and passes the values to the fill. Standard names have fixed formats (`DATE` is
+  `YYYY-MM-DD`); a file that wrote another date under `${DATE}` renames its own.
+- **What may change in the tokens:** nothing, for a file that uses none of the new members: every 0.6 decision renders
+  as before. `harness_hash` changes for every file (the spec value; and since the hash covers the filled harness,
+  for a file with placeholders it now differs between runs whose values differ).
+- **Hosts and log readers:** a model response may carry `finish` and `failure` (§14); the Chat Completions adapters
+  set `finish` from `finish_reason`, so logs made through them gain `finish` (requests don't change).
+  `run_end.reason` may be `harness_end`. A hook entry may carry `shown`, `args_text`, `calls`, `keep_reply` and
+  `replace_context`.
+
+### Spec
+- **A hook on the model's reply, `post_response`** (§4, §5.3, §5.4, §8 step 3.4). After every response's `assistant`
+  entry, before any call runs. Input: `reply` (the entry's text, calls with the model's `raw` text, reasoning,
+  `finish`, `failure`), `context` (the request the reply answers) and `usage`. Decisions: `modify` with `calls`
+  (`{call_id, tool}`: the calls that run, in that order, under those names; later requests show the reply so),
+  `retry` (none of the calls runs and the model is asked again, a new step: optional `text` as a user message,
+  `wrap: false` making it a message of its own, `keep_reply` keeping the reply, and a `replace_context` in that
+  decision's shape applied to the conversation the reply answered), `end` (the run ends with `harness_end`). `end`
+  is also a `post_tool` decision: the reply's later calls don't run. The response gains `finish` and `failure`; a
+  failed response no hook retried or ended is an infrastructure failure (§12.2, §14). `run_end.reason`
+  `harness_end`: a child that ends so returns its result, a launched run's binding gets its answer (§10, §13.1).
+  Sources: Hermes D3, mini-swe-agent M1 and M2, OpenCode O5, pi's compact-and-retry (0.6 Appendix B, point 3).
+- **Argument repair before the schema check, `pre_check`** (§4, §5.4, §8 step 3.5, §9.4). Match: tool ids. Input: the
+  call with `args`, the model's `raw` text and `malformed` (until a hook modified it). Decision `modify` with `args`
+  and `shown`: `model` (later requests show the model's text; OpenCode) or `modified` (the repaired arguments and their
+  text, the hook's `args_text` that must read as `args`, or the harness's form; Hermes). The modified call is then
+  checked as any call; the texts' `{args}` show the checked arguments. The log keeps both. Sources: Hermes D2,
+  OpenCode O2, pi's gap 4.
+- **A third argument text, `as_sent`** (§9.4): the response call's `raw`, byte for byte; a call without `raw` gets the
+  `model_order` text; a text that isn't JSON still goes back as `{}`; `{args_indented}` is `model_order`'s. A
+  `pre_check` repair with `shown: modified` wins. Backed by mini-swe-agent's recording run 1 (all 11,536 earlier calls
+  went back in KIT's spaced form). Source: mini-swe-agent M3.
+- **Host values** (§2.1, §5.4). `user_prompt` `replace`: the admitted message is the hook's text, unwrapped and whole
+  (mini-swe-agent M4). `${NAME}` placeholders in `prompt` and tool descriptions, filled at load from a map of
+  strings: eight standard names (`CWD`, `HOME`, `DATE`, `YEAR`, `TIMEZONE`, `OS`, `MODEL`, `PROVIDER`, each with an
+  exact form) and the names the file declares in `host_values`; slots (a paragraph that is only a placeholder
+  vanishes when empty) and `${if NAME}` … `${end}` blocks; `$${` writes `${`; values are not read again; an undeclared
+  or unsupplied name is a load error. A launched run's harness is filled at launch with the launching host's values;
+  a `core_spawn` child's is not. Sources: Hermes D6, OpenCode O7, pi's gap 6.
+- Appendix A.3 (compact-and-retry) and a new A.8 (mini-swe-agent's format check); Appendix B logs the decision and
+  marks open point 3 resolved.
+
+### Choices for the user
+Where the proposals left a choice open, 0.7 took the simplest that covers every harness cited. Each can be overturned:
+1. **`post_response` runs before `stop`,** on every response, with or without calls. A `modify` that removes every
+   call makes a reply without calls: the turn goes to `stop` hooks (§8 step 7), it is not a `retry`.
+2. **`modify`'s `calls` name calls, they don't make them:** `{call_id, tool}` only, each a call of the reply (once);
+   no new calls and no new arguments (`pre_check` changes arguments). Later requests show the modified calls (what
+   Hermes does with repaired names and removed duplicates).
+3. **`context` on `post_response` is the request the reply answered,** the reply being `reply`; `keep` in a retry's
+   `replace_context` counts those messages. `reply`'s calls carry the model's `raw` text, which the log doesn't
+   keep: the one hook-input member not derived from the log (replay has it in `model.jsonl`).
+4. **`finish` and `failure` are new response members, both logged** in the `assistant` entry. `{error}` stays the
+   model API's failure (no response). A host decides which failures it hands over as `failure`.
+5. **A `retry` applies, in order:** drop the reply (unless `keep_reply`), the `replace_context`, the kept reply, the
+   `text`. The replacement's wrapper says `decision="replace_context"`, the text's `decision="retry"`.
+6. **An unwrapped retry text merges with neither neighbour;** a wrapped one merges like `continue`'s.
+7. **No retry limit** beyond `max_steps` (a handler counts its own, as mini-swe-agent's does).
+8. **`end`'s `text` is logged, not shown.** `harness_end` in a child or a launched run counts as an ordinary end (like
+   `stop`).
+9. **`pre_check` runs after the unknown-tool check** (known tools only, as `match` names tools) and before the
+   malformed and schema checks; it allows only `modify`; `shown` is required; the repaired `args` are not checked when
+   the hook decides (the schema check after it is the check). When several hooks modify, the last one's `shown`
+   holds.
+10. **The engine's texts show the checked (repaired) arguments** in `{args}` and `{args_indented}`, whatever `shown`
+    says (OpenCode's validator prints the repaired arguments).
+11. **No built-ins on `post_response` and `pre_check`** (a validation error).
+12. **`user_prompt` `replace` chains** (the next hook's `message` is the replacing text) and is not excerpted; both
+    the `hook` entry and the `user` entry carry the text, so the host's original message is not in the log.
+13. **Host values are filled at load, so the hash covers the values** (the resolved harness, §2), and the `system`
+    entry logs the filled prompt. The alternative, values logged in `run_start` and filled at render, keeps one hash
+    per file but needs more engine code.
+14. **The standard names' forms are neutral, not any one harness's:** `DATE` `YYYY-MM-DD`, `TIMEZONE`
+    `UTC±HH:MM`, `OS` as `uname -s`, `CWD` with `/`. Hermes's long date and OpenCode's `toDateString` date are their
+    own declared names; Hermes's zone line is `(${ZONE_NAME}, ${TIMEZONE})`. `host_values` is a list of names (no
+    descriptions).
+15. **Filled are `prompt` and tool `description`s only** (not `texts`, `with`, handler descriptions). Sub-agent prompts:
+    a launched run's harness is filled at launch (`harness_binding(…, values=…)`); a `core_spawn` child's is the
+    model's text and is not filled.
+16. **Slots and blocks follow Hermes's loader exactly** (`\n\n` before, `\n\n` or the end after; the shortest body),
+    with `$${` as the one escape; a stray `${if …}` or `${end}` is a load error.
+17. **The Chat Completions adapters map `finish_reason` to `finish`.**
+
+### Engines
+- Python, TypeScript and Rust: the run loop's `post_response` and `pre_check` chains, `post_tool` `end`,
+  `harness_end`, `user_prompt` `replace`, `as_sent`, `finish` and `failure` in the response check and the log;
+  the renderer applies `post_response` `modify`/`retry` and `pre_check` `modify` and never merges an unwrapped retry
+  text; the view sees renamed calls and repaired arguments. `fill_host_values` (Python, Rust) / `fillHostValues`
+  (TypeScript); `harness_binding` takes `values` (Python, TypeScript `values` option, Rust `LaunchOptions.values`).
+  Rust's `Map` gains `get_str`. Schema `schema/harness.v0.7.json` (the new events, `as_sent`, `host_values`).
+- Tests: the host-value vectors in each engine, launch with values, `finish` and `failure` types; all three engines
+  replay all 71 fixtures byte for byte (Python 426 tests, TypeScript 394, Rust 28, whose conformance tests cover
+  every vector and fixture; `cargo fmt` clean;
+  the browser host's typecheck and tests pass).
+
+### Conformance
+- Every harness and fixture declares `harness/0.7` (expected files changed only in `harness_hash`);
+  `invalid/spec-0.6.yaml` is new, `invalid/spec-0.7.yaml` became `spec-0.8.yaml`.
+- Ten new fixtures: `v07-post-response-modify`, `v07-post-response-retry`, `v07-post-response-end`,
+  `v07-post-response-failure`, `v07-post-tool-end`, `v07-child-harness-end`, `v07-pre-check`,
+  `v07-pre-check-sorted-ascii`, `v07-argument-text-as-sent`, `v07-user-prompt-replace` (conformance/README says what
+  each shows). `host-values.json` (27 cases). Harness vectors for the new events, `as_sent` and `host_values`
+  (3 valid, 11 invalid). `openai.json`: `finish`.
+
+### Checked against Mouseion (port check)
+In a copy of Mouseion (its own files untouched), the four entries were ported to 0.7, moving into their files what
+the four changes replace, and `python3 tools/verify.py` gave **51 of 51 recordings as expected**, its table identical
+row for row (tokens, same-bytes counts, wire) to the run on 0.6.1:
+- **mini-swe-agent:** the task template (`user_prompt` `replace`), format errors (`post_response` `retry`, `wrap:
+  false`; the third in a row `end`), submit (`post_tool` `end`, `harness_end`), `argument_text: as_sent` (the wire
+  takes the engine's text). Its five synthetic recordings (format errors, three in a row, the submit) also replay
+  identical.
+- **Hermes:** its prompt's placeholders, slots and blocks are spec 0.7's (`loader.py` supplies values); its reply check
+  is the `post_response` hook `reply_check` (`modify`, `retry`, `end`), the adapter no longer leaving duplicates out.
+  Its static check passes (five prompt variants filled byte-identical).
+- **OpenCode:** host values filled by the engine (also websearch's description); OpenCode's argument repair is the
+  `pre_check` hook `repair` (a port of `tool-input-repair.ts`, `shown: model`), exercised by its driver scenarios s1
+  and s2, which stay identical.
+- **pi:** `${CWD}` and `${PKG}` filled by the engine; the check after each reply is the `post_response` hook
+  `after_answer`, whose compact-and-retry (never reached in a recording) is now a `retry` with a `replace_context`.
+
 ## 0.6.1 — 2026-11-25
 
 A third engine, in Rust (`engines/rs/`), for spec v0.6. No change to the spec, the files or the other two engines:

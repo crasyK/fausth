@@ -4,13 +4,13 @@ A harness file declares what a model sees: the prompt, the tools, and the hooks 
 every step. Three small engines (TypeScript, Python and Rust) run the same file and must produce
 byte-identical logs and model requests.
 
-**Status:** release 0.6.1 implements [`docs/spec-v0.6.md`](docs/spec-v0.6.md), the normative
+**Status:** release 0.7.0 implements [`docs/spec-v0.7.md`](docs/spec-v0.7.md), the normative
 spec: all three engines reproduce every fixture in [`conformance/`](conformance/) byte for byte.
 Built along [`docs/build-plan-v0.4.md`](docs/build-plan-v0.4.md) (0.5.0) and changed per the [CHANGELOG](CHANGELOG.md). Not production-safe.
 
 **Versions.** Until the spec is declared stable, each version may break files of the previous one,
-and an engine runs only files of its own version: a 0.6 engine runs `spec: harness/0.6` and
-rejects `harness/0.5`. Backwards compatibility starts once the spec is declared stable. A host pins
+and an engine runs only files of its own version: a 0.7 engine runs `spec: harness/0.7` and
+rejects `harness/0.6`. Backwards compatibility starts once the spec is declared stable. A host pins
 a release tag and moves its files when it moves the tag; the CHANGELOG says how for each version.
 
 The previous system (spec v0.1–v0.3, release `v0.4.0-alpha`) is retired. Its code stays
@@ -20,7 +20,7 @@ tag; its documents are in [`docs/archive/`](docs/archive/).
 ## Layout
 
 ```
-docs/          spec-v0.6.md (normative), build plan, design notes, archive (spec v0.5 and older)
+docs/          spec-v0.7.md (normative), build plan, design notes, archive (spec v0.6 and older)
 engines/ts/    TypeScript engine (+ OpenAI-compatible adapter)
 engines/py/    Python engine (+ adapter, command-line host, python-chess tools)
 engines/rs/    Rust engine (+ Chat Completions mapping, `fausth replay`); see its README

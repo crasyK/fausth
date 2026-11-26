@@ -1,2 +1,2 @@
-// TypeScript engine for spec v0.6 (docs/spec-v0.6.md); it runs only `harness/0.6` files.
+// TypeScript engine for spec v0.7 (docs/spec-v0.7.md); it runs only `harness/0.7` files.
 export {};

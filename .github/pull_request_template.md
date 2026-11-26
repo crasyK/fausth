@@ -14,4 +14,4 @@
 ## Risk checks
 
 - [ ] No secrets added
-- [ ] Spec updated first when behaviour changed (`docs/spec-v0.6.md`)
+- [ ] Spec updated first when behaviour changed (`docs/spec-v0.7.md`)

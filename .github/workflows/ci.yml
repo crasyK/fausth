@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
 
-# The three engines, the browser host, and the conformance set they must reproduce (docs/spec-v0.6.md §14).
+# The three engines, the browser host, and the conformance set they must reproduce (docs/spec-v0.7.md §14).
 
 jobs:
   ts:
