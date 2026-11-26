@@ -1,8 +1,11 @@
 # Harness Spec v0.6
 
+> **Archived 2026-11-26.** Superseded by [spec v0.7](../../spec-v0.7.md) (release 0.7.0), whose engines run only
+> `harness/0.7` files. Releases 0.6.0 and 0.6.1 implement this version (tags `v0.6.0`, `v0.6.1`).
+
 **Status:** Normative, 2026-11-25. Release 0.6.0 implements it: the TypeScript and Python engines in this
 repository produce byte-identical logs and requests for every fixture in `conformance/`. It is spec v0.5
-([archived](archive/specs/spec-v0.5.md)) with five changes, the user's decision of 2026-11-25 after Mouseion
+([archived](spec-v0.5.md)) with five changes, the user's decision of 2026-11-25 after Mouseion
 rebuilt the pi coding agent (pi 1.5.2) token for token on Fausth: tools are offered in the order the file
 declares them (§9), the provider's tool-call ids are kept (§7), a call's arguments go back written as the
 original harness writes them (§9.4), the engine's own texts can be worded in the file (§8.2), and
@@ -13,7 +16,7 @@ which a harness chooses with `argument_text` (§9.4); 0.6 drops 0.5's files (Ver
 requests real harnesses send after the model's last reply, the `stop` hook input carries `context` and
 `usage` too (§5.3), and a tool or handler can be bound to another Fausth run, launched by the environment
 with the harness it is handed (§13.1). The decisions behind v0.5 are in
-[`primitives-inventory.md`](primitives-inventory.md) §6–§8.
+[`primitives-inventory.md`](../../primitives-inventory.md) §6–§8.
 **Versions:** until the user declares the spec stable, each version may break files of the previous one, and
 an engine runs only files of its own version: a 0.6 engine rejects a `harness/0.5` file (§2). Backwards
 compatibility starts once the spec is declared stable. (The user's decision, 2026-11-25.) How to move a file
@@ -82,7 +85,7 @@ includes (e.g. a prompt in a separate file, or another agent's harness in a hook
 an engine runs is the **resolved harness**: one JSON document with includes inlined, in which the order of
 `tools` counts (§9).
 `harness_hash` = `hash([<resolved harness>, <the ids of its tools in member order>])`: the canonical
-form alone drops that order (§1). [`schema/harness.v0.6.json`](../schema/harness.v0.6.json) is the
+form alone drops that order (§1). [`harness.v0.6.json`](harness.v0.6.json) is the
 JSON Schema of the file; the cross-references (§3.1, §5.1, §6) and the placeholders of `texts` (§8.2)
 are checked in addition.
 
